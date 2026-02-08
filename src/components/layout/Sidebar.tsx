@@ -46,9 +46,11 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
     <div className="flex h-full flex-col">
       {/* Logo */}
       <div className="flex h-16 items-center gap-3 border-b border-sidebar-border px-4">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent">
-          <span className="text-lg font-bold text-accent-foreground">K</span>
-        </div>
+        <img
+          src="/images/khulisa-logo-icon.png"
+          alt="Khulisa Grow CRM logo"
+          className="h-9 w-9 rounded-md object-cover"
+        />
         <div>
           <h1 className="font-display text-lg font-bold text-sidebar-foreground">Khulisa</h1>
           <p className="text-xs text-sidebar-foreground/60">CRM</p>
@@ -84,7 +86,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       {/* Footer */}
       <div className="border-t border-sidebar-border p-4">
         <p className="text-xs text-sidebar-foreground/50">
-          © 2026 Khulisa Media
+          (c) 2026 Khulisa Media
         </p>
       </div>
     </div>

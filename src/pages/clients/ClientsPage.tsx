@@ -5,20 +5,17 @@ import {
   Search,
   MoreHorizontal,
   Phone,
-  Mail,
   MapPin,
   Edit,
   Trash2,
   Eye,
   FileText,
   FolderKanban,
-  CheckCircle,
-  XCircle,
 } from 'lucide-react';
-import { PageHeader, StatusBadge, EmptyState, ConfirmDialog } from '@/components/common';
+import { PageHeader, EmptyState, ConfirmDialog } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Table,
   TableBody,
@@ -45,13 +42,17 @@ import {
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useAuth } from '@/contexts/AuthContext';
-import { clientStore, projectStore, invoiceStore } from '@/store/mockStore';
+import { useClients } from '@/hooks/useClients';
+import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
+import { invoiceService, leadService, projectService } from '@/services';
 import { Client } from '@/types/models';
 import { toast } from 'sonner';
+import { getAgentLinkedClientIds } from '@/lib/permissions';
 
 export function ClientsPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isOwner } = useAuth();
+  const { clients: allClients, createClient, updateClient, removeClient } = useClients();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -67,21 +68,32 @@ export function ClientsPage() {
     contractSigned: false,
     onboardingCompleted: false,
   });
+  const allProjects = projectService.getAll();
+  const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
+
+  const accessibleClientIds = useMemo(() => {
+    if (!user) return new Set<string>();
+    if (isOwner) return new Set(allClients.map((client) => client.id));
+    return getAgentLinkedClientIds(user.id, leadService.getAll(), allClients, allProjects);
+  }, [allClients, allProjects, isOwner, user]);
 
   const clients = useMemo(() => {
-    return clientStore.getAll().filter(client =>
-      client.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [searchQuery]);
+    return allClients
+      .filter((client) => accessibleClientIds.has(client.id))
+      .filter(
+        (client) =>
+          client.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          client.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          client.email.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+  }, [accessibleClientIds, allClients, searchQuery]);
 
   const getClientStats = (clientId: string) => {
-    const projects = projectStore.getByClient(clientId);
-    const invoices = invoiceStore.getByClient(clientId);
+    const projects = projectService.getByClient(clientId);
+    const invoices = invoiceService.getByClient(clientId);
     const activeProjects = projects.filter(p => p.status === 'in-progress' || p.status === 'waiting-client');
     const paidInvoices = invoices.filter(i => i.status === 'paid');
-    const totalSpent = paidInvoices.reduce((sum, i) => sum + i.total, 0);
+    const totalSpent = paidInvoices.reduce((sum, i) => sum + getInvoiceEffectiveTotals(i, projectLookup).total, 0);
     
     return {
       projectCount: projects.length,
@@ -91,17 +103,38 @@ export function ClientsPage() {
     };
   };
 
+  const getClientStatus = (client: Client): 'Prospect' | 'Onboarding' | 'Contract' => {
+    if (client.contractSigned) return 'Contract';
+    if (client.onboardingCompleted) return 'Onboarding';
+    return 'Prospect';
+  };
+
+  const getStatusClassName = (status: 'Prospect' | 'Onboarding' | 'Contract'): string => {
+    if (status === 'Contract') return 'bg-success/10 text-success border-success/20';
+    if (status === 'Onboarding') return 'bg-warning/10 text-warning border-warning/20';
+    return 'bg-info/10 text-info border-info/20';
+  };
+
   const handleSubmit = () => {
     if (!formData.businessName || !formData.ownerName) {
       toast.error('Please fill in required fields');
       return;
     }
 
+    if (!isOwner && !selectedClient) {
+      toast.error('Agents can only create clients by converting assigned leads.');
+      return;
+    }
+
     if (selectedClient) {
-      clientStore.update(selectedClient.id, formData);
+      if (!accessibleClientIds.has(selectedClient.id)) {
+        toast.error('You do not have permission to update this client');
+        return;
+      }
+      updateClient(selectedClient.id, formData);
       toast.success('Client updated successfully');
     } else {
-      clientStore.create({
+      createClient({
         ...formData,
         createdBy: user?.id || '',
       });
@@ -113,7 +146,11 @@ export function ClientsPage() {
   };
 
   const handleDelete = (id: string) => {
-    clientStore.delete(id);
+    if (!accessibleClientIds.has(id)) {
+      toast.error('You do not have permission to delete this client');
+      return;
+    }
+    removeClient(id);
     toast.success('Client deleted');
     setDeleteConfirm(null);
   };
@@ -133,6 +170,10 @@ export function ClientsPage() {
   };
 
   const openEditDialog = (client: Client) => {
+    if (!accessibleClientIds.has(client.id)) {
+      toast.error('You do not have permission to edit this client');
+      return;
+    }
     setSelectedClient(client);
     setFormData({
       businessName: client.businessName,
@@ -158,10 +199,12 @@ export function ClientsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Clients" description="Manage your client relationships">
-        <Button onClick={() => { resetForm(); setShowAddDialog(true); }}>
-          <Plus className="mr-2 h-4 w-4" />
-          Add Client
-        </Button>
+        {isOwner && (
+          <Button onClick={() => { resetForm(); setShowAddDialog(true); }}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Client
+          </Button>
+        )}
       </PageHeader>
 
       {/* Search */}
@@ -181,11 +224,15 @@ export function ClientsPage() {
       {clients.length === 0 ? (
         <EmptyState
           title="No clients found"
-          description="Add your first client or convert a won lead."
-          action={{
-            label: 'Add Client',
-            onClick: () => setShowAddDialog(true),
-          }}
+          description={isOwner ? 'Add your first client or convert a won lead.' : 'Convert your assigned leads to create clients.'}
+          action={
+            isOwner
+              ? {
+                  label: 'Add Client',
+                  onClick: () => setShowAddDialog(true),
+                }
+              : undefined
+          }
         />
       ) : (
         <Card>
@@ -198,13 +245,14 @@ export function ClientsPage() {
                   <TableHead>Location</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead className="text-right">Projects</TableHead>
-                  <TableHead className="text-right">Total Spent</TableHead>
+                  {isOwner && <TableHead className="text-right">Total Spent</TableHead>}
                   <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {clients.map((client) => {
                   const stats = getClientStats(client.id);
+                  const status = getClientStatus(client);
                   return (
                     <TableRow 
                       key={client.id}
@@ -235,24 +283,19 @@ export function ClientsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <span className={`flex items-center gap-1 text-xs ${client.contractSigned ? 'text-success' : 'text-muted-foreground'}`}>
-                            {client.contractSigned ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                            Contract
-                          </span>
-                          <span className={`flex items-center gap-1 text-xs ${client.onboardingCompleted ? 'text-success' : 'text-muted-foreground'}`}>
-                            {client.onboardingCompleted ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                            Onboarding
-                          </span>
-                        </div>
+                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${getStatusClassName(status)}`}>
+                          {status}
+                        </span>
                       </TableCell>
                       <TableCell className="text-right">
                         <p className="font-medium">{stats.projectCount}</p>
                         <p className="text-xs text-muted-foreground">{stats.activeProjects} active</p>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <p className="font-semibold text-accent">{formatCurrency(stats.totalSpent)}</p>
-                      </TableCell>
+                      {isOwner && (
+                        <TableCell className="text-right">
+                          <p className="font-semibold text-accent">{formatCurrency(stats.totalSpent)}</p>
+                        </TableCell>
+                      )}
                       <TableCell onClick={(e) => e.stopPropagation()}>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

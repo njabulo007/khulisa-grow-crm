@@ -1,18 +1,23 @@
 // Khulisa CRM - Auth Context
-// TODO: Replace with Firebase Auth
+// TODO: Replace bootstrap/login/logout internals with Firebase Auth:
+// - onAuthStateChanged for session bootstrap
+// - signInWithEmailAndPassword for login
+// - signOut for logout
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '@/types/models';
-import { userStore, initializeStore } from '@/store/mockStore';
+import { User, UserRole } from '@/types/models';
+import { authService } from '@/services';
+import { seedAppData } from '@/seed';
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
+  isAuthenticated: boolean;
   isOwner: boolean;
   isAgent: boolean;
-  login: (userId: string) => void;
+  login: (email: string, password: string) => boolean;
   logout: () => void;
-  switchRole: () => void; // For demo purposes
+  switchRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,31 +27,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Initialize store and load current user
-    initializeStore();
-    const currentUser = userStore.getCurrentUser();
+    // Seed first-load local data and load current user
+    seedAppData();
+    const currentUser = authService.getCurrentUser();
     setUser(currentUser);
     setIsLoading(false);
   }, []);
 
-  const login = (userId: string) => {
-    userStore.setCurrentUser(userId);
-    const currentUser = userStore.getById(userId);
-    setUser(currentUser || null);
+  const login = (email: string, password: string): boolean => {
+    const signedInUser = authService.loginWithPassword(email, password);
+    setUser(signedInUser);
+    return !!signedInUser;
   };
 
   const logout = () => {
-    // TODO: Implement Firebase logout
-    // For now, we'll just clear the current user display
-    console.log('Logout clicked - in production this would sign out');
+    // TODO: Replace with Firebase signOut call.
+    authService.clearCurrentUser();
+    setUser(null);
   };
 
-  const switchRole = () => {
-    // Demo function to switch between owner and agent
-    const users = userStore.getAll();
-    const currentIndex = users.findIndex(u => u.id === user?.id);
-    const nextUser = users[(currentIndex + 1) % users.length];
-    login(nextUser.id);
+  const switchRole = (role: UserRole) => {
+    if (!user) return;
+    // Dev-only role switching. Persisted in localStorage for testing permissions.
+    const switchedUser = authService.switchRole(role);
+    setUser(switchedUser);
   };
 
   return (
@@ -54,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         isLoading,
+        isAuthenticated: !!user,
         isOwner: user?.role === 'owner',
         isAgent: user?.role === 'agent',
         login,

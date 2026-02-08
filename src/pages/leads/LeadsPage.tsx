@@ -3,10 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Plus,
   Search,
-  Filter,
   MoreHorizontal,
-  Phone,
-  Mail,
   Calendar,
   AlertCircle,
   Edit,
@@ -42,9 +39,12 @@ import {
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DEFAULT_PACKAGE_ID, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
-import { leadStore, userStore, clientStore, projectStore, activityStore, generateId } from '@/store/mockStore';
-import { Lead, LeadStage, LeadSource, LEAD_STAGES, LEAD_SOURCES, SERVICE_PACKAGES } from '@/types/models';
+import { useLeads } from '@/hooks/useLeads';
+import { activityService, authService, clientService, generateId, projectService } from '@/services';
+import { Lead, LeadStage, LeadSource, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 
 const formatCurrency = (amount: number) => {
@@ -58,6 +58,7 @@ const formatCurrency = (amount: number) => {
 export function LeadsPage() {
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
+  const { leads, createLead, updateLead, removeLead, getById: getLeadById } = useLeads();
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -82,19 +83,19 @@ export function LeadsPage() {
 
   const [convertData, setConvertData] = useState({
     projectName: '',
-    packageType: SERVICE_PACKAGES[0] as string,
+    packageId: DEFAULT_PACKAGE_ID as PackageId,
+    createProject: true,
     location: '',
     industry: '',
   });
 
-  const agents = userStore.getAll().filter(u => u.role === 'agent');
+  const agents = authService.getAll().filter((u) => u.role === 'agent');
 
   // Filter leads based on role
   const allLeads = useMemo(() => {
-    const leads = leadStore.getAll();
     if (isOwner) return leads;
     return leads.filter(l => l.assignedTo === user?.id);
-  }, [isOwner, user]);
+  }, [isOwner, leads, user]);
 
   // Apply filters
   const filteredLeads = useMemo(() => {
@@ -127,6 +128,11 @@ export function LeadsPage() {
     return grouped;
   }, [filteredLeads]);
 
+  const canManageLead = (lead: Lead): boolean => {
+    if (isOwner) return true;
+    return !!user && lead.assignedTo === user.id;
+  };
+
   const handleSubmit = () => {
     if (!formData.businessName || !formData.contactName) {
       toast.error('Please fill in required fields');
@@ -134,10 +140,14 @@ export function LeadsPage() {
     }
 
     if (selectedLead) {
-      leadStore.update(selectedLead.id, formData);
+      if (!canManageLead(selectedLead)) {
+        toast.error('You do not have permission to update this lead');
+        return;
+      }
+      updateLead(selectedLead.id, formData);
       toast.success('Lead updated successfully');
     } else {
-      leadStore.create({
+      createLead({
         ...formData,
         assignedTo: formData.assignedTo || user?.id || '',
         createdBy: user?.id || '',
@@ -150,18 +160,27 @@ export function LeadsPage() {
   };
 
   const handleDelete = (id: string) => {
-    leadStore.delete(id);
+    const lead = getLeadById(id);
+    if (!lead || !canManageLead(lead)) {
+      toast.error('You do not have permission to delete this lead');
+      return;
+    }
+    removeLead(id);
     toast.success('Lead deleted');
     setDeleteConfirm(null);
   };
 
   const handleStageChange = (leadId: string, newStage: LeadStage) => {
-    const lead = leadStore.getById(leadId);
+    const lead = getLeadById(leadId);
     if (!lead) return;
+    if (!canManageLead(lead)) {
+      toast.error('You do not have permission to update this lead');
+      return;
+    }
 
-    leadStore.update(leadId, { stage: newStage });
+    updateLead(leadId, { stage: newStage });
     
-    activityStore.create({
+    activityService.create({
       type: 'status-change',
       entityType: 'lead',
       entityId: leadId,
@@ -171,16 +190,36 @@ export function LeadsPage() {
     });
 
     toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+
+    if (newStage === 'won' && !lead.clientId) {
+      setSelectedLead({ ...lead, stage: 'won' });
+      setConvertData({
+        projectName: `${lead.businessName} - Website`,
+        packageId: DEFAULT_PACKAGE_ID,
+        createProject: true,
+        location: '',
+        industry: '',
+      });
+      setShowConvertDialog(true);
+    }
   };
 
   const handleConvert = () => {
-    if (!selectedLead || !convertData.projectName) {
-      toast.error('Please fill in required fields');
+    if (!selectedLead) {
+      toast.error('No lead selected for conversion');
+      return;
+    }
+    if (!canManageLead(selectedLead)) {
+      toast.error('You do not have permission to convert this lead');
+      return;
+    }
+    if (convertData.createProject && !convertData.projectName.trim()) {
+      toast.error('Please provide a project name or uncheck project creation');
       return;
     }
 
     // Create client
-    const client = clientStore.create({
+    const client = clientService.create({
       businessName: selectedLead.businessName,
       ownerName: selectedLead.contactName,
       email: selectedLead.email,
@@ -193,28 +232,30 @@ export function LeadsPage() {
       createdBy: user?.id || '',
     });
 
-    // Create project
-    projectStore.create({
-      name: convertData.projectName,
-      clientId: client.id,
-      packageType: convertData.packageType,
-      status: 'not-started',
-      milestones: [
-        { id: generateId(), name: 'Kickoff meeting', completed: false },
-        { id: generateId(), name: 'Requirements gathering', completed: false },
-        { id: generateId(), name: 'Delivery', completed: false },
-      ],
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      startDate: new Date().toISOString(),
-      assignedTo: selectedLead.assignedTo,
-      notes: '',
-      createdBy: user?.id || '',
-    });
+    if (convertData.createProject) {
+      // Create project
+      projectService.create({
+        name: convertData.projectName,
+        clientId: client.id,
+        packageId: convertData.packageId,
+        status: 'not-started',
+        milestones: [
+          { id: generateId(), name: 'Kickoff meeting', completed: false },
+          { id: generateId(), name: 'Requirements gathering', completed: false },
+          { id: generateId(), name: 'Delivery', completed: false },
+        ],
+        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        startDate: new Date().toISOString(),
+        assignedTo: selectedLead.assignedTo,
+        notes: '',
+        createdBy: user?.id || '',
+      });
+    }
 
-    // Update lead to Won
-    leadStore.update(selectedLead.id, { stage: 'won' });
+    // Link lead and mark won
+    updateLead(selectedLead.id, { stage: 'won', clientId: client.id });
 
-    toast.success('Lead converted to client & project created!');
+    toast.success(convertData.createProject ? 'Lead converted to client and project.' : 'Lead converted to client.');
     setShowConvertDialog(false);
     setSelectedLead(null);
     navigate('/clients');
@@ -234,9 +275,20 @@ export function LeadsPage() {
       followUpDate: '',
     });
     setSelectedLead(null);
+    setConvertData({
+      projectName: '',
+      packageId: DEFAULT_PACKAGE_ID,
+      createProject: true,
+      location: '',
+      industry: '',
+    });
   };
 
   const openEditDialog = (lead: Lead) => {
+    if (!canManageLead(lead)) {
+      toast.error('You do not have permission to edit this lead');
+      return;
+    }
     setSelectedLead(lead);
     setFormData({
       businessName: lead.businessName,
@@ -254,10 +306,15 @@ export function LeadsPage() {
   };
 
   const openConvertDialog = (lead: Lead) => {
+    if (!canManageLead(lead)) {
+      toast.error('You do not have permission to convert this lead');
+      return;
+    }
     setSelectedLead(lead);
     setConvertData({
       projectName: `${lead.businessName} - Website`,
-      packageType: SERVICE_PACKAGES[0],
+      packageId: DEFAULT_PACKAGE_ID,
+      createProject: true,
       location: '',
       industry: '',
     });
@@ -330,7 +387,7 @@ export function LeadsPage() {
               </div>
               <div className="space-y-2 min-h-[200px]">
                 {leadsByStage[stageKey as LeadStage].map((lead) => {
-                  const agent = userStore.getById(lead.assignedTo);
+                  const agent = authService.getById(lead.assignedTo);
                   const isOverdue = lead.followUpDate && new Date(lead.followUpDate) < new Date();
                   
                   return (
@@ -377,11 +434,13 @@ export function LeadsPage() {
                           </DropdownMenu>
                         </div>
                         
-                        <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                          <span className="font-medium text-accent">
-                            {formatCurrency(lead.estimatedValue)}
-                          </span>
-                        </div>
+                        {isOwner && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="font-medium text-accent">
+                              {formatCurrency(lead.estimatedValue)}
+                            </span>
+                          </div>
+                        )}
 
                         {lead.followUpDate && (
                           <div className={`mt-2 flex items-center gap-1 text-xs ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>
@@ -408,25 +467,23 @@ export function LeadsPage() {
                         )}
 
                         {/* Quick stage change */}
-                        {stageKey !== 'won' && stageKey !== 'lost' && (
-                          <div className="mt-2 pt-2 border-t flex gap-1">
-                            <Select
-                              value={lead.stage}
-                              onValueChange={(value) => handleStageChange(lead.id, value as LeadStage)}
-                            >
-                              <SelectTrigger className="h-7 text-xs">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {Object.entries(LEAD_STAGES).map(([key, value]) => (
-                                  <SelectItem key={key} value={key} className="text-xs">
-                                    {value.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        )}
+                        <div className="mt-2 pt-2 border-t flex gap-1">
+                          <Select
+                            value={lead.stage}
+                            onValueChange={(value) => handleStageChange(lead.id, value as LeadStage)}
+                          >
+                            <SelectTrigger className="h-7 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {Object.entries(LEAD_STAGES).map(([key, value]) => (
+                                <SelectItem key={key} value={key} className="text-xs">
+                                  {value.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                       </CardContent>
                     </Card>
                   );
@@ -517,15 +574,17 @@ export function LeadsPage() {
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="estimatedValue">Estimated Value (R)</Label>
-                <Input
-                  id="estimatedValue"
-                  type="number"
-                  value={formData.estimatedValue}
-                  onChange={(e) => setFormData({ ...formData, estimatedValue: Number(e.target.value) })}
-                />
-              </div>
+              {isOwner && (
+                <div className="grid gap-2">
+                  <Label htmlFor="estimatedValue">Estimated Value (R)</Label>
+                  <Input
+                    id="estimatedValue"
+                    type="number"
+                    value={formData.estimatedValue}
+                    onChange={(e) => setFormData({ ...formData, estimatedValue: Number(e.target.value) })}
+                  />
+                </div>
+              )}
               <div className="grid gap-2">
                 <Label htmlFor="followUpDate">Follow-up Date</Label>
                 <Input
@@ -578,12 +637,22 @@ export function LeadsPage() {
       <Dialog open={showConvertDialog} onOpenChange={setShowConvertDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Convert to Client</DialogTitle>
+            <DialogTitle>Convert to Client + Project?</DialogTitle>
             <DialogDescription>
-              Convert {selectedLead?.businessName} to a client and create a project
+              {selectedLead?.businessName} is now marked as Won. Confirm conversion.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="createProject"
+                checked={convertData.createProject}
+                onCheckedChange={(checked) => setConvertData({ ...convertData, createProject: !!checked })}
+              />
+              <Label htmlFor="createProject">Create Project now</Label>
+            </div>
+            {convertData.createProject && (
+              <>
             <div className="grid gap-2">
               <Label htmlFor="projectName">Project Name *</Label>
               <Input
@@ -593,21 +662,23 @@ export function LeadsPage() {
               />
             </div>
             <div className="grid gap-2">
-              <Label>Package Type</Label>
+              <Label>Package</Label>
               <Select
-                value={convertData.packageType}
-                onValueChange={(value) => setConvertData({ ...convertData, packageType: value })}
+                value={convertData.packageId}
+                onValueChange={(value) => setConvertData({ ...convertData, packageId: value as PackageId })}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {SERVICE_PACKAGES.map((pkg) => (
-                    <SelectItem key={pkg} value={pkg}>{pkg}</SelectItem>
+                  {KHULISA_PACKAGES.map((pkg) => (
+                    <SelectItem key={pkg.id} value={pkg.id}>{pkg.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="location">Location</Label>
@@ -634,7 +705,7 @@ export function LeadsPage() {
               Cancel
             </Button>
             <Button onClick={handleConvert}>
-              Convert to Client
+              Confirm Conversion
             </Button>
           </DialogFooter>
         </DialogContent>

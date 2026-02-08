@@ -28,6 +28,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { leadStore, userStore, activityStore } from '@/store/mockStore';
 import { LeadStage, LEAD_STAGES, LEAD_SOURCES, ActivityType } from '@/types/models';
 import { toast } from 'sonner';
+import { canAccessLead } from '@/lib/permissions';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -50,7 +51,7 @@ const ACTIVITY_ICONS: Record<ActivityType, React.ReactNode> = {
 export function LeadDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isOwner } = useAuth();
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState<ActivityType>('note');
 
@@ -71,7 +72,22 @@ export function LeadDetailPage() {
     );
   }
 
+  if (!canAccessLead(user, lead)) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">You do not have permission to view this lead.</p>
+        <Button variant="link" onClick={() => navigate('/leads')}>
+          Back to Leads
+        </Button>
+      </div>
+    );
+  }
+
   const handleStageChange = (newStage: LeadStage) => {
+    if (!canAccessLead(user, lead)) {
+      toast.error('You do not have permission to update this lead');
+      return;
+    }
     leadStore.update(lead.id, { stage: newStage });
     
     activityStore.create({
@@ -87,6 +103,10 @@ export function LeadDetailPage() {
   };
 
   const handleAddActivity = () => {
+    if (!canAccessLead(user, lead)) {
+      toast.error('You do not have permission to add activity for this lead');
+      return;
+    }
     if (!newNote.trim()) {
       toast.error('Please enter a note');
       return;
@@ -264,10 +284,12 @@ export function LeadDetailPage() {
               <CardTitle>Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Estimated Value</p>
-                <p className="text-xl font-bold text-accent">{formatCurrency(lead.estimatedValue)}</p>
-              </div>
+              {isOwner && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Estimated Value</p>
+                  <p className="text-xl font-bold text-accent">{formatCurrency(lead.estimatedValue)}</p>
+                </div>
+              )}
               <div>
                 <p className="text-sm text-muted-foreground">Source</p>
                 <p className="font-medium">{LEAD_SOURCES[lead.source]}</p>

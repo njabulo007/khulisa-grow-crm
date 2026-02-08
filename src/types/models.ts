@@ -1,5 +1,6 @@
 // Khulisa CRM - Data Models
 // Designed for easy Firebase/Firestore migration
+import type { PackageId, PackageName } from '@/config/packages';
 
 export type UserRole = 'owner' | 'agent';
 
@@ -8,6 +9,7 @@ export interface User {
   email: string;
   name: string;
   role: UserRole;
+  isActive?: boolean;
   phone?: string;
   avatar?: string;
   commissionRate: number; // Default commission rate percentage
@@ -30,6 +32,7 @@ export interface Lead {
   notes: string;
   followUpDate?: string;
   estimatedValue: number;
+  clientId?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
@@ -64,7 +67,9 @@ export interface Project {
   id: string;
   name: string;
   clientId: string;
-  packageType: string;
+  packageId: PackageId;
+  packageName?: PackageName;
+  packagePrice?: number;
   status: ProjectStatus;
   milestones: ProjectMilestone[];
   dueDate: string;
@@ -92,6 +97,9 @@ export interface Invoice {
   invoiceNumber: string;
   clientId: string;
   projectId?: string;
+  packageId?: PackageId;
+  packageName?: PackageName;
+  packagePrice?: number;
   items: InvoiceItem[];
   subtotal: number;
   tax: number;
@@ -126,10 +134,14 @@ export interface Commission {
   agentId: string;
   invoiceId: string;
   projectId?: string;
-  amount: number;
-  rate: number; // Percentage
+  packageId: PackageId;
+  packageName?: PackageName;
+  packagePrice?: number;
+  commissionAmount: number;
+  rate: number; // Decimal (0.15 = 15%)
   status: CommissionStatus;
-  paidOutAt?: string;
+  earnedDate?: string;
+  paidOutDate?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -146,24 +158,6 @@ export interface Activity {
   createdAt: string;
   createdBy: string;
 }
-
-// Service package types
-export const SERVICE_PACKAGES = [
-  'Basic Website',
-  'E-commerce Website',
-  'SEO Package',
-  'Google My Business Setup',
-  'Social Media Setup',
-  'Social Media Management',
-  'Facebook Ads',
-  'Google Ads',
-  'Photography',
-  'Graphic Design',
-  'Monthly Retainer',
-  'Custom Package',
-] as const;
-
-export type ServicePackage = typeof SERVICE_PACKAGES[number];
 
 // Lead stage display info
 export const LEAD_STAGES: Record<LeadStage, { label: string; color: string }> = {

@@ -16,12 +16,12 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  leadStore,
-  projectStore,
-  invoiceStore,
-  commissionStore,
-  clientStore,
-} from '@/store/mockStore';
+  clientService,
+  commissionService,
+  leadService,
+  projectService,
+  syncCommissionsFromInvoices,
+} from '@/services';
 import { LEAD_STAGES } from '@/types/models';
 
 const formatCurrency = (amount: number) => {
@@ -43,7 +43,7 @@ export function AgentDashboard() {
     const now = new Date();
     
     // Agent's leads
-    const myLeads = leadStore.getByAgent(user.id);
+    const myLeads = leadService.getByAgent(user.id);
     const activeLeads = myLeads.filter(l => l.stage !== 'won' && l.stage !== 'lost');
     const wonLeads = myLeads.filter(l => l.stage === 'won');
     const lostLeads = myLeads.filter(l => l.stage === 'lost');
@@ -61,20 +61,21 @@ export function AgentDashboard() {
       : 0;
 
     // Agent's projects
-    const myProjects = projectStore.getByAgent(user.id);
+    const myProjects = projectService.getByAgent(user.id);
     const activeProjects = myProjects.filter(p => 
       p.status === 'in-progress' || p.status === 'waiting-client'
     );
 
     // Commissions
-    const myCommissions = commissionStore.getByAgent(user.id);
+    syncCommissionsFromInvoices();
+    const myCommissions = commissionService.getByAgent(user.id);
     const pendingCommissions = myCommissions.filter(c => c.status === 'pending');
     const earnedCommissions = myCommissions.filter(c => c.status === 'earned');
     const paidOutCommissions = myCommissions.filter(c => c.status === 'paid-out');
 
-    const pendingAmount = pendingCommissions.reduce((sum, c) => sum + c.amount, 0);
-    const earnedAmount = earnedCommissions.reduce((sum, c) => sum + c.amount, 0);
-    const paidOutAmount = paidOutCommissions.reduce((sum, c) => sum + c.amount, 0);
+    const pendingAmount = pendingCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+    const earnedAmount = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+    const paidOutAmount = paidOutCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
 
     // Leads by stage
     const leadsByStage = myLeads.reduce((acc, lead) => {
@@ -291,7 +292,7 @@ export function AgentDashboard() {
             ) : (
               <div className="space-y-3">
                 {stats.activeProjects.slice(0, 4).map((project) => {
-                  const client = clientStore.getById(project.clientId);
+                  const client = clientService.getById(project.clientId);
                   const completedMilestones = project.milestones.filter(m => m.completed).length;
                   const progress = Math.round((completedMilestones / project.milestones.length) * 100);
                   const isOverdue = new Date(project.dueDate) < new Date() && project.status !== 'delivered';

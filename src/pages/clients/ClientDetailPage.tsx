@@ -11,11 +11,17 @@ import {
   Plus,
   FileText,
   FolderKanban,
+  Receipt,
+  User2,
 } from 'lucide-react';
-import { PageHeader, StatusBadge } from '@/components/common';
+import { PageHeader, StatusBadge, EmptyState } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { clientStore, projectStore, invoiceStore } from '@/store/mockStore';
+import { getPackageNameById } from '@/config/packages';
+import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
+import { authService, clientService, invoiceService, leadService, paymentService, projectService } from '@/services';
+import { useAuth } from '@/contexts/AuthContext';
+import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -28,10 +34,45 @@ const formatCurrency = (amount: number) => {
 export function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user, isOwner } = useAuth();
 
-  const client = useMemo(() => clientStore.getById(id || ''), [id]);
-  const projects = useMemo(() => projectStore.getByClient(id || ''), [id]);
-  const invoices = useMemo(() => invoiceStore.getByClient(id || ''), [id]);
+  const allClients = clientService.getAll();
+  const allLeads = leadService.getAll();
+  const allProjects = projectService.getAll();
+  const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
+  const client = useMemo(() => clientService.getById(id || ''), [id]);
+  const linkedLeads = useMemo(() => {
+    if (!client) return [];
+    return allLeads
+      .filter((lead) => lead.clientId === client.id || lead.id === client.leadId)
+      .filter((lead) => isOwner || lead.assignedTo === user?.id);
+  }, [allLeads, client, isOwner, user?.id]);
+  const projects = useMemo(() => {
+    const projectList = projectService.getByClient(id || '');
+    if (isOwner || !user) return projectList;
+    return projectList.filter((project) => project.assignedTo === user.id);
+  }, [id, isOwner, user]);
+  const invoices = useMemo(() => {
+    const allClientInvoices = invoiceService.getByClient(id || '');
+    if (isOwner || !user) return allClientInvoices;
+    return allClientInvoices.filter((invoice) =>
+      canAccessInvoice(user, invoice, allLeads, allClients, allProjects)
+    );
+  }, [allClients, allLeads, allProjects, id, isOwner, user]);
+  const paymentsByInvoice = useMemo(() => {
+    return invoices.reduce((acc, invoice) => {
+      acc[invoice.id] = paymentService
+        .getByInvoice(invoice.id)
+        .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+      return acc;
+    }, {} as Record<string, ReturnType<typeof paymentService.getByInvoice>>);
+  }, [invoices]);
+  const canAccessClient = useMemo(() => {
+    if (!client || !user) return false;
+    if (isOwner) return true;
+    const linkedIds = getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
+    return linkedIds.has(client.id);
+  }, [allClients, allLeads, allProjects, client, isOwner, user]);
 
   if (!client) {
     return (
@@ -44,13 +85,33 @@ export function ClientDetailPage() {
     );
   }
 
+  if (!canAccessClient) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">You do not have permission to view this client.</p>
+        <Button variant="link" onClick={() => navigate('/clients')}>
+          Back to Clients
+        </Button>
+      </div>
+    );
+  }
+
   const totalSpent = invoices
     .filter(i => i.status === 'paid')
-    .reduce((sum, i) => sum + i.total, 0);
+    .reduce((sum, i) => sum + getInvoiceEffectiveTotals(i, projectLookup).total, 0);
 
   const outstanding = invoices
     .filter(i => i.status !== 'paid' && i.status !== 'draft')
-    .reduce((sum, i) => sum + (i.total - i.amountPaid), 0);
+    .reduce((sum, i) => {
+      const totals = getInvoiceEffectiveTotals(i, projectLookup);
+      return sum + (totals.total - i.amountPaid);
+    }, 0);
+
+  const clientStatus: 'Prospect' | 'Onboarding' | 'Contract' = client.contractSigned
+    ? 'Contract'
+    : client.onboardingCompleted
+    ? 'Onboarding'
+    : 'Prospect';
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -60,9 +121,20 @@ export function ClientDetailPage() {
         </Button>
         <PageHeader
           title={client.businessName}
-          description={client.ownerName}
+          description={`${client.ownerName} | ${clientStatus}`}
           className="mb-0 flex-1"
-        />
+        >
+          <div className="flex gap-2">
+            <Button size="sm" onClick={() => navigate(`/projects?client=${client.id}`)}>
+              <FolderKanban className="mr-1 h-4 w-4" />
+              Create Project
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => navigate(`/invoices?client=${client.id}`)}>
+              <FileText className="mr-1 h-4 w-4" />
+              Create Invoice
+            </Button>
+          </div>
+        </PageHeader>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -116,11 +188,52 @@ export function ClientDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Associated Leads */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Associated Leads</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {linkedLeads.length === 0 ? (
+                <EmptyState
+                  title="No linked leads"
+                  description="No leads are currently linked to this client."
+                />
+              ) : (
+                <div className="space-y-3">
+                  {linkedLeads.map((lead) => {
+                    const leadOwner = authService.getById(lead.assignedTo);
+                    return (
+                      <div
+                        key={lead.id}
+                        className="flex cursor-pointer items-center justify-between rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                        onClick={() => navigate(`/leads/${lead.id}`)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted">
+                            <User2 className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{lead.businessName}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {lead.contactName} {leadOwner ? ` | ${leadOwner.name}` : ''}
+                            </p>
+                          </div>
+                        </div>
+                        <StatusBadge status={lead.stage} type="lead" />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Projects */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle>Projects</CardTitle>
-              <Button size="sm" onClick={() => navigate('/projects')}>
+              <Button size="sm" onClick={() => navigate(`/projects?client=${client.id}`)}>
                 <Plus className="mr-1 h-4 w-4" />
                 New Project
               </Button>
@@ -140,7 +253,7 @@ export function ClientDetailPage() {
                         <FolderKanban className="h-5 w-5 text-muted-foreground" />
                         <div>
                           <p className="font-medium">{project.name}</p>
-                          <p className="text-sm text-muted-foreground">{project.packageType}</p>
+                          <p className="text-sm text-muted-foreground">{getPackageNameById(project.packageId)}</p>
                         </div>
                       </div>
                       <StatusBadge status={project.status} type="project" />
@@ -154,8 +267,8 @@ export function ClientDetailPage() {
           {/* Invoices */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Invoices</CardTitle>
-              <Button size="sm" onClick={() => navigate('/invoices')}>
+              <CardTitle>Invoices + Payments</CardTitle>
+              <Button size="sm" onClick={() => navigate(`/invoices?client=${client.id}`)}>
                 <Plus className="mr-1 h-4 w-4" />
                 New Invoice
               </Button>
@@ -165,27 +278,54 @@ export function ClientDetailPage() {
                 <p className="text-center text-muted-foreground py-4">No invoices yet</p>
               ) : (
                 <div className="space-y-3">
-                  {invoices.map((invoice) => (
-                    <div
-                      key={invoice.id}
-                      className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50"
-                      onClick={() => navigate(`/invoices/${invoice.id}`)}
-                    >
-                      <div className="flex items-center gap-3">
-                        <FileText className="h-5 w-5 text-muted-foreground" />
-                        <div>
-                          <p className="font-medium">{invoice.invoiceNumber}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Due: {new Date(invoice.dueDate).toLocaleDateString('en-ZA')}
-                          </p>
+                  {invoices.map((invoice) => {
+                    const projectForInvoice = allProjects.find((entry) => entry.id === invoice.projectId);
+                    const totals = getInvoiceEffectiveTotals(invoice, projectLookup);
+                    return (
+                    <div key={invoice.id} className="rounded-lg border p-3">
+                      <div
+                        className="flex cursor-pointer items-center justify-between hover:bg-muted/50 rounded-md p-1 -m-1"
+                        onClick={() => navigate(`/invoices/${invoice.id}`)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <FileText className="h-5 w-5 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{invoice.invoiceNumber}</p>
+                            <p className="text-sm text-muted-foreground">
+                              Due: {new Date(invoice.dueDate).toLocaleDateString('en-ZA')}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Package: {projectForInvoice ? getPackageNameById(projectForInvoice.packageId) : 'Unlinked'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          {isOwner && <p className="font-semibold">{formatCurrency(totals.total)}</p>}
+                          <StatusBadge status={invoice.status} type="invoice" />
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{formatCurrency(invoice.total)}</p>
-                        <StatusBadge status={invoice.status} type="invoice" />
+
+                      <div className="mt-3 space-y-2">
+                        {(paymentsByInvoice[invoice.id] || []).length === 0 ? (
+                          <p className="text-xs text-muted-foreground">No payments recorded</p>
+                        ) : (
+                          (paymentsByInvoice[invoice.id] || []).map((payment) => (
+                            <div key={payment.id} className="flex items-center justify-between rounded-md bg-muted/40 px-2 py-1.5">
+                              <div className="flex items-center gap-2 text-sm">
+                                <Receipt className="h-3.5 w-3.5 text-muted-foreground" />
+                                {isOwner && <span>{formatCurrency(payment.amount)}</span>}
+                                <span className="text-xs uppercase text-muted-foreground">{payment.method}</span>
+                              </div>
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(payment.paidAt).toLocaleDateString('en-ZA')}
+                              </span>
+                            </div>
+                          ))
+                        )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </CardContent>
@@ -212,19 +352,23 @@ export function ClientDetailPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Financials</CardTitle>
+              <CardTitle>{isOwner ? 'Financials' : 'Overview'}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <p className="text-sm text-muted-foreground">Total Spent</p>
-                <p className="text-2xl font-bold text-accent">{formatCurrency(totalSpent)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Outstanding</p>
-                <p className={`text-xl font-semibold ${outstanding > 0 ? 'text-destructive' : 'text-success'}`}>
-                  {formatCurrency(outstanding)}
-                </p>
-              </div>
+              {isOwner && (
+                <>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Total Spent</p>
+                    <p className="text-2xl font-bold text-accent">{formatCurrency(totalSpent)}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-muted-foreground">Outstanding</p>
+                    <p className={`text-xl font-semibold ${outstanding > 0 ? 'text-destructive' : 'text-success'}`}>
+                      {formatCurrency(outstanding)}
+                    </p>
+                  </div>
+                </>
+              )}
               <div>
                 <p className="text-sm text-muted-foreground">Industry</p>
                 <p className="font-medium">{client.industry || 'Not specified'}</p>
