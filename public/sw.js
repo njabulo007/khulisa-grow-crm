@@ -1,7 +1,6 @@
-const SW_CACHE = 'khulisa-crm-cache-v1';
+const SW_CACHE = 'khulisa-crm-cache-v2';
 const PRECACHE_URLS = [
   '/',
-  '/index.html',
   '/manifest.webmanifest',
   '/images/khulisa-logo.png',
   '/images/khulisa-logo-icon.png',
@@ -34,28 +33,49 @@ self.addEventListener('fetch', (event) => {
   const requestUrl = new URL(request.url);
   if (requestUrl.origin !== self.location.origin) return;
 
-  // App-shell fallback for SPA routes when offline.
+  // Use network-first for navigations so new deployments don't get stuck on stale index/html.
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request).catch(() => caches.match('/index.html'))
-    );
-    return;
-  }
-
-  event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      if (cachedResponse) return cachedResponse;
-      return fetch(request)
+      fetch(request)
         .then((networkResponse) => {
-          if (!networkResponse || networkResponse.status !== 200) {
-            return networkResponse;
-          }
-
           const responseClone = networkResponse.clone();
           caches.open(SW_CACHE).then((cache) => cache.put(request, responseClone));
           return networkResponse;
         })
-        .catch(() => caches.match('/index.html'));
-    })
+        .catch(async () => (await caches.match(request)) || caches.match('/'))
+    );
+    return;
+  }
+
+  // Cache-first for static assets only.
+  if (['script', 'style', 'image', 'font', 'audio'].includes(request.destination)) {
+    event.respondWith(
+      caches.match(request).then((cachedResponse) => {
+        if (cachedResponse) return cachedResponse;
+        return fetch(request).then((networkResponse) => {
+          if (!networkResponse || networkResponse.status !== 200) {
+            return networkResponse;
+          }
+          const responseClone = networkResponse.clone();
+          caches.open(SW_CACHE).then((cache) => cache.put(request, responseClone));
+          return networkResponse;
+        });
+      })
+    );
+    return;
+  }
+
+  // Default: network-first with cache fallback.
+  event.respondWith(
+    fetch(request)
+      .then((networkResponse) => {
+        if (!networkResponse || networkResponse.status !== 200) {
+          return networkResponse;
+        }
+        const responseClone = networkResponse.clone();
+        caches.open(SW_CACHE).then((cache) => cache.put(request, responseClone));
+        return networkResponse;
+      })
+      .catch(() => caches.match(request))
   );
 });
