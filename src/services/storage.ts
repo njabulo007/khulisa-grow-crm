@@ -189,9 +189,14 @@ const normalizeForFirestore = (value: unknown): unknown => {
 };
 
 export class FirestoreCollection<T extends { id: string }> {
-  private readonly collectionRef = firestoreCollectionRef(db, this.collectionName);
+  private readonly collectionRef;
 
-  constructor(private readonly collectionName: string) {}
+  constructor(private readonly collectionName: string) {
+    if (!collectionName || !collectionName.trim()) {
+      throw new Error('Firestore collection name is required.');
+    }
+    this.collectionRef = firestoreCollectionRef(db, collectionName);
+  }
 
   private mapSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): T {
     const normalized = normalizeFromFirestore(snapshot.data()) as Record<string, unknown>;
