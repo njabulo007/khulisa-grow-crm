@@ -1,4 +1,12 @@
 import { User, UserRole } from '@/types/models';
+import { getFirebaseServices, isFirebaseConfigured } from '@/lib/firebase';
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged,
+  User as FirebaseUser,
+} from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import {
   LocalStorageCollection,
   STORAGE_KEYS,
@@ -10,6 +18,75 @@ import {
 } from './storage';
 
 export const DEV_AUTH_PASSWORD = 'khulisa123';
+
+export type Role = 'owner' | 'agent';
+
+export interface AppUser {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  role: Role;
+}
+
+async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | null> {
+  if (!firebaseUser) return null;
+
+  const { db } = getFirebaseServices();
+
+  // Read extra data (role) from Firestore: users/{uid}
+  const profileRef = doc(db, 'users', firebaseUser.uid);
+  const profileSnap = await getDoc(profileRef);
+
+  let role: Role = 'agent'; // default if not found
+  if (profileSnap.exists()) {
+    const data = profileSnap.data() as { role?: string };
+    if (data.role === 'owner' || data.role === 'agent') {
+      role = data.role;
+    }
+  }
+
+  return {
+    id: firebaseUser.uid,
+    email: firebaseUser.email,
+    displayName: firebaseUser.displayName,
+    role,
+  };
+}
+
+export const AuthService = {
+  async loginWithPassword(email: string, password: string): Promise<AppUser> {
+    const { auth } = getFirebaseServices();
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    const user = await mapUser(cred.user);
+    if (!user) throw new Error('Could not map user');
+    return user;
+  },
+
+  async logout(): Promise<void> {
+    if (!isFirebaseConfigured) return;
+    const { auth } = getFirebaseServices();
+    await signOut(auth);
+  },
+
+  subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
+    if (!isFirebaseConfigured) {
+      callback(null);
+      return () => {};
+    }
+
+    const { auth } = getFirebaseServices();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      try {
+        const user = await mapUser(firebaseUser);
+        callback(user);
+      } catch (error) {
+        console.error('Failed to map Firebase auth user:', error);
+        callback(null);
+      }
+    });
+    return unsubscribe;
+  },
+};
 
 export interface AuthService {
   // User profile source (local now, Firestore profile docs later)
