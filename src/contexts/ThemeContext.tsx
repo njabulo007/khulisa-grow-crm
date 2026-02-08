@@ -2,7 +2,7 @@
 // Persisted dark/light mode toggle
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { themeStore } from '@/store/mockStore';
+import { themeService } from '@/services';
 
 type Theme = 'light' | 'dark';
 
@@ -19,7 +19,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Load saved theme or system preference
-    const savedTheme = themeStore.get();
+    const savedTheme = themeService.get();
     setThemeState(savedTheme);
     applyTheme(savedTheme);
   }, []);
@@ -32,7 +32,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
-    themeStore.set(newTheme);
+    themeService.set(newTheme);
     applyTheme(newTheme);
   };
 

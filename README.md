@@ -29,20 +29,20 @@ npm run dev
 
 ## Firebase Migration Notes
 
-This codebase is already structured with a service boundary so Firebase integration can happen with minimal UI/page changes.
+This codebase is now wired so the service layer is the only data-access boundary.
 
 ### 1) Where to Plug in Firebase Auth
 
-- Replace `src/services/authService.ts` internals:
-  - `loginWithPassword` -> `signInWithEmailAndPassword`
-  - `clearCurrentUser` -> `signOut`
-  - `getCurrentUser`/session bootstrap -> `onAuthStateChanged`
-- Keep the `AuthService` interface stable so `src/contexts/AuthContext.tsx` and pages do not need major rewrites.
-- Role/profile fields should be sourced from Firestore user profile documents (or custom claims) instead of local seed/localStorage.
+- `src/lib/firebase.ts` initializes Firebase app/auth/firestore/storage.
+- `src/services/authService.ts` is the integration point for:
+  - `signInWithEmailAndPassword`
+  - `onAuthStateChanged`
+  - `signOut`
+- Keep auth/session logic in `authService` + `src/contexts/AuthContext.tsx` so pages stay unchanged.
 
 ### 2) Where to Plug in Firestore
 
-- Replace localStorage-backed logic in each service:
+- These services are Firestore-backed and should remain the source of truth:
   - `src/services/leadService.ts`
   - `src/services/clientService.ts`
   - `src/services/projectService.ts`
@@ -50,19 +50,25 @@ This codebase is already structured with a service boundary so Firebase integrat
   - `src/services/paymentService.ts`
   - `src/services/commissionService.ts`
   - `src/services/activityService.ts`
-- Map existing CRUD methods (`getAll`, `getById`, `create`, `update`, `remove`) to Firestore `collection`, `doc`, `getDocs`, `addDoc`, `updateDoc`, `deleteDoc`.
-- Keep direct data access inside services only. Components/pages/hooks should continue calling services, not SDK APIs directly.
+- Shared adapter: `src/services/storage.ts` -> `FirestoreCollection<T>`.
+- Keep components/hooks/pages calling services only; do not call Firestore directly from UI modules.
 
 ### 3) Where to Plug in Storage
 
 - Use `src/services/storageService.ts` as the integration point for Firebase Storage.
-- Future use cases:
-  - Project assets upload/download
-  - Invoice PDF upload/download
-- Replace placeholder methods with `ref`, `uploadBytes`, `getDownloadURL`, and `deleteObject`.
+- Future use cases: project assets and invoice PDFs.
+- Implement with `ref`, `uploadBytes`, `getDownloadURL`, `deleteObject`.
 
 ### 4) Minimal-Change Rule
 
 - Keep public service interfaces stable.
 - Keep pages/components data-driven through hooks/services.
-- When migrating to Firebase, most changes should stay inside `src/services/*` and auth bootstrap logic.
+- New persistence/provider changes should stay inside `src/services/*` and `src/lib/firebase.ts`.
+
+### 5) Legacy Local Storage
+
+- CRM entity persistence no longer uses localStorage.
+- Obsolete local keys are listed in `src/services/storage.ts` as `OBSOLETE_CRM_STORAGE_KEYS`.
+- Local storage is still used for:
+  - auth/session compatibility (`khulisa_users`, `khulisa_current_user`, `khulisa_role`)
+  - UI theme preference (`khulisa_theme`)

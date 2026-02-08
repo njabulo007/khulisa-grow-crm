@@ -1,52 +1,53 @@
 import { Payment } from '@/types/models';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
 
 export interface PaymentService {
-  getAll: () => Payment[];
-  getById: (id: string) => Payment | undefined;
-  getByInvoice: (invoiceId: string) => Payment[];
-  create: (payment: Omit<Payment, 'id' | 'createdAt'>) => Payment;
-  update: (id: string, updates: Partial<Payment>) => Payment | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Payment[]) => void;
+  getAll: () => Promise<Payment[]>;
+  getById: (id: string) => Promise<Payment | undefined>;
+  getByInvoice: (invoiceId: string) => Promise<Payment[]>;
+  create: (payment: Omit<Payment, 'id' | 'createdAt'>) => Promise<Payment>;
+  update: (id: string, updates: Partial<Payment>) => Promise<Payment | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Payment[]) => Promise<void>;
 }
 
-class LocalPaymentService implements PaymentService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the PaymentService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<Payment>(STORAGE_KEYS.payments);
+class FirestorePaymentService implements PaymentService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<Payment>('payments');
 
-  getAll(): Payment[] {
+  async getAll(): Promise<Payment[]> {
     return this.collection.getAll();
   }
 
-  getById(id: string): Payment | undefined {
+  async getById(id: string): Promise<Payment | undefined> {
     return this.collection.getById(id);
   }
 
-  getByInvoice(invoiceId: string): Payment[] {
-    return this.collection.getAll().filter((payment) => payment.invoiceId === invoiceId);
+  async getByInvoice(invoiceId: string): Promise<Payment[]> {
+    const payments = await this.collection.getAll();
+    return payments.filter((payment) => payment.invoiceId === invoiceId);
   }
 
-  create(payment: Omit<Payment, 'id' | 'createdAt'>): Payment {
-    return this.collection.create({
+  async create(payment: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> {
+    const created = {
       ...payment,
       id: generateId(),
       createdAt: getTimestamp(),
-    });
+    };
+    return this.collection.create(created);
   }
 
-  update(id: string, updates: Partial<Payment>): Payment | null {
+  async update(id: string, updates: Partial<Payment>): Promise<Payment | null> {
     return this.collection.update(id, updates);
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Payment[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Payment[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const paymentService: PaymentService = new LocalPaymentService();
+export const paymentService: PaymentService = new FirestorePaymentService();

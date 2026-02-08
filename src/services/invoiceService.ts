@@ -1,29 +1,29 @@
 import { Invoice } from '@/types/models';
 import { getPackageById, resolvePackageId } from '@/config/packages';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
 import { projectService } from './projectService';
 
 export interface InvoiceService {
-  getAll: () => Invoice[];
-  getById: (id: string) => Invoice | undefined;
-  getByClient: (clientId: string) => Invoice[];
-  getNextNumber: () => string;
-  create: (invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>) => Invoice;
-  update: (id: string, updates: Partial<Invoice>) => Invoice | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Invoice[]) => void;
+  getAll: () => Promise<Invoice[]>;
+  getById: (id: string) => Promise<Invoice | undefined>;
+  getByClient: (clientId: string) => Promise<Invoice[]>;
+  getNextNumber: () => Promise<string>;
+  create: (invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Invoice>;
+  update: (id: string, updates: Partial<Invoice>) => Promise<Invoice | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Invoice[]) => Promise<void>;
 }
 
-class LocalInvoiceService implements InvoiceService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the InvoiceService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<Invoice & { packageType?: string }>(STORAGE_KEYS.invoices);
+class FirestoreInvoiceService implements InvoiceService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<Invoice & { packageType?: string }>('invoices');
 
-  private resolvePackageSnapshot(
+  private async resolvePackageSnapshot(
     projectId?: string,
     packageIdValue?: string
-  ): { packageId?: Invoice['packageId']; packageName?: Invoice['packageName']; packagePrice?: number } {
-    const fromProject = projectId ? projectService.getById(projectId)?.packageId : undefined;
+  ): Promise<{ packageId?: Invoice['packageId']; packageName?: Invoice['packageName']; packagePrice?: number }> {
+    const project = projectId ? await projectService.getById(projectId) : undefined;
+    const fromProject = project?.packageId;
     const rawPackageId = packageIdValue ?? fromProject;
     if (!rawPackageId) return {};
     const packageId = resolvePackageId(rawPackageId);
@@ -35,8 +35,8 @@ class LocalInvoiceService implements InvoiceService {
     };
   }
 
-  private normalizeInvoice(invoice: Invoice & { packageType?: string }): Invoice {
-    const packageSnapshot = this.resolvePackageSnapshot(
+  private async normalizeInvoice(invoice: Invoice & { packageType?: string }): Promise<Invoice> {
+    const packageSnapshot = await this.resolvePackageSnapshot(
       invoice.projectId,
       invoice.packageId ?? invoice.packageType
     );
@@ -47,30 +47,32 @@ class LocalInvoiceService implements InvoiceService {
     };
   }
 
-  getAll(): Invoice[] {
-    return this.collection.getAll().map((invoice) => this.normalizeInvoice(invoice));
+  async getAll(): Promise<Invoice[]> {
+    const invoices = await this.collection.getAll();
+    return Promise.all(invoices.map((invoice) => this.normalizeInvoice(invoice)));
   }
 
-  getById(id: string): Invoice | undefined {
-    const invoice = this.collection.getById(id);
+  async getById(id: string): Promise<Invoice | undefined> {
+    const invoice = await this.collection.getById(id);
     return invoice ? this.normalizeInvoice(invoice) : undefined;
   }
 
-  getByClient(clientId: string): Invoice[] {
-    return this.collection.getAll().filter((invoice) => invoice.clientId === clientId);
+  async getByClient(clientId: string): Promise<Invoice[]> {
+    const invoices = await this.getAll();
+    return invoices.filter((invoice) => invoice.clientId === clientId);
   }
 
-  getNextNumber(): string {
+  async getNextNumber(): Promise<string> {
     const year = new Date().getFullYear();
-    const count = this.collection
-      .getAll()
+    const invoices = await this.collection.getAll();
+    const count = invoices
       .filter((invoice) => invoice.invoiceNumber.startsWith(`KM-${year}`)).length + 1;
     return `KM-${year}-${count.toString().padStart(4, '0')}`;
   }
 
-  create(invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>): Invoice {
-    const packageSnapshot = this.resolvePackageSnapshot(invoice.projectId, invoice.packageId);
-    const created = this.collection.create({
+  async create(invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>): Promise<Invoice> {
+    const packageSnapshot = await this.resolvePackageSnapshot(invoice.projectId, invoice.packageId);
+    const created = await this.collection.create({
       ...invoice,
       ...packageSnapshot,
       id: generateId(),
@@ -80,15 +82,15 @@ class LocalInvoiceService implements InvoiceService {
     return this.normalizeInvoice(created);
   }
 
-  update(id: string, updates: Partial<Invoice>): Invoice | null {
-    const current = this.collection.getById(id);
+  async update(id: string, updates: Partial<Invoice>): Promise<Invoice | null> {
+    const current = await this.collection.getById(id);
     if (!current) return null;
 
     const nextProjectId = updates.projectId ?? current.projectId;
     const nextPackageId = updates.packageId ?? current.packageId;
-    const packageSnapshot = this.resolvePackageSnapshot(nextProjectId, nextPackageId);
+    const packageSnapshot = await this.resolvePackageSnapshot(nextProjectId, nextPackageId);
 
-    const updated = this.collection.update(id, {
+    const updated = await this.collection.update(id, {
       ...updates,
       ...packageSnapshot,
       updatedAt: getTimestamp(),
@@ -97,13 +99,13 @@ class LocalInvoiceService implements InvoiceService {
     return updated ? this.normalizeInvoice(updated) : null;
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Invoice[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Invoice[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const invoiceService: InvoiceService = new LocalInvoiceService();
+export const invoiceService: InvoiceService = new FirestoreInvoiceService();

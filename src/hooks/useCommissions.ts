@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { commissionService } from '@/services';
 import { Commission } from '@/types/models';
 
@@ -7,21 +7,33 @@ type CommissionUpdateInput = Partial<Commission>;
 
 export interface UseCommissionsResult {
   commissions: Commission[];
-  refresh: () => void;
-  getById: (id: string) => Commission | undefined;
-  getByAgent: (agentId: string) => Commission[];
-  getByInvoice: (invoiceId: string) => Commission | undefined;
-  createCommission: (commission: CommissionCreateInput) => Commission;
-  updateCommission: (id: string, updates: CommissionUpdateInput) => Commission | null;
-  removeCommission: (id: string) => boolean;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+  getById: (id: string) => Promise<Commission | undefined>;
+  getByAgent: (agentId: string) => Promise<Commission[]>;
+  getByInvoice: (invoiceId: string) => Promise<Commission | undefined>;
+  createCommission: (commission: CommissionCreateInput) => Promise<Commission>;
+  updateCommission: (id: string, updates: CommissionUpdateInput) => Promise<Commission | null>;
+  removeCommission: (id: string) => Promise<boolean>;
 }
 
 export function useCommissions(): UseCommissionsResult {
-  const [commissions, setCommissions] = useState<Commission[]>(() => commissionService.getAll());
+  const [commissions, setCommissions] = useState<Commission[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const refresh = useCallback(() => {
-    setCommissions(commissionService.getAll());
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const next = await commissionService.getAll();
+      setCommissions(next);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const getById = useCallback((id: string) => commissionService.getById(id), []);
 
@@ -30,27 +42,27 @@ export function useCommissions(): UseCommissionsResult {
   const getByInvoice = useCallback((invoiceId: string) => commissionService.getByInvoice(invoiceId), []);
 
   const createCommission = useCallback(
-    (commission: CommissionCreateInput) => {
-      const created = commissionService.create(commission);
-      refresh();
+    async (commission: CommissionCreateInput) => {
+      const created = await commissionService.create(commission);
+      await refresh();
       return created;
     },
     [refresh]
   );
 
   const updateCommission = useCallback(
-    (id: string, updates: CommissionUpdateInput) => {
-      const updated = commissionService.update(id, updates);
-      refresh();
+    async (id: string, updates: CommissionUpdateInput) => {
+      const updated = await commissionService.update(id, updates);
+      await refresh();
       return updated;
     },
     [refresh]
   );
 
   const removeCommission = useCallback(
-    (id: string) => {
-      const removed = commissionService.remove(id);
-      refresh();
+    async (id: string) => {
+      const removed = await commissionService.remove(id);
+      await refresh();
       return removed;
     },
     [refresh]
@@ -58,6 +70,7 @@ export function useCommissions(): UseCommissionsResult {
 
   return {
     commissions,
+    isLoading,
     refresh,
     getById,
     getByAgent,

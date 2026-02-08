@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search } from 'lucide-react';
 import { PageHeader, EmptyState, StatusBadge } from '@/components/common';
@@ -32,7 +32,7 @@ import {
 import { DEFAULT_PACKAGE_ID, getPackageById, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
 import { authService, clientService, leadService, projectService } from '@/services';
-import { ProjectStatus, PROJECT_STATUSES } from '@/types/models';
+import { Client, Lead, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
 import { getAgentLinkedClientIds } from '@/lib/permissions';
 import { toast } from 'sonner';
 
@@ -56,11 +56,32 @@ export function ProjectsPage() {
     assignedTo: '',
     notes: '',
   });
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const allClients = clientService.getAll();
-  const allProjects = projectService.getAll();
-  const allLeads = leadService.getAll();
   const agents = authService.getAll().filter((candidate) => candidate.role === 'agent');
+
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [clients, projects, leads] = await Promise.all([
+        clientService.getAll(),
+        projectService.getAll(),
+        leadService.getAll(),
+      ]);
+      setAllClients(clients);
+      setAllProjects(projects);
+      setAllLeads(leads);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const accessibleClientIds = useMemo(() => {
     if (!user) return new Set<string>();
@@ -114,7 +135,7 @@ export function ProjectsPage() {
     });
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!user) return;
     if (!formData.name.trim() || !formData.clientId || !formData.dueDate || !formData.startDate) {
       toast.error('Please complete all required project fields.');
@@ -126,7 +147,7 @@ export function ProjectsPage() {
     }
 
     const assignedTo = isOwner ? formData.assignedTo || user.id : user.id;
-    projectService.create({
+    await projectService.create({
       name: formData.name.trim(),
       clientId: formData.clientId,
       packageId: formData.packageId,
@@ -140,6 +161,7 @@ export function ProjectsPage() {
     });
 
     toast.success('Project created successfully.');
+    await loadData();
     setShowAddDialog(false);
     resetForm();
   };
@@ -183,7 +205,11 @@ export function ProjectsPage() {
         </Select>
       </div>
 
-      {projects.length === 0 ? (
+      {isLoading && allProjects.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading projects...</CardContent>
+        </Card>
+      ) : projects.length === 0 ? (
         <EmptyState
           title="No projects found"
           description="Create a project to start tracking delivery progress."
@@ -361,7 +387,13 @@ export function ProjectsPage() {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create Project</Button>
+            <Button
+              onClick={() => {
+                void handleCreate();
+              }}
+            >
+              Create Project
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

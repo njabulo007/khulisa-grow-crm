@@ -58,7 +58,7 @@ const formatCurrency = (amount: number) => {
 export function LeadsPage() {
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
-  const { leads, createLead, updateLead, removeLead, getById: getLeadById } = useLeads();
+  const { leads, isLoading: isLeadsLoading, createLead, updateLead, removeLead, getById: getLeadById } = useLeads();
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -133,7 +133,7 @@ export function LeadsPage() {
     return !!user && lead.assignedTo === user.id;
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.businessName || !formData.contactName) {
       toast.error('Please fill in required fields');
       return;
@@ -144,10 +144,10 @@ export function LeadsPage() {
         toast.error('You do not have permission to update this lead');
         return;
       }
-      updateLead(selectedLead.id, formData);
+      await updateLead(selectedLead.id, formData);
       toast.success('Lead updated successfully');
     } else {
-      createLead({
+      await createLead({
         ...formData,
         assignedTo: formData.assignedTo || user?.id || '',
         createdBy: user?.id || '',
@@ -159,28 +159,28 @@ export function LeadsPage() {
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
-    const lead = getLeadById(id);
+  const handleDelete = async (id: string) => {
+    const lead = await getLeadById(id);
     if (!lead || !canManageLead(lead)) {
       toast.error('You do not have permission to delete this lead');
       return;
     }
-    removeLead(id);
+    await removeLead(id);
     toast.success('Lead deleted');
     setDeleteConfirm(null);
   };
 
-  const handleStageChange = (leadId: string, newStage: LeadStage) => {
-    const lead = getLeadById(leadId);
+  const handleStageChange = async (leadId: string, newStage: LeadStage) => {
+    const lead = await getLeadById(leadId);
     if (!lead) return;
     if (!canManageLead(lead)) {
       toast.error('You do not have permission to update this lead');
       return;
     }
 
-    updateLead(leadId, { stage: newStage });
+    await updateLead(leadId, { stage: newStage });
     
-    activityService.create({
+    await activityService.create({
       type: 'status-change',
       entityType: 'lead',
       entityId: leadId,
@@ -204,7 +204,7 @@ export function LeadsPage() {
     }
   };
 
-  const handleConvert = () => {
+  const handleConvert = async () => {
     if (!selectedLead) {
       toast.error('No lead selected for conversion');
       return;
@@ -219,7 +219,7 @@ export function LeadsPage() {
     }
 
     // Create client
-    const client = clientService.create({
+    const client = await clientService.create({
       businessName: selectedLead.businessName,
       ownerName: selectedLead.contactName,
       email: selectedLead.email,
@@ -234,7 +234,7 @@ export function LeadsPage() {
 
     if (convertData.createProject) {
       // Create project
-      projectService.create({
+      await projectService.create({
         name: convertData.projectName,
         clientId: client.id,
         packageId: convertData.packageId,
@@ -253,7 +253,7 @@ export function LeadsPage() {
     }
 
     // Link lead and mark won
-    updateLead(selectedLead.id, { stage: 'won', clientId: client.id });
+    await updateLead(selectedLead.id, { stage: 'won', clientId: client.id });
 
     toast.success(convertData.createProject ? 'Lead converted to client and project.' : 'Lead converted to client.');
     setShowConvertDialog(false);
@@ -366,7 +366,11 @@ export function LeadsPage() {
       </div>
 
       {/* Kanban Board */}
-      {filteredLeads.length === 0 ? (
+      {isLeadsLoading && leads.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading leads...</CardContent>
+        </Card>
+      ) : filteredLeads.length === 0 ? (
         <EmptyState
           title="No leads found"
           description="Create your first lead or adjust your filters."
@@ -470,7 +474,9 @@ export function LeadsPage() {
                         <div className="mt-2 pt-2 border-t flex gap-1">
                           <Select
                             value={lead.stage}
-                            onValueChange={(value) => handleStageChange(lead.id, value as LeadStage)}
+                            onValueChange={(value) => {
+                              void handleStageChange(lead.id, value as LeadStage);
+                            }}
                           >
                             <SelectTrigger className="h-7 text-xs">
                               <SelectValue />
@@ -626,7 +632,11 @@ export function LeadsPage() {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit}>
+            <Button
+              onClick={() => {
+                void handleSubmit();
+              }}
+            >
               {selectedLead ? 'Update' : 'Create'} Lead
             </Button>
           </DialogFooter>
@@ -704,7 +714,11 @@ export function LeadsPage() {
             <Button variant="outline" onClick={() => setShowConvertDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleConvert}>
+            <Button
+              onClick={() => {
+                void handleConvert();
+              }}
+            >
               Confirm Conversion
             </Button>
           </DialogFooter>
@@ -718,7 +732,10 @@ export function LeadsPage() {
         title="Delete Lead"
         description="Are you sure you want to delete this lead? This action cannot be undone."
         confirmLabel="Delete"
-        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        onConfirm={() => {
+          if (!deleteConfirm) return;
+          void handleDelete(deleteConfirm);
+        }}
         variant="destructive"
       />
     </div>

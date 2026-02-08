@@ -1,48 +1,48 @@
 import { Client } from '@/types/models';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
 
 export interface ClientService {
-  getAll: () => Client[];
-  getById: (id: string) => Client | undefined;
-  create: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Client;
-  update: (id: string, updates: Partial<Client>) => Client | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Client[]) => void;
+  getAll: () => Promise<Client[]>;
+  getById: (id: string) => Promise<Client | undefined>;
+  create: (client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Client>;
+  update: (id: string, updates: Partial<Client>) => Promise<Client | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Client[]) => Promise<void>;
 }
 
-class LocalClientService implements ClientService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the ClientService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<Client>(STORAGE_KEYS.clients);
+class FirestoreClientService implements ClientService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<Client>('clients');
 
-  getAll(): Client[] {
+  async getAll(): Promise<Client[]> {
     return this.collection.getAll();
   }
 
-  getById(id: string): Client | undefined {
+  async getById(id: string): Promise<Client | undefined> {
     return this.collection.getById(id);
   }
 
-  create(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>): Client {
-    return this.collection.create({
+  async create(client: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>): Promise<Client> {
+    const created = {
       ...client,
       id: generateId(),
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
-    });
+    };
+    return this.collection.create(created);
   }
 
-  update(id: string, updates: Partial<Client>): Client | null {
+  async update(id: string, updates: Partial<Client>): Promise<Client | null> {
     return this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Client[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Client[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const clientService: ClientService = new LocalClientService();
+export const clientService: ClientService = new FirestoreClientService();

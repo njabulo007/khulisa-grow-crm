@@ -1,53 +1,79 @@
 import { Lead } from '@/types/models';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { notificationService } from './notificationService';
 
 export interface LeadService {
-  getAll: () => Lead[];
-  getById: (id: string) => Lead | undefined;
-  getByAgent: (agentId: string) => Lead[];
-  create: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => Lead;
-  update: (id: string, updates: Partial<Lead>) => Lead | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Lead[]) => void;
+  getAll: () => Promise<Lead[]>;
+  getById: (id: string) => Promise<Lead | undefined>;
+  getByAgent: (agentId: string) => Promise<Lead[]>;
+  create: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Lead>;
+  update: (id: string, updates: Partial<Lead>) => Promise<Lead | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Lead[]) => Promise<void>;
 }
 
-class LocalLeadService implements LeadService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the LeadService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<Lead>(STORAGE_KEYS.leads);
+class FirestoreLeadService implements LeadService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<Lead>('leads');
 
-  getAll(): Lead[] {
+  private async notifyAssignment(lead: Lead, previousAssignedTo?: string): Promise<void> {
+    const nextAssignedTo = lead.assignedTo?.trim();
+    if (!nextAssignedTo) return;
+    if (previousAssignedTo && previousAssignedTo === nextAssignedTo) return;
+    // Skip notifying on self-assigned lead creation by the same agent.
+    if (!previousAssignedTo && lead.createdBy === nextAssignedTo) return;
+
+    await notificationService.createForUser(nextAssignedTo, {
+      type: 'lead_assigned',
+      leadId: lead.id,
+      title: 'New lead assigned',
+      message: `You've been assigned a new lead: ${lead.businessName}`,
+    });
+  }
+
+  async getAll(): Promise<Lead[]> {
     return this.collection.getAll();
   }
 
-  getById(id: string): Lead | undefined {
+  async getById(id: string): Promise<Lead | undefined> {
     return this.collection.getById(id);
   }
 
-  getByAgent(agentId: string): Lead[] {
-    return this.collection.getAll().filter((lead) => lead.assignedTo === agentId);
+  async getByAgent(agentId: string): Promise<Lead[]> {
+    const leads = await this.collection.getAll();
+    return leads.filter((lead) => lead.assignedTo === agentId);
   }
 
-  create(lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Lead {
-    return this.collection.create({
+  async create(lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Promise<Lead> {
+    const created = {
       ...lead,
       id: generateId(),
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
-    });
+    };
+    const persisted = await this.collection.create(created);
+    await this.notifyAssignment(persisted);
+    return persisted;
   }
 
-  update(id: string, updates: Partial<Lead>): Lead | null {
-    return this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
+  async update(id: string, updates: Partial<Lead>): Promise<Lead | null> {
+    const existing = await this.collection.getById(id);
+    if (!existing) return null;
+
+    const updated = await this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
+    if (updated) {
+      await this.notifyAssignment(updated, existing.assignedTo);
+    }
+    return updated;
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Lead[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Lead[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const leadService: LeadService = new LocalLeadService();
+export const leadService: LeadService = new FirestoreLeadService();

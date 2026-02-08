@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -45,14 +45,14 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useClients } from '@/hooks/useClients';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { invoiceService, leadService, projectService } from '@/services';
-import { Client } from '@/types/models';
+import { Client, Invoice, Lead, Project } from '@/types/models';
 import { toast } from 'sonner';
 import { getAgentLinkedClientIds } from '@/lib/permissions';
 
 export function ClientsPage() {
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
-  const { clients: allClients, createClient, updateClient, removeClient } = useClients();
+  const { clients: allClients, isLoading: isClientsLoading, createClient, updateClient, removeClient } = useClients();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
@@ -68,14 +68,43 @@ export function ClientsPage() {
     contractSigned: false,
     onboardingCompleted: false,
   });
-  const allProjects = projectService.getAll();
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const [isRelatedDataLoading, setIsRelatedDataLoading] = useState(true);
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsRelatedDataLoading(true);
+      try {
+        const [projects, leads, invoices] = await Promise.all([
+          projectService.getAll(),
+          leadService.getAll(),
+          invoiceService.getAll(),
+        ]);
+        if (!isMounted) return;
+        setAllProjects(projects);
+        setAllLeads(leads);
+        setAllInvoices(invoices);
+      } finally {
+        if (isMounted) {
+          setIsRelatedDataLoading(false);
+        }
+      }
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [allClients.length]);
 
   const accessibleClientIds = useMemo(() => {
     if (!user) return new Set<string>();
     if (isOwner) return new Set(allClients.map((client) => client.id));
-    return getAgentLinkedClientIds(user.id, leadService.getAll(), allClients, allProjects);
-  }, [allClients, allProjects, isOwner, user]);
+    return getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
+  }, [allClients, allLeads, allProjects, isOwner, user]);
 
   const clients = useMemo(() => {
     return allClients
@@ -88,17 +117,34 @@ export function ClientsPage() {
       );
   }, [accessibleClientIds, allClients, searchQuery]);
 
+  const clientStatsById = useMemo(() => {
+    return allClients.reduce((acc, client) => {
+      const projects = allProjects.filter((project) => project.clientId === client.id);
+      const invoices = allInvoices.filter((invoice) => invoice.clientId === client.id);
+      const activeProjects = projects.filter((project) => project.status === 'in-progress' || project.status === 'waiting-client');
+      const paidInvoices = invoices.filter((invoice) => invoice.status === 'paid');
+      const totalSpent = paidInvoices.reduce((sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total, 0);
+
+      acc[client.id] = {
+        projectCount: projects.length,
+        activeProjects: activeProjects.length,
+        invoiceCount: invoices.length,
+        totalSpent,
+      };
+      return acc;
+    }, {} as Record<string, { projectCount: number; activeProjects: number; invoiceCount: number; totalSpent: number }>);
+  }, [allClients, allInvoices, allProjects, projectLookup]);
+
   const getClientStats = (clientId: string) => {
-    const projects = projectService.getByClient(clientId);
-    const invoices = invoiceService.getByClient(clientId);
-    const activeProjects = projects.filter(p => p.status === 'in-progress' || p.status === 'waiting-client');
-    const paidInvoices = invoices.filter(i => i.status === 'paid');
+    const stats = clientStatsById[clientId];
+    if (stats) return stats;
+    const paidInvoices = allInvoices.filter((invoice) => invoice.clientId === clientId && invoice.status === 'paid');
     const totalSpent = paidInvoices.reduce((sum, i) => sum + getInvoiceEffectiveTotals(i, projectLookup).total, 0);
-    
+
     return {
-      projectCount: projects.length,
-      activeProjects: activeProjects.length,
-      invoiceCount: invoices.length,
+      projectCount: 0,
+      activeProjects: 0,
+      invoiceCount: 0,
       totalSpent,
     };
   };
@@ -115,7 +161,7 @@ export function ClientsPage() {
     return 'bg-info/10 text-info border-info/20';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!formData.businessName || !formData.ownerName) {
       toast.error('Please fill in required fields');
       return;
@@ -131,10 +177,10 @@ export function ClientsPage() {
         toast.error('You do not have permission to update this client');
         return;
       }
-      updateClient(selectedClient.id, formData);
+      await updateClient(selectedClient.id, formData);
       toast.success('Client updated successfully');
     } else {
-      createClient({
+      await createClient({
         ...formData,
         createdBy: user?.id || '',
       });
@@ -145,12 +191,12 @@ export function ClientsPage() {
     resetForm();
   };
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (!accessibleClientIds.has(id)) {
       toast.error('You do not have permission to delete this client');
       return;
     }
-    removeClient(id);
+    await removeClient(id);
     toast.success('Client deleted');
     setDeleteConfirm(null);
   };
@@ -221,7 +267,11 @@ export function ClientsPage() {
       </div>
 
       {/* Clients Table */}
-      {clients.length === 0 ? (
+      {(isClientsLoading || isRelatedDataLoading) && allClients.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading clients...</CardContent>
+        </Card>
+      ) : clients.length === 0 ? (
         <EmptyState
           title="No clients found"
           description={isOwner ? 'Add your first client or convert a won lead.' : 'Convert your assigned leads to create clients.'}
@@ -428,7 +478,11 @@ export function ClientsPage() {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit}>
+            <Button
+              onClick={() => {
+                void handleSubmit();
+              }}
+            >
               {selectedClient ? 'Update' : 'Create'} Client
             </Button>
           </DialogFooter>
@@ -442,7 +496,10 @@ export function ClientsPage() {
         title="Delete Client"
         description="Are you sure you want to delete this client? All associated data will be preserved but unlinked."
         confirmLabel="Delete"
-        onConfirm={() => deleteConfirm && handleDelete(deleteConfirm)}
+        onConfirm={() => {
+          if (!deleteConfirm) return;
+          void handleDelete(deleteConfirm);
+        }}
         variant="destructive"
       />
     </div>

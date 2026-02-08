@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Building2, Calendar, CreditCard, FolderKanban } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
@@ -9,6 +9,7 @@ import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTota
 import { clientService, invoiceService, leadService, paymentService, projectService, syncCommissionsFromInvoices } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessInvoice } from '@/lib/permissions';
+import { Client, Invoice, Lead, Payment, Project } from '@/types/models';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -22,33 +23,67 @@ export function InvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
+  const [invoice, setInvoice] = useState<Invoice | undefined>(undefined);
+  const [client, setClient] = useState<Client | null>(null);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
 
   useEffect(() => {
-    syncCommissionsFromInvoices();
+    void syncCommissionsFromInvoices();
   }, []);
 
-  const invoice = useMemo(() => invoiceService.getById(id || ''), [id]);
-  const client = useMemo(() => (invoice ? clientService.getById(invoice.clientId) : null), [invoice]);
-  const allProjects = useMemo(() => projectService.getAll(), []);
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      const [loadedInvoice, projects, leads, clients] = await Promise.all([
+        invoiceService.getById(id || ''),
+        projectService.getAll(),
+        leadService.getAll(),
+        clientService.getAll(),
+      ]);
+      if (!isMounted) return;
+      setInvoice(loadedInvoice);
+      setAllProjects(projects);
+      setAllLeads(leads);
+      setAllClients(clients);
+
+      if (!loadedInvoice) {
+        setClient(null);
+        setPayments([]);
+        return;
+      }
+
+      const [loadedClient, loadedPayments] = await Promise.all([
+        clientService.getById(loadedInvoice.clientId),
+        paymentService.getByInvoice(loadedInvoice.id),
+      ]);
+      if (!isMounted) return;
+      setClient(loadedClient || null);
+      setPayments(loadedPayments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()));
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
   const project = useMemo(
-    () => (invoice?.projectId ? projectService.getById(invoice.projectId) : null),
-    [invoice]
-  );
-  const payments = useMemo(
-    () => (invoice ? paymentService.getByInvoice(invoice.id).sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()) : []),
-    [invoice]
+    () => (invoice?.projectId ? allProjects.find((entry) => entry.id === invoice.projectId) || null : null),
+    [allProjects, invoice]
   );
   const canViewInvoice = useMemo(
     () =>
       canAccessInvoice(
         user,
         invoice,
-        leadService.getAll(),
-        clientService.getAll(),
+        allLeads,
+        allClients,
         allProjects
       ),
-    [allProjects, invoice, user]
+    [allClients, allLeads, allProjects, invoice, user]
   );
 
   if (!invoice) {

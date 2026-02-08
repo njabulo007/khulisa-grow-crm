@@ -51,16 +51,36 @@ const getMonthLabelFromKey = (key: string) => {
 
 export function CommissionsPage() {
   const { user, isOwner } = useAuth();
-  const { commissions: allCommissions, updateCommission, refresh: refreshCommissions } = useCommissions();
+  const {
+    commissions: allCommissions,
+    isLoading: isCommissionsLoading,
+    updateCommission,
+    refresh: refreshCommissions,
+  } = useCommissions();
   const [agentFilter, setAgentFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>(getEarnedMonthKey(new Date().toISOString()));
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [isPageLoading, setIsPageLoading] = useState(true);
 
   const allAgents = authService.getAll().filter((candidate) => candidate.role === 'agent');
 
   useEffect(() => {
-    syncCommissionsFromInvoices();
-    refreshCommissions();
+    let isMounted = true;
+    const load = async () => {
+      setIsPageLoading(true);
+      try {
+        await syncCommissionsFromInvoices();
+        await refreshCommissions();
+      } finally {
+        if (isMounted) {
+          setIsPageLoading(false);
+        }
+      }
+    };
+    void load();
+    return () => {
+      isMounted = false;
+    };
   }, [refreshCommissions]);
 
   const visibleCommissions = useMemo(() => {
@@ -202,9 +222,9 @@ export function CommissionsPage() {
       .sort((a, b) => b.total - a.total);
   }, [isOwner, visibleCommissions]);
 
-  const handleMarkPaidOut = (commissionId: string) => {
+  const handleMarkPaidOut = async (commissionId: string) => {
     if (!isOwner) return;
-    const updated = updateCommission(commissionId, {
+    const updated = await updateCommission(commissionId, {
       status: 'paid-out',
       paidOutDate: new Date().toISOString(),
     });
@@ -221,6 +241,13 @@ export function CommissionsPage() {
         title="Commissions"
         description={isOwner ? 'Track all agent earnings and payouts' : 'Track your commission earnings'}
       />
+
+      {(isPageLoading || isCommissionsLoading) && allCommissions.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading commissions...</CardContent>
+        </Card>
+      ) : (
+        <>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
@@ -335,7 +362,13 @@ export function CommissionsPage() {
                         <StatusBadge status={commission.status as CommissionStatus} type="commission" />
                         <p className="font-semibold">{formatCurrency(commission.commissionAmount)}</p>
                         {commission.status === 'earned' ? (
-                          <Button size="sm" variant="outline" onClick={() => handleMarkPaidOut(commission.id)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              void handleMarkPaidOut(commission.id);
+                            }}
+                          >
                             Mark as Paid Out
                           </Button>
                         ) : null}
@@ -385,6 +418,8 @@ export function CommissionsPage() {
             ))
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );

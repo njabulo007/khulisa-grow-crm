@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -22,6 +22,7 @@ import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTota
 import { authService, clientService, invoiceService, leadService, paymentService, projectService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
+import { Client, Invoice, Lead, Payment, Project } from '@/types/models';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -35,12 +36,58 @@ export function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [client, setClient] = useState<Client | undefined>(undefined);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [paymentsByInvoice, setPaymentsByInvoice] = useState<Record<string, Payment[]>>({});
+  const [isLoaded, setIsLoaded] = useState(false);
 
-  const allClients = clientService.getAll();
-  const allLeads = leadService.getAll();
-  const allProjects = projectService.getAll();
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      const [clients, leads, projects, allInvoices] = await Promise.all([
+        clientService.getAll(),
+        leadService.getAll(),
+        projectService.getAll(),
+        invoiceService.getAll(),
+      ]);
+      if (!isMounted) return;
+      setAllClients(clients);
+      setAllLeads(leads);
+      setAllProjects(projects);
+
+      const nextClient = clients.find((entry) => entry.id === (id || ''));
+      setClient(nextClient);
+      if (!nextClient) {
+        setInvoices([]);
+        setPaymentsByInvoice({});
+        setIsLoaded(true);
+        return;
+      }
+
+      const visibleInvoices = allInvoices.filter((invoice) => invoice.clientId === nextClient.id);
+      setInvoices(visibleInvoices);
+      const paymentsEntries = await Promise.all(
+        visibleInvoices.map(async (invoice) => [invoice.id, await paymentService.getByInvoice(invoice.id)] as const)
+      );
+      if (!isMounted) return;
+      setPaymentsByInvoice(
+        paymentsEntries.reduce<Record<string, Payment[]>>((acc, [invoiceId, payments]) => {
+          acc[invoiceId] = [...payments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+          return acc;
+        }, {})
+      );
+      setIsLoaded(true);
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
-  const client = useMemo(() => clientService.getById(id || ''), [id]);
   const linkedLeads = useMemo(() => {
     if (!client) return [];
     return allLeads
@@ -48,31 +95,30 @@ export function ClientDetailPage() {
       .filter((lead) => isOwner || lead.assignedTo === user?.id);
   }, [allLeads, client, isOwner, user?.id]);
   const projects = useMemo(() => {
-    const projectList = projectService.getByClient(id || '');
+    const projectList = allProjects.filter((project) => project.clientId === (id || ''));
     if (isOwner || !user) return projectList;
     return projectList.filter((project) => project.assignedTo === user.id);
-  }, [id, isOwner, user]);
-  const invoices = useMemo(() => {
-    const allClientInvoices = invoiceService.getByClient(id || '');
-    if (isOwner || !user) return allClientInvoices;
-    return allClientInvoices.filter((invoice) =>
+  }, [allProjects, id, isOwner, user]);
+  const visibleInvoices = useMemo(() => {
+    if (isOwner || !user) return invoices;
+    return invoices.filter((invoice) =>
       canAccessInvoice(user, invoice, allLeads, allClients, allProjects)
     );
-  }, [allClients, allLeads, allProjects, id, isOwner, user]);
-  const paymentsByInvoice = useMemo(() => {
-    return invoices.reduce((acc, invoice) => {
-      acc[invoice.id] = paymentService
-        .getByInvoice(invoice.id)
-        .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
-      return acc;
-    }, {} as Record<string, ReturnType<typeof paymentService.getByInvoice>>);
-  }, [invoices]);
+  }, [allClients, allLeads, allProjects, invoices, isOwner, user]);
   const canAccessClient = useMemo(() => {
     if (!client || !user) return false;
     if (isOwner) return true;
     const linkedIds = getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
     return linkedIds.has(client.id);
   }, [allClients, allLeads, allProjects, client, isOwner, user]);
+
+  if (!isLoaded && !client) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">Loading client...</p>
+      </div>
+    );
+  }
 
   if (!client) {
     return (
@@ -96,11 +142,11 @@ export function ClientDetailPage() {
     );
   }
 
-  const totalSpent = invoices
+  const totalSpent = visibleInvoices
     .filter(i => i.status === 'paid')
     .reduce((sum, i) => sum + getInvoiceEffectiveTotals(i, projectLookup).total, 0);
 
-  const outstanding = invoices
+  const outstanding = visibleInvoices
     .filter(i => i.status !== 'paid' && i.status !== 'draft')
     .reduce((sum, i) => {
       const totals = getInvoiceEffectiveTotals(i, projectLookup);
@@ -274,11 +320,11 @@ export function ClientDetailPage() {
               </Button>
             </CardHeader>
             <CardContent>
-              {invoices.length === 0 ? (
+              {visibleInvoices.length === 0 ? (
                 <p className="text-center text-muted-foreground py-4">No invoices yet</p>
               ) : (
                 <div className="space-y-3">
-                  {invoices.map((invoice) => {
+                  {visibleInvoices.map((invoice) => {
                     const projectForInvoice = allProjects.find((entry) => entry.id === invoice.projectId);
                     const totals = getInvoiceEffectiveTotals(invoice, projectLookup);
                     return (

@@ -12,21 +12,24 @@ const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
 
 const resolveAgentIdForInvoice = (
   invoice: Invoice,
-  agentIds: Set<string>
+  agentIds: Set<string>,
+  projectsById: Map<string, Awaited<ReturnType<typeof projectService.getAll>>[number]>,
+  leads: Awaited<ReturnType<typeof leadService.getAll>>,
+  clients: Awaited<ReturnType<typeof clientService.getAll>>,
 ): string | null => {
   if (invoice.projectId) {
-    const project = projectService.getById(invoice.projectId);
+    const project = projectsById.get(invoice.projectId);
     if (project && agentIds.has(project.assignedTo)) return project.assignedTo;
   }
 
-  const client = clientService.getById(invoice.clientId);
-  const leads = leadService.getAll().filter((lead) => {
+  const client = clients.find((entry) => entry.id === invoice.clientId);
+  const relatedLeads = leads.filter((lead) => {
     if (lead.clientId === invoice.clientId) return true;
     if (client?.leadId && lead.id === client.leadId) return true;
     return false;
   });
 
-  const linkedAgentLead = leads.find((lead) => agentIds.has(lead.assignedTo));
+  const linkedAgentLead = relatedLeads.find((lead) => agentIds.has(lead.assignedTo));
   if (linkedAgentLead) return linkedAgentLead.assignedTo;
   return null;
 };
@@ -34,9 +37,12 @@ const resolveAgentIdForInvoice = (
 const getBaseStatusForInvoice = (invoice: Invoice): CommissionStatus =>
   invoice.status === 'paid' ? 'earned' : 'pending';
 
-const resolvePackageIdForInvoice = (invoice: Invoice): PackageId | null => {
+const resolvePackageIdForInvoice = (
+  invoice: Invoice,
+  projectsById: Map<string, Awaited<ReturnType<typeof projectService.getAll>>[number]>,
+): PackageId | null => {
   if (!invoice.projectId) return null;
-  const project = projectService.getById(invoice.projectId);
+  const project = projectsById.get(invoice.projectId);
   return project?.packageId || null;
 };
 
@@ -50,29 +56,35 @@ const resolveEarnedDate = (
   return invoice.updatedAt;
 };
 
-export function syncCommissionsFromInvoices(): void {
+export async function syncCommissionsFromInvoices(): Promise<void> {
   // TODO: Replace implementation with Firebase-triggered commission rules.
-  const users = authService.getAll();
+  const [users, invoices, projects, clients, leads] = await Promise.all([
+    authService.getAll(),
+    invoiceService.getAll(),
+    projectService.getAll(),
+    clientService.getAll(),
+    leadService.getAll(),
+  ]);
+  const projectsById = new Map(projects.map((project) => [project.id, project]));
   const agentIds = new Set(users.filter((user) => user.role === 'agent').map((user) => user.id));
 
-  const invoices = invoiceService.getAll();
   const rate = COMMISSION_RATE;
 
-  invoices.forEach((invoice) => {
-    const agentId = resolveAgentIdForInvoice(invoice, agentIds);
-    const packageId = resolvePackageIdForInvoice(invoice);
-    if (!agentId) return;
-    if (!packageId) return;
+  for (const invoice of invoices) {
+    const agentId = resolveAgentIdForInvoice(invoice, agentIds, projectsById, leads, clients);
+    const packageId = resolvePackageIdForInvoice(invoice, projectsById);
+    if (!agentId) continue;
+    if (!packageId) continue;
 
     const pkg = getPackageById(packageId);
-    if (!pkg) return;
+    if (!pkg) continue;
 
     const expectedAmount = roundCurrency(pkg.price * rate);
     const baseStatus = getBaseStatusForInvoice(invoice);
-    const existing = commissionService.getByInvoice(invoice.id);
+    const existing = await commissionService.getByInvoice(invoice.id);
 
     if (!existing) {
-      commissionService.create({
+      await commissionService.create({
         agentId,
         invoiceId: invoice.id,
         projectId: invoice.projectId,
@@ -84,7 +96,7 @@ export function syncCommissionsFromInvoices(): void {
         status: baseStatus,
         earnedDate: baseStatus === 'earned' ? invoice.updatedAt : undefined,
       });
-      return;
+      continue;
     }
 
     const nextStatus: CommissionStatus = existing.status === 'paid-out' ? 'paid-out' : baseStatus;
@@ -100,9 +112,9 @@ export function syncCommissionsFromInvoices(): void {
       existing.status !== nextStatus ||
       existing.earnedDate !== nextEarnedDate;
 
-    if (!needsUpdate) return;
+    if (!needsUpdate) continue;
 
-    commissionService.update(existing.id, {
+    await commissionService.update(existing.id, {
       agentId,
       projectId: invoice.projectId,
       packageId,
@@ -113,5 +125,5 @@ export function syncCommissionsFromInvoices(): void {
       status: nextStatus,
       earnedDate: nextEarnedDate,
     });
-  });
+  }
 }

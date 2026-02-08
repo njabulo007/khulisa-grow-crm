@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -18,6 +18,7 @@ import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTota
 import { authService, clientService, invoiceService, projectService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessProject } from '@/lib/permissions';
+import { Client, Invoice, Project } from '@/types/models';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -31,16 +32,44 @@ export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [project, setProject] = useState<Project | undefined>(undefined);
+  const [client, setClient] = useState<Client | null>(null);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
 
-  const allProjects = projectService.getAll();
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      const [projects, nextProject] = await Promise.all([
+        projectService.getAll(),
+        projectService.getById(id || ''),
+      ]);
+      if (!isMounted) return;
+      setAllProjects(projects);
+      setProject(nextProject);
+
+      if (!nextProject) {
+        setClient(null);
+        setInvoices([]);
+        return;
+      }
+
+      const [nextClient, allInvoices] = await Promise.all([
+        clientService.getById(nextProject.clientId),
+        invoiceService.getAll(),
+      ]);
+      if (!isMounted) return;
+      setClient(nextClient || null);
+      setInvoices(allInvoices.filter((invoice) => invoice.projectId === nextProject.id));
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
-  const project = useMemo(() => projectService.getById(id || ''), [id]);
-  const client = useMemo(() => (project ? clientService.getById(project.clientId) : null), [project]);
   const agent = useMemo(() => (project ? authService.getById(project.assignedTo) : null), [project]);
-  const invoices = useMemo(
-    () => (project ? invoiceService.getAll().filter((invoice) => invoice.projectId === project.id) : []),
-    [project]
-  );
 
   if (!project) {
     return (

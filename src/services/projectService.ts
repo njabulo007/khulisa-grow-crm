@@ -1,22 +1,21 @@
 import { getPackageById, resolvePackageId } from '@/config/packages';
 import { Project } from '@/types/models';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
 
 export interface ProjectService {
-  getAll: () => Project[];
-  getById: (id: string) => Project | undefined;
-  getByClient: (clientId: string) => Project[];
-  getByAgent: (agentId: string) => Project[];
-  create: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => Project;
-  update: (id: string, updates: Partial<Project>) => Project | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Project[]) => void;
+  getAll: () => Promise<Project[]>;
+  getById: (id: string) => Promise<Project | undefined>;
+  getByClient: (clientId: string) => Promise<Project[]>;
+  getByAgent: (agentId: string) => Promise<Project[]>;
+  create: (project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Project>;
+  update: (id: string, updates: Partial<Project>) => Promise<Project | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Project[]) => Promise<void>;
 }
 
-class LocalProjectService implements ProjectService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the ProjectService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<Project & { packageType?: string }>(STORAGE_KEYS.projects);
+class FirestoreProjectService implements ProjectService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<Project & { packageType?: string }>('projects');
 
   private normalizeProject(project: Project & { packageType?: string }): Project {
     const packageId = resolvePackageId(project.packageId ?? project.packageType);
@@ -29,27 +28,30 @@ class LocalProjectService implements ProjectService {
     };
   }
 
-  getAll(): Project[] {
-    return this.collection.getAll().map((project) => this.normalizeProject(project));
+  async getAll(): Promise<Project[]> {
+    const projects = await this.collection.getAll();
+    return projects.map((project) => this.normalizeProject(project));
   }
 
-  getById(id: string): Project | undefined {
-    const project = this.collection.getById(id);
+  async getById(id: string): Promise<Project | undefined> {
+    const project = await this.collection.getById(id);
     return project ? this.normalizeProject(project) : undefined;
   }
 
-  getByClient(clientId: string): Project[] {
-    return this.getAll().filter((project) => project.clientId === clientId);
+  async getByClient(clientId: string): Promise<Project[]> {
+    const projects = await this.getAll();
+    return projects.filter((project) => project.clientId === clientId);
   }
 
-  getByAgent(agentId: string): Project[] {
-    return this.getAll().filter((project) => project.assignedTo === agentId);
+  async getByAgent(agentId: string): Promise<Project[]> {
+    const projects = await this.getAll();
+    return projects.filter((project) => project.assignedTo === agentId);
   }
 
-  create(project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Project {
+  async create(project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> {
     const packageId = resolvePackageId(project.packageId);
     const pkg = getPackageById(packageId);
-    const created = this.collection.create({
+    const created = await this.collection.create({
       ...project,
       packageId,
       packageName: pkg?.name,
@@ -61,7 +63,7 @@ class LocalProjectService implements ProjectService {
     return this.normalizeProject(created);
   }
 
-  update(id: string, updates: Partial<Project>): Project | null {
+  async update(id: string, updates: Partial<Project>): Promise<Project | null> {
     const normalizedUpdates: Partial<Project> = {
       ...updates,
       updatedAt: getTimestamp(),
@@ -74,17 +76,17 @@ class LocalProjectService implements ProjectService {
       normalizedUpdates.packagePrice = pkg?.price;
     }
 
-    const updated = this.collection.update(id, normalizedUpdates);
+    const updated = await this.collection.update(id, normalizedUpdates);
     return updated ? this.normalizeProject(updated) : null;
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Project[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Project[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const projectService: ProjectService = new LocalProjectService();
+export const projectService: ProjectService = new FirestoreProjectService();

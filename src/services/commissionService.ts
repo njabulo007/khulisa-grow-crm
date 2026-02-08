@@ -1,25 +1,24 @@
 import { COMMISSION_RATE } from '@/config/commission';
 import { getPackageById, resolvePackageId } from '@/config/packages';
 import { Commission } from '@/types/models';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
 
 export interface CommissionService {
-  getAll: () => Commission[];
-  getById: (id: string) => Commission | undefined;
-  getByAgent: (agentId: string) => Commission[];
-  getByInvoice: (invoiceId: string) => Commission | undefined;
-  create: (commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>) => Commission;
-  update: (id: string, updates: Partial<Commission>) => Commission | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Commission[]) => void;
+  getAll: () => Promise<Commission[]>;
+  getById: (id: string) => Promise<Commission | undefined>;
+  getByAgent: (agentId: string) => Promise<Commission[]>;
+  getByInvoice: (invoiceId: string) => Promise<Commission | undefined>;
+  create: (commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Commission>;
+  update: (id: string, updates: Partial<Commission>) => Promise<Commission | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Commission[]) => Promise<void>;
 }
 
-class LocalCommissionService implements CommissionService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the CommissionService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<
+class FirestoreCommissionService implements CommissionService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<
     Commission & { amount?: number; paidOutAt?: string; packageType?: string }
-  >(STORAGE_KEYS.commissions);
+  >('commissions');
 
   private roundCurrency(value: number): number {
     return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -46,28 +45,31 @@ class LocalCommissionService implements CommissionService {
     };
   }
 
-  getAll(): Commission[] {
-    return this.collection.getAll().map((commission) => this.normalizeCommission(commission));
+  async getAll(): Promise<Commission[]> {
+    const commissions = await this.collection.getAll();
+    return commissions.map((commission) => this.normalizeCommission(commission));
   }
 
-  getById(id: string): Commission | undefined {
-    const commission = this.collection.getById(id);
+  async getById(id: string): Promise<Commission | undefined> {
+    const commission = await this.collection.getById(id);
     return commission ? this.normalizeCommission(commission) : undefined;
   }
 
-  getByAgent(agentId: string): Commission[] {
-    return this.getAll().filter((commission) => commission.agentId === agentId);
+  async getByAgent(agentId: string): Promise<Commission[]> {
+    const commissions = await this.getAll();
+    return commissions.filter((commission) => commission.agentId === agentId);
   }
 
-  getByInvoice(invoiceId: string): Commission | undefined {
-    return this.getAll().find((commission) => commission.invoiceId === invoiceId);
+  async getByInvoice(invoiceId: string): Promise<Commission | undefined> {
+    const commissions = await this.getAll();
+    return commissions.find((commission) => commission.invoiceId === invoiceId);
   }
 
-  create(commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>): Commission {
+  async create(commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>): Promise<Commission> {
     const packageId = resolvePackageId(commission.packageId);
     const pkg = getPackageById(packageId);
 
-    const created = this.collection.create({
+    const created = await this.collection.create({
       ...commission,
       packageId,
       packageName: pkg?.name,
@@ -81,7 +83,7 @@ class LocalCommissionService implements CommissionService {
     return this.normalizeCommission(created);
   }
 
-  update(id: string, updates: Partial<Commission>): Commission | null {
+  async update(id: string, updates: Partial<Commission>): Promise<Commission | null> {
     const normalizedUpdates: Partial<Commission> = {
       ...updates,
       updatedAt: getTimestamp(),
@@ -103,17 +105,17 @@ class LocalCommissionService implements CommissionService {
         normalizedUpdates.rate = COMMISSION_RATE;
       }
     }
-    const updated = this.collection.update(id, normalizedUpdates);
+    const updated = await this.collection.update(id, normalizedUpdates);
     return updated ? this.normalizeCommission(updated) : null;
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Commission[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Commission[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const commissionService: CommissionService = new LocalCommissionService();
+export const commissionService: CommissionService = new FirestoreCommissionService();

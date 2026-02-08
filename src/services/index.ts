@@ -8,5 +8,6 @@ export * from './paymentService';
 export * from './commissionService';
 export * from './commissionRules';
 export * from './activityService';
+export * from './notificationService';
 export * from './themeService';
 export * from './storageService';

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DollarSign,
@@ -63,12 +63,40 @@ const toMonthKey = (date: Date): string =>
 export function OwnerDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [leads, setLeads] = useState<Awaited<ReturnType<typeof leadService.getAll>>>([]);
+  const [clients, setClients] = useState<Awaited<ReturnType<typeof clientService.getAll>>>([]);
+  const [projects, setProjects] = useState<Awaited<ReturnType<typeof projectService.getAll>>>([]);
+  const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof invoiceService.getAll>>>([]);
 
-  // Get all data
-  const leads = leadService.getAll();
-  const clients = clientService.getAll();
-  const projects = projectService.getAll();
-  const invoices = invoiceService.getAll();
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [nextLeads, nextClients, nextProjects, nextInvoices] = await Promise.all([
+          leadService.getAll(),
+          clientService.getAll(),
+          projectService.getAll(),
+          invoiceService.getAll(),
+        ]);
+        if (!isMounted) return;
+        setLeads(nextLeads);
+        setClients(nextClients);
+        setProjects(nextProjects);
+        setInvoices(nextInvoices);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const users = authService.getAll();
   const projectLookup = useMemo(() => buildProjectLookup(projects), [projects]);
 
@@ -179,6 +207,20 @@ export function OwnerDashboard() {
     name: value.label,
     count: stats.leadsByStage[key] || 0,
   }));
+
+  if (isLoading && leads.length === 0 && clients.length === 0 && projects.length === 0 && invoices.length === 0) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader
+          title={`Welcome back, ${user?.name?.split(' ')[0] || 'Owner'}!`}
+          description="Here's what's happening with your business today."
+        />
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading dashboard...</CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">

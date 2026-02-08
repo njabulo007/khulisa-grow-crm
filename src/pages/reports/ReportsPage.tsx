@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -49,11 +49,40 @@ const toMonthKey = (date: Date): string =>
 export function ReportsPage() {
   const navigate = useNavigate();
   const { isOwner } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [leads, setLeads] = useState<Awaited<ReturnType<typeof leadService.getAll>>>([]);
+  const [projects, setProjects] = useState<Awaited<ReturnType<typeof projectService.getAll>>>([]);
+  const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof invoiceService.getAll>>>([]);
+  const [clients, setClients] = useState<Awaited<ReturnType<typeof clientService.getAll>>>([]);
 
-  const leads = leadService.getAll();
-  const projects = projectService.getAll();
-  const invoices = invoiceService.getAll();
-  const clients = clientService.getAll();
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      try {
+        const [nextLeads, nextProjects, nextInvoices, nextClients] = await Promise.all([
+          leadService.getAll(),
+          projectService.getAll(),
+          invoiceService.getAll(),
+          clientService.getAll(),
+        ]);
+        if (!isMounted) return;
+        setLeads(nextLeads);
+        setProjects(nextProjects);
+        setInvoices(nextInvoices);
+        setClients(nextClients);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const users = authService.getAll();
   const projectLookup = useMemo(() => buildProjectLookup(projects), [projects]);
 
@@ -165,6 +194,17 @@ export function ReportsPage() {
               Back to Dashboard
             </Button>
           </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isLoading && leads.length === 0 && projects.length === 0 && invoices.length === 0 && clients.length === 0) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader title="Reports" description="Business analytics and insights" />
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading reports...</CardContent>
         </Card>
       </div>
     );

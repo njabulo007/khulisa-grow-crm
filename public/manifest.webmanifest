@@ -1,0 +1,25 @@
+{
+  "name": "Khulisa Grow CRM",
+  "short_name": "Khulisa CRM",
+  "description": "Khulisa Grow CRM helps teams manage leads, clients, projects, commissions, invoices, and reports.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "icons": [
+    {
+      "src": "/images/khulisa-logo.png",
+      "sizes": "500x500",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/images/khulisa-logo-icon.png",
+      "sizes": "64x64",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

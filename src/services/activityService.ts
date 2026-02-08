@@ -1,55 +1,55 @@
 import { Activity } from '@/types/models';
-import { LocalStorageCollection, STORAGE_KEYS, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getTimestamp } from './storage';
 
 export interface ActivityService {
-  getAll: () => Activity[];
-  getById: (id: string) => Activity | undefined;
-  getByEntity: (entityType: string, entityId: string) => Activity[];
-  create: (activity: Omit<Activity, 'id' | 'createdAt'>) => Activity;
-  update: (id: string, updates: Partial<Activity>) => Activity | null;
-  remove: (id: string) => boolean;
-  seedIfMissing: (seedData: Activity[]) => void;
+  getAll: () => Promise<Activity[]>;
+  getById: (id: string) => Promise<Activity | undefined>;
+  getByEntity: (entityType: string, entityId: string) => Promise<Activity[]>;
+  create: (activity: Omit<Activity, 'id' | 'createdAt'>) => Promise<Activity>;
+  update: (id: string, updates: Partial<Activity>) => Promise<Activity | null>;
+  remove: (id: string) => Promise<boolean>;
+  seedIfMissing: (seedData: Activity[]) => Promise<void>;
 }
 
-class LocalActivityService implements ActivityService {
-  // TODO: Replace LocalStorageCollection calls with Firestore collection/doc calls.
-  // Keep the ActivityService method signatures unchanged to avoid UI-level refactors.
-  private readonly collection = new LocalStorageCollection<Activity>(STORAGE_KEYS.activities);
+class FirestoreActivityService implements ActivityService {
+  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
+  private readonly collection = new FirestoreCollection<Activity>('activities');
 
-  getAll(): Activity[] {
+  async getAll(): Promise<Activity[]> {
     return this.collection.getAll();
   }
 
-  getById(id: string): Activity | undefined {
+  async getById(id: string): Promise<Activity | undefined> {
     return this.collection.getById(id);
   }
 
-  getByEntity(entityType: string, entityId: string): Activity[] {
-    return this.collection
-      .getAll()
+  async getByEntity(entityType: string, entityId: string): Promise<Activity[]> {
+    const activities = await this.collection.getAll();
+    return activities
       .filter((activity) => activity.entityType === entityType && activity.entityId === entityId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }
 
-  create(activity: Omit<Activity, 'id' | 'createdAt'>): Activity {
-    return this.collection.create({
+  async create(activity: Omit<Activity, 'id' | 'createdAt'>): Promise<Activity> {
+    const created = {
       ...activity,
       id: generateId(),
       createdAt: getTimestamp(),
-    });
+    };
+    return this.collection.create(created);
   }
 
-  update(id: string, updates: Partial<Activity>): Activity | null {
+  async update(id: string, updates: Partial<Activity>): Promise<Activity | null> {
     return this.collection.update(id, updates);
   }
 
-  remove(id: string): boolean {
+  async remove(id: string): Promise<boolean> {
     return this.collection.remove(id);
   }
 
-  seedIfMissing(seedData: Activity[]): void {
-    this.collection.seedIfMissing(seedData);
+  async seedIfMissing(seedData: Activity[]): Promise<void> {
+    await this.collection.seedIfMissing(seedData);
   }
 }
 
-export const activityService: ActivityService = new LocalActivityService();
+export const activityService: ActivityService = new FirestoreActivityService();

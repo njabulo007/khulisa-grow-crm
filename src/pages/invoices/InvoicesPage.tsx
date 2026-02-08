@@ -35,7 +35,7 @@ import { useInvoices } from '@/hooks/useInvoices';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { clientService, leadService, projectService, syncCommissionsFromInvoices } from '@/services';
 import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
-import { INVOICE_STATUSES, InvoiceStatus } from '@/types/models';
+import { Client, INVOICE_STATUSES, InvoiceStatus, Lead, Project } from '@/types/models';
 import { toast } from 'sonner';
 
 const formatCurrency = (amount: number) => {
@@ -49,18 +49,34 @@ const formatCurrency = (amount: number) => {
 const DEFAULT_PACKAGE_NAME = getPackageById(DEFAULT_PACKAGE_ID)?.name ?? 'Digital Starter Presence';
 const DEFAULT_PACKAGE_PRICE = getPackageById(DEFAULT_PACKAGE_ID)?.price ?? 0;
 
+interface InvoiceFormState {
+  clientId: string;
+  projectId: string;
+  issueDate: string;
+  dueDate: string;
+  status: InvoiceStatus;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  taxRate: number;
+  notes: string;
+}
+
 export function InvoicesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, isOwner } = useAuth();
-  const { invoices: allInvoices, createInvoice, getNextNumber } = useInvoices();
+  const { invoices: allInvoices, isLoading: isInvoicesLoading, createInvoice, getNextNumber } = useInvoices();
   const presetClientId = searchParams.get('client') || '';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [openedFromPreset, setOpenedFromPreset] = useState(false);
-  const [formData, setFormData] = useState({
+  const [allClients, setAllClients] = useState<Client[]>([]);
+  const [allProjects, setAllProjects] = useState<Project[]>([]);
+  const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [formData, setFormData] = useState<InvoiceFormState>({
     clientId: '',
     projectId: '',
     issueDate: new Date().toISOString().slice(0, 10),
@@ -74,12 +90,28 @@ export function InvoicesPage() {
   });
 
   useEffect(() => {
-    syncCommissionsFromInvoices();
+    void syncCommissionsFromInvoices();
   }, []);
 
-  const allClients = clientService.getAll();
-  const allProjects = projectService.getAll();
-  const allLeads = leadService.getAll();
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      const [clients, projects, leads] = await Promise.all([
+        clientService.getAll(),
+        projectService.getAll(),
+        leadService.getAll(),
+      ]);
+      if (!isMounted) return;
+      setAllClients(clients);
+      setAllProjects(projects);
+      setAllLeads(leads);
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [allInvoices.length]);
+
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
 
   const accessibleClientIds = useMemo(() => {
@@ -145,7 +177,7 @@ export function InvoicesPage() {
   const selectedPackageForDraft = getPackageById(selectedProjectForDraft?.packageId);
   const isPackageBackedDraft = Boolean(selectedPackageForDraft);
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
     if (!user) return;
     const selectedProject = accessibleProjects.find((project) => project.id === formData.projectId);
     const selectedPackage = getPackageById(selectedProject?.packageId);
@@ -179,8 +211,10 @@ export function InvoicesPage() {
     const subtotal = quantity * unitPrice;
     const tax = subtotal * (taxRate / 100);
     const total = subtotal + tax;
-    createInvoice({
-      invoiceNumber: getNextNumber(),
+    const invoiceNumber = await getNextNumber();
+
+    await createInvoice({
+      invoiceNumber,
       clientId: formData.clientId,
       projectId: formData.projectId || undefined,
       ...packageSnapshot,
@@ -203,7 +237,7 @@ export function InvoicesPage() {
       notes: formData.notes.trim() || undefined,
       createdBy: user.id,
     });
-    syncCommissionsFromInvoices();
+    await syncCommissionsFromInvoices();
 
     toast.success('Invoice created successfully.');
     setShowAddDialog(false);
@@ -249,7 +283,11 @@ export function InvoicesPage() {
         </Select>
       </div>
 
-      {filteredInvoices.length === 0 ? (
+      {isInvoicesLoading && allInvoices.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading invoices...</CardContent>
+        </Card>
+      ) : filteredInvoices.length === 0 ? (
         <EmptyState
           title="No invoices found"
           description={
@@ -479,7 +517,13 @@ export function InvoicesPage() {
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreate}>Create Invoice</Button>
+            <Button
+              onClick={() => {
+                void handleCreate();
+              }}
+            >
+              Create Invoice
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

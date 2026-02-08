@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { clientService } from '@/services';
 import { Client } from '@/types/models';
 
@@ -7,44 +7,56 @@ type ClientUpdateInput = Partial<Client>;
 
 export interface UseClientsResult {
   clients: Client[];
-  refresh: () => void;
-  getById: (id: string) => Client | undefined;
-  createClient: (client: ClientCreateInput) => Client;
-  updateClient: (id: string, updates: ClientUpdateInput) => Client | null;
-  removeClient: (id: string) => boolean;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+  getById: (id: string) => Promise<Client | undefined>;
+  createClient: (client: ClientCreateInput) => Promise<Client>;
+  updateClient: (id: string, updates: ClientUpdateInput) => Promise<Client | null>;
+  removeClient: (id: string) => Promise<boolean>;
 }
 
 export function useClients(): UseClientsResult {
-  const [clients, setClients] = useState<Client[]>(() => clientService.getAll());
+  const [clients, setClients] = useState<Client[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const refresh = useCallback(() => {
-    setClients(clientService.getAll());
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const next = await clientService.getAll();
+      setClients(next);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const getById = useCallback((id: string) => clientService.getById(id), []);
 
   const createClient = useCallback(
-    (client: ClientCreateInput) => {
-      const created = clientService.create(client);
-      refresh();
+    async (client: ClientCreateInput) => {
+      const created = await clientService.create(client);
+      await refresh();
       return created;
     },
     [refresh]
   );
 
   const updateClient = useCallback(
-    (id: string, updates: ClientUpdateInput) => {
-      const updated = clientService.update(id, updates);
-      refresh();
+    async (id: string, updates: ClientUpdateInput) => {
+      const updated = await clientService.update(id, updates);
+      await refresh();
       return updated;
     },
     [refresh]
   );
 
   const removeClient = useCallback(
-    (id: string) => {
-      const removed = clientService.remove(id);
-      refresh();
+    async (id: string) => {
+      const removed = await clientService.remove(id);
+      await refresh();
       return removed;
     },
     [refresh]
@@ -52,6 +64,7 @@ export function useClients(): UseClientsResult {
 
   return {
     clients,
+    isLoading,
     refresh,
     getById,
     createClient,

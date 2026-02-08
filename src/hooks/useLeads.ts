@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { leadService } from '@/services';
 import { Lead } from '@/types/models';
 
@@ -7,47 +7,59 @@ type LeadUpdateInput = Partial<Lead>;
 
 export interface UseLeadsResult {
   leads: Lead[];
-  refresh: () => void;
-  getById: (id: string) => Lead | undefined;
-  getByAgent: (agentId: string) => Lead[];
-  createLead: (lead: LeadCreateInput) => Lead;
-  updateLead: (id: string, updates: LeadUpdateInput) => Lead | null;
-  removeLead: (id: string) => boolean;
+  isLoading: boolean;
+  refresh: () => Promise<void>;
+  getById: (id: string) => Promise<Lead | undefined>;
+  getByAgent: (agentId: string) => Promise<Lead[]>;
+  createLead: (lead: LeadCreateInput) => Promise<Lead>;
+  updateLead: (id: string, updates: LeadUpdateInput) => Promise<Lead | null>;
+  removeLead: (id: string) => Promise<boolean>;
 }
 
 export function useLeads(): UseLeadsResult {
-  const [leads, setLeads] = useState<Lead[]>(() => leadService.getAll());
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const refresh = useCallback(() => {
-    setLeads(leadService.getAll());
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const next = await leadService.getAll();
+      setLeads(next);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
 
   const getById = useCallback((id: string) => leadService.getById(id), []);
 
   const getByAgent = useCallback((agentId: string) => leadService.getByAgent(agentId), []);
 
   const createLead = useCallback(
-    (lead: LeadCreateInput) => {
-      const created = leadService.create(lead);
-      refresh();
+    async (lead: LeadCreateInput) => {
+      const created = await leadService.create(lead);
+      await refresh();
       return created;
     },
     [refresh]
   );
 
   const updateLead = useCallback(
-    (id: string, updates: LeadUpdateInput) => {
-      const updated = leadService.update(id, updates);
-      refresh();
+    async (id: string, updates: LeadUpdateInput) => {
+      const updated = await leadService.update(id, updates);
+      await refresh();
       return updated;
     },
     [refresh]
   );
 
   const removeLead = useCallback(
-    (id: string) => {
-      const removed = leadService.remove(id);
-      refresh();
+    async (id: string) => {
+      const removed = await leadService.remove(id);
+      await refresh();
       return removed;
     },
     [refresh]
@@ -55,6 +67,7 @@ export function useLeads(): UseLeadsResult {
 
   return {
     leads,
+    isLoading,
     refresh,
     getById,
     getByAgent,

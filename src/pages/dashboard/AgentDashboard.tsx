@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Wallet,
@@ -35,69 +35,118 @@ const formatCurrency = (amount: number) => {
 export function AgentDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [clientsById, setClientsById] = useState<Record<string, string>>({});
+  const [stats, setStats] = useState<{
+    activeLeads: Awaited<ReturnType<typeof leadService.getByAgent>>;
+    wonLeads: Awaited<ReturnType<typeof leadService.getByAgent>>;
+    overdueFollowUps: Awaited<ReturnType<typeof leadService.getByAgent>>;
+    conversionRate: number;
+    activeProjects: Awaited<ReturnType<typeof projectService.getByAgent>>;
+    pendingAmount: number;
+    earnedAmount: number;
+    paidOutAmount: number;
+    totalCommissions: number;
+    leadsByStage: Record<string, number>;
+    myLeads: Awaited<ReturnType<typeof leadService.getByAgent>>;
+    myProjects: Awaited<ReturnType<typeof projectService.getByAgent>>;
+  } | null>(null);
 
-  // Get agent-specific data
-  const stats = useMemo(() => {
-    if (!user) return null;
+  useEffect(() => {
+    let isMounted = true;
 
-    const now = new Date();
-    
-    // Agent's leads
-    const myLeads = leadService.getByAgent(user.id);
-    const activeLeads = myLeads.filter(l => l.stage !== 'won' && l.stage !== 'lost');
-    const wonLeads = myLeads.filter(l => l.stage === 'won');
-    const lostLeads = myLeads.filter(l => l.stage === 'lost');
-    
-    // Follow-up overdue
-    const overdueFollowUps = myLeads.filter(l => {
-      if (!l.followUpDate || l.stage === 'won' || l.stage === 'lost') return false;
-      return new Date(l.followUpDate) < now;
-    });
+    const loadData = async () => {
+      setIsLoading(true);
+      if (!user) {
+        setStats(null);
+        setIsLoading(false);
+        return;
+      }
 
-    // Conversion rate
-    const totalClosedLeads = wonLeads.length + lostLeads.length;
-    const conversionRate = totalClosedLeads > 0 
-      ? Math.round((wonLeads.length / totalClosedLeads) * 100) 
-      : 0;
+      try {
+        const now = new Date();
+        await syncCommissionsFromInvoices();
+        const [myLeads, myProjects, myCommissions, allClients] = await Promise.all([
+          leadService.getByAgent(user.id),
+          projectService.getByAgent(user.id),
+          commissionService.getByAgent(user.id),
+          clientService.getAll(),
+        ]);
 
-    // Agent's projects
-    const myProjects = projectService.getByAgent(user.id);
-    const activeProjects = myProjects.filter(p => 
-      p.status === 'in-progress' || p.status === 'waiting-client'
-    );
+        const activeLeads = myLeads.filter((lead) => lead.stage !== 'won' && lead.stage !== 'lost');
+        const wonLeads = myLeads.filter((lead) => lead.stage === 'won');
+        const lostLeads = myLeads.filter((lead) => lead.stage === 'lost');
+        const overdueFollowUps = myLeads.filter((lead) => {
+          if (!lead.followUpDate || lead.stage === 'won' || lead.stage === 'lost') return false;
+          return new Date(lead.followUpDate) < now;
+        });
 
-    // Commissions
-    syncCommissionsFromInvoices();
-    const myCommissions = commissionService.getByAgent(user.id);
-    const pendingCommissions = myCommissions.filter(c => c.status === 'pending');
-    const earnedCommissions = myCommissions.filter(c => c.status === 'earned');
-    const paidOutCommissions = myCommissions.filter(c => c.status === 'paid-out');
+        const totalClosedLeads = wonLeads.length + lostLeads.length;
+        const conversionRate = totalClosedLeads > 0 ? Math.round((wonLeads.length / totalClosedLeads) * 100) : 0;
+        const activeProjects = myProjects.filter(
+          (project) => project.status === 'in-progress' || project.status === 'waiting-client'
+        );
 
-    const pendingAmount = pendingCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
-    const earnedAmount = earnedCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
-    const paidOutAmount = paidOutCommissions.reduce((sum, c) => sum + c.commissionAmount, 0);
+        const pendingCommissions = myCommissions.filter((commission) => commission.status === 'pending');
+        const earnedCommissions = myCommissions.filter((commission) => commission.status === 'earned');
+        const paidOutCommissions = myCommissions.filter((commission) => commission.status === 'paid-out');
 
-    // Leads by stage
-    const leadsByStage = myLeads.reduce((acc, lead) => {
-      acc[lead.stage] = (acc[lead.stage] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
+        const pendingAmount = pendingCommissions.reduce((sum, commission) => sum + commission.commissionAmount, 0);
+        const earnedAmount = earnedCommissions.reduce((sum, commission) => sum + commission.commissionAmount, 0);
+        const paidOutAmount = paidOutCommissions.reduce((sum, commission) => sum + commission.commissionAmount, 0);
 
-    return {
-      activeLeads,
-      wonLeads,
-      overdueFollowUps,
-      conversionRate,
-      activeProjects,
-      pendingAmount,
-      earnedAmount,
-      paidOutAmount,
-      totalCommissions: pendingAmount + earnedAmount,
-      leadsByStage,
-      myLeads,
-      myProjects,
+        const leadsByStage = myLeads.reduce((acc, lead) => {
+          acc[lead.stage] = (acc[lead.stage] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+
+        if (!isMounted) return;
+        setClientsById(
+          allClients.reduce<Record<string, string>>((acc, client) => {
+            acc[client.id] = client.businessName;
+            return acc;
+          }, {})
+        );
+        setStats({
+          activeLeads,
+          wonLeads,
+          overdueFollowUps,
+          conversionRate,
+          activeProjects,
+          pendingAmount,
+          earnedAmount,
+          paidOutAmount,
+          totalCommissions: pendingAmount + earnedAmount,
+          leadsByStage,
+          myLeads,
+          myProjects,
+        });
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void loadData();
+    return () => {
+      isMounted = false;
     };
   }, [user]);
+
+  if (isLoading && !stats) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader
+          title={`Hello, ${user?.name?.split(' ')[0] || 'Agent'}!`}
+          description="Track your leads, commissions, and performance."
+        />
+        <Card>
+          <CardContent className="py-10 text-center text-muted-foreground">Loading dashboard...</CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (!stats) return null;
 
@@ -292,7 +341,7 @@ export function AgentDashboard() {
             ) : (
               <div className="space-y-3">
                 {stats.activeProjects.slice(0, 4).map((project) => {
-                  const client = clientService.getById(project.clientId);
+                  const clientName = clientsById[project.clientId];
                   const completedMilestones = project.milestones.filter(m => m.completed).length;
                   const progress = Math.round((completedMilestones / project.milestones.length) * 100);
                   const isOverdue = new Date(project.dueDate) < new Date() && project.status !== 'delivered';
@@ -306,7 +355,7 @@ export function AgentDashboard() {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <p className="font-medium">{project.name}</p>
-                          <p className="text-sm text-muted-foreground">{client?.businessName}</p>
+                          <p className="text-sm text-muted-foreground">{clientName || 'Unknown client'}</p>
                         </div>
                         <StatusBadge status={project.status} type="project" />
                       </div>

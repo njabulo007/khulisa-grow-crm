@@ -43,13 +43,9 @@ export function seedAppData(): void {
   Object.entries(canonicalSeedUserProfiles).forEach(([userId, profile]) => {
     authService.update(userId, profile);
   });
-  leadService.seedIfMissing(seedLeads);
-  clientService.seedIfMissing(seedClients);
-  projectService.seedIfMissing(seedProjects);
-  invoiceService.seedIfMissing(seedInvoices);
-  paymentService.seedIfMissing(seedPayments);
-  commissionService.seedIfMissing(seedCommissions);
-  activityService.seedIfMissing(seedActivities);
+  // Firestore is now the source of truth for CRM entities.
+  // Keep seed exports available for optional one-time migration scripts,
+  // but do not auto-seed Firestore on app boot.
 }
 
 export {

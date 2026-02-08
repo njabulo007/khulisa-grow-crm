@@ -1,12 +1,14 @@
 import { User, UserRole } from '@/types/models';
-import { getFirebaseServices, isFirebaseConfigured } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import {
+  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
 import {
   LocalStorageCollection,
   STORAGE_KEYS,
@@ -28,61 +30,156 @@ export interface AppUser {
   role: Role;
 }
 
+const OWNER_EMAILS = new Set(['njabulo@khulisamedia.co.za', 'njabulod007@gmail.com']);
+
+function getFallbackRoleForEmail(email?: string | null): Role {
+  if (!email) return 'agent';
+  return OWNER_EMAILS.has(email.trim().toLowerCase()) ? 'owner' : 'agent';
+}
+
+function pickRole(data: Record<string, unknown>): Role | null {
+  const rawRole = data.role || data.userRole || data.Role || data.user_role;
+  if (rawRole === 'owner' || rawRole === 'agent') return rawRole;
+  return null;
+}
+
+function getFirebaseAuthErrorMessage(error: unknown): string {
+  const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+  switch (code) {
+    case 'auth/invalid-credential':
+      return 'Invalid email/password for this Firebase project (khulisa-grow-crm). Confirm the user exists in Firebase Authentication -> Users.';
+    case 'auth/wrong-password':
+      return 'Wrong password for this account.';
+    case 'auth/user-not-found':
+      return 'No user found for this email in Firebase Authentication.';
+    case 'auth/invalid-email':
+      return 'Email address format is invalid.';
+    case 'auth/too-many-requests':
+      return 'Too many attempts. Try again later.';
+    case 'auth/network-request-failed':
+      return 'Network error. Check internet connection and try again.';
+    case 'auth/operation-not-allowed':
+      return 'Email/Password sign-in is disabled in Firebase Auth.';
+    case 'auth/email-already-in-use':
+      return 'This email is already in use.';
+    case 'auth/weak-password':
+      return 'Password is too weak. Use at least 6 characters.';
+    default:
+      return code ? `Firebase login failed (${code}).` : 'Firebase login failed.';
+  }
+}
+
 async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | null> {
   if (!firebaseUser) return null;
 
-  const { db } = getFirebaseServices();
+  let role: Role = getFallbackRoleForEmail(firebaseUser.email);
+  let displayName = firebaseUser.displayName;
 
-  // Read extra data (role) from Firestore: users/{uid}
-  const profileRef = doc(db, 'users', firebaseUser.uid);
-  const profileSnap = await getDoc(profileRef);
-
-  let role: Role = 'agent'; // default if not found
-  if (profileSnap.exists()) {
-    const data = profileSnap.data() as { role?: string };
-    if (data.role === 'owner' || data.role === 'agent') {
-      role = data.role;
+  try {
+    // Read extra data (role) from Firestore: users/{uid}
+    const profileRef = doc(db, 'users', firebaseUser.uid);
+    const profileSnap = await getDoc(profileRef);
+    if (profileSnap.exists()) {
+      const data = profileSnap.data() as Record<string, unknown>;
+      const candidateRole = pickRole(data);
+      if (candidateRole) {
+        role = candidateRole;
+      }
+      if (!displayName && typeof data.displayName === 'string') {
+        displayName = data.displayName;
+      }
+      if (!displayName && typeof data.name === 'string') {
+        displayName = data.name;
+      }
+    } else if (firebaseUser.email) {
+      // Fallback for projects storing profile docs by email instead of uid.
+      const emailQuery = query(collection(db, 'users'), where('email', '==', firebaseUser.email), limit(1));
+      const uidQuery = query(collection(db, 'users'), where('uid', '==', firebaseUser.uid), limit(1));
+      const [emailSnapshot, uidSnapshot] = await Promise.all([getDocs(emailQuery), getDocs(uidQuery)]);
+      const first = emailSnapshot.docs[0] || uidSnapshot.docs[0];
+      if (first) {
+        const data = first.data() as Record<string, unknown>;
+        const candidateRole = pickRole(data);
+        if (candidateRole) {
+          role = candidateRole;
+        }
+        if (!displayName && typeof data.displayName === 'string') {
+          displayName = data.displayName;
+        }
+        if (!displayName && typeof data.name === 'string') {
+          displayName = data.name;
+        }
+      }
     }
+  } catch {
+    // Continue with fallback role/display values when profile read is blocked.
   }
+
+  role = role || getFallbackRoleForEmail(firebaseUser.email);
 
   return {
     id: firebaseUser.uid,
     email: firebaseUser.email,
-    displayName: firebaseUser.displayName,
+    displayName,
     role,
   };
 }
 
 export const AuthService = {
+  async signupWithPassword(email: string, password: string, displayName?: string): Promise<AppUser> {
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
+      const trimmedDisplayName = displayName?.trim();
+      if (trimmedDisplayName) {
+        await updateProfile(cred.user, { displayName: trimmedDisplayName });
+      }
+
+      const role = getFallbackRoleForEmail(normalizedEmail);
+      try {
+        await setDoc(
+          doc(db, 'users', cred.user.uid),
+          {
+            uid: cred.user.uid,
+            email: normalizedEmail,
+            displayName: trimmedDisplayName || cred.user.displayName || null,
+            role,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true }
+        );
+      } catch {
+        // Continue even when profile doc write is blocked; auth account is already created.
+      }
+
+      const user = await mapUser(cred.user);
+      if (!user) throw new Error('Could not map user');
+      return user;
+    } catch (error) {
+      throw new Error(getFirebaseAuthErrorMessage(error));
+    }
+  },
+
   async loginWithPassword(email: string, password: string): Promise<AppUser> {
-    const { auth } = getFirebaseServices();
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    const user = await mapUser(cred.user);
-    if (!user) throw new Error('Could not map user');
-    return user;
+    try {
+      const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
+      const user = await mapUser(cred.user);
+      if (!user) throw new Error('Could not map user');
+      return user;
+    } catch (error) {
+      throw new Error(getFirebaseAuthErrorMessage(error));
+    }
   },
 
   async logout(): Promise<void> {
-    if (!isFirebaseConfigured) return;
-    const { auth } = getFirebaseServices();
     await signOut(auth);
   },
 
   subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
-    if (!isFirebaseConfigured) {
-      callback(null);
-      return () => {};
-    }
-
-    const { auth } = getFirebaseServices();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      try {
-        const user = await mapUser(firebaseUser);
-        callback(user);
-      } catch (error) {
-        console.error('Failed to map Firebase auth user:', error);
-        callback(null);
-      }
+      const user = await mapUser(firebaseUser);
+      callback(user);
     });
     return unsubscribe;
   },

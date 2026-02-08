@@ -1,17 +1,17 @@
-import React, { useState, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
-  Phone,
-  Mail,
   Building2,
   Calendar,
-  User,
   DollarSign,
   Edit,
+  Mail,
   MessageSquare,
+  Phone,
   PhoneCall,
   Send,
+  User,
 } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
@@ -25,8 +25,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
-import { leadStore, userStore, activityStore } from '@/store/mockStore';
-import { LeadStage, LEAD_STAGES, LEAD_SOURCES, ActivityType } from '@/types/models';
+import { activityService, authService, leadService } from '@/services';
+import { Activity, ActivityType, Lead, LeadStage, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 import { canAccessLead } from '@/lib/permissions';
 
@@ -52,14 +52,54 @@ export function LeadDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
+  const [lead, setLead] = useState<Lead | undefined>(undefined);
+  const [activities, setActivities] = useState<Activity[]>([]);
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState<ActivityType>('note');
+  const [isLoading, setIsLoading] = useState(true);
 
-  const lead = useMemo(() => leadStore.getById(id || ''), [id]);
-  const agent = useMemo(() => lead ? userStore.getById(lead.assignedTo) : null, [lead]);
-  const activities = useMemo(() => 
-    activityStore.getByEntity('lead', id || ''), [id]
-  );
+  const usersById = useMemo(() => {
+    return authService.getAll().reduce<Record<string, { id: string; name: string }>>((acc, currentUser) => {
+      acc[currentUser.id] = { id: currentUser.id, name: currentUser.name };
+      return acc;
+    }, {});
+  }, []);
+
+  const refreshLead = async () => {
+    const [nextLead, nextActivities] = await Promise.all([
+      leadService.getById(id || ''),
+      activityService.getByEntity('lead', id || ''),
+    ]);
+    setLead(nextLead);
+    setActivities(nextActivities);
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadData = async () => {
+      setIsLoading(true);
+      const [nextLead, nextActivities] = await Promise.all([
+        leadService.getById(id || ''),
+        activityService.getByEntity('lead', id || ''),
+      ]);
+      if (!isMounted) return;
+      setLead(nextLead);
+      setActivities(nextActivities);
+      setIsLoading(false);
+    };
+    void loadData();
+    return () => {
+      isMounted = false;
+    };
+  }, [id]);
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">Loading lead...</p>
+      </div>
+    );
+  }
 
   if (!lead) {
     return (
@@ -83,14 +123,14 @@ export function LeadDetailPage() {
     );
   }
 
-  const handleStageChange = (newStage: LeadStage) => {
+  const handleStageChange = async (newStage: LeadStage) => {
     if (!canAccessLead(user, lead)) {
       toast.error('You do not have permission to update this lead');
       return;
     }
-    leadStore.update(lead.id, { stage: newStage });
-    
-    activityStore.create({
+    await leadService.update(lead.id, { stage: newStage });
+
+    await activityService.create({
       type: 'status-change',
       entityType: 'lead',
       entityId: lead.id,
@@ -99,10 +139,11 @@ export function LeadDetailPage() {
       createdBy: user?.id || '',
     });
 
+    await refreshLead();
     toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
   };
 
-  const handleAddActivity = () => {
+  const handleAddActivity = async () => {
     if (!canAccessLead(user, lead)) {
       toast.error('You do not have permission to add activity for this lead');
       return;
@@ -112,7 +153,7 @@ export function LeadDetailPage() {
       return;
     }
 
-    activityStore.create({
+    await activityService.create({
       type: noteType,
       entityType: 'lead',
       entityId: lead.id,
@@ -120,10 +161,12 @@ export function LeadDetailPage() {
       createdBy: user?.id || '',
     });
 
+    await refreshLead();
     setNewNote('');
     toast.success('Activity added');
   };
 
+  const agent = usersById[lead.assignedTo];
   const isOverdue = lead.followUpDate && new Date(lead.followUpDate) < new Date();
 
   return (
@@ -142,7 +185,6 @@ export function LeadDetailPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Lead Info */}
         <div className="space-y-6 lg:col-span-2">
           <Card>
             <CardHeader>
@@ -192,16 +234,14 @@ export function LeadDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Activity Timeline */}
           <Card>
             <CardHeader>
               <CardTitle>Activity Timeline</CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Add Activity */}
               <div className="mb-6 space-y-3">
                 <div className="flex gap-2">
-                  <Select value={noteType} onValueChange={(v) => setNoteType(v as ActivityType)}>
+                  <Select value={noteType} onValueChange={(value) => setNoteType(value as ActivityType)}>
                     <SelectTrigger className="w-[140px]">
                       <SelectValue />
                     </SelectTrigger>
@@ -216,31 +256,36 @@ export function LeadDetailPage() {
                   <Textarea
                     placeholder="Add a note about this lead..."
                     value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
+                    onChange={(event) => setNewNote(event.target.value)}
                     className="flex-1 min-h-[80px]"
                   />
                 </div>
-                <Button onClick={handleAddActivity} className="w-full sm:w-auto">
+                <Button
+                  onClick={() => {
+                    void handleAddActivity();
+                  }}
+                  className="w-full sm:w-auto"
+                >
                   Add Activity
                 </Button>
               </div>
 
-              {/* Timeline */}
               <div className="space-y-4">
                 {activities.length === 0 ? (
-                  <p className="text-center text-muted-foreground py-4">No activities yet</p>
+                  <p className="py-4 text-center text-muted-foreground">No activities yet</p>
                 ) : (
                   activities.map((activity) => {
-                    const activityUser = userStore.getById(activity.createdBy);
+                    const activityUser = usersById[activity.createdBy];
                     return (
                       <div key={activity.id} className="flex gap-3">
                         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted">
                           {ACTIVITY_ICONS[activity.type]}
                         </div>
-                        <div className="flex-1 min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm">{activity.description}</p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {activityUser?.name} • {new Date(activity.createdAt).toLocaleDateString('en-ZA', {
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {activityUser?.name || 'Unknown user'} |{' '}
+                            {new Date(activity.createdAt).toLocaleDateString('en-ZA', {
                               day: 'numeric',
                               month: 'short',
                               hour: '2-digit',
@@ -257,28 +302,32 @@ export function LeadDetailPage() {
           </Card>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6">
-          {/* Quick Actions */}
           <Card>
             <CardHeader>
               <CardTitle>Stage</CardTitle>
             </CardHeader>
             <CardContent>
-              <Select value={lead.stage} onValueChange={handleStageChange}>
+              <Select
+                value={lead.stage}
+                onValueChange={(value) => {
+                  void handleStageChange(value as LeadStage);
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {Object.entries(LEAD_STAGES).map(([key, value]) => (
-                    <SelectItem key={key} value={key}>{value.label}</SelectItem>
+                    <SelectItem key={key} value={key}>
+                      {value.label}
+                    </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </CardContent>
           </Card>
 
-          {/* Lead Details */}
           <Card>
             <CardHeader>
               <CardTitle>Details</CardTitle>
@@ -326,14 +375,13 @@ export function LeadDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Notes */}
           {lead.notes && (
             <Card>
               <CardHeader>
                 <CardTitle>Notes</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-sm text-muted-foreground whitespace-pre-wrap">{lead.notes}</p>
+                <p className="whitespace-pre-wrap text-sm text-muted-foreground">{lead.notes}</p>
               </CardContent>
             </Card>
           )}
@@ -342,3 +390,4 @@ export function LeadDetailPage() {
     </div>
   );
 }
+
