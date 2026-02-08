@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock, Mail } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { authService } from '@/services/authService';
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -21,10 +20,6 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const users = useMemo(
-    () => authService.getAll().filter((user) => user.isActive !== false),
-    []
-  );
   const redirectTo = (location.state as { from?: string } | null)?.from || '/';
 
   if (isAuthenticated) {
@@ -78,9 +73,6 @@ export function LoginPage() {
           <p className="max-w-md text-muted-foreground">
             Manage leads, clients, projects, invoices, and commissions from one dashboard.
           </p>
-          <div className="rounded-lg border bg-card/70 p-4 text-sm text-muted-foreground">
-            Firebase Auth is active. Use an email/password account from your Firebase project.
-          </div>
         </div>
 
         <Card className="border-border/80 shadow-lg">
@@ -178,28 +170,6 @@ export function LoginPage() {
                 {mode === 'signup' ? 'Log in' : 'Sign up'}
               </button>
             </div>
-
-            {mode === 'login' && (
-              <div className="space-y-2 rounded-lg border bg-muted/30 p-3 text-xs text-muted-foreground">
-                <p>Quick fill (active user emails):</p>
-                <div className="flex flex-wrap gap-2">
-                  {users.map((user) => (
-                    <Button
-                      key={user.id}
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setEmail(user.email);
-                        setPassword('');
-                      }}
-                    >
-                      {user.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
       </div>
