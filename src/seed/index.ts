@@ -1,51 +1,20 @@
-import {
-  activityService,
-  authService,
-  clientService,
-  commissionService,
-  invoiceService,
-  leadService,
-  paymentService,
-  projectService,
-} from '@/services';
-import {
-  seedActivities,
-  seedClients,
-  seedCommissions,
-  seedInvoices,
-  seedLeads,
-  seedPayments,
-  seedProjects,
-  seedUsers,
-} from './data';
+import { OBSOLETE_CRM_STORAGE_KEYS, STORAGE_KEYS, hasStoredValue, removeStoredValue, writeStoredValue } from '@/services/storage';
+import { seedActivities, seedClients, seedCommissions, seedInvoices, seedLeads, seedPayments, seedProjects, seedUsers } from './data';
 
-const canonicalSeedUserProfiles: Record<string, { name: string; email: string; isActive: boolean }> = {
-  user_owner: {
-    name: 'Njabulo Dlamini',
-    email: 'njabulo@khulisamedia.co.za',
-    isActive: true,
-  },
-  user_agent1: {
-    name: 'Lindiwe Ndlovu',
-    email: 'lindiwe@khulisamedia.co.za',
-    isActive: true,
-  },
-  user_agent2: {
-    name: 'Sipho Dlamini',
-    email: 'sipho@khulisamedia.co.za',
-    isActive: true,
-  },
-};
+const DEMO_DATA_PURGE_KEY = 'khulisa_demo_data_purged_v1';
 
 export function seedAppData(): void {
-  // TODO: Replace bootstrapping with Firebase initial provisioning.
-  authService.seedIfMissing(seedUsers, seedUsers[0]?.id, false);
-  Object.entries(canonicalSeedUserProfiles).forEach(([userId, profile]) => {
-    authService.update(userId, profile);
-  });
-  // Firestore is now the source of truth for CRM entities.
-  // Keep seed exports available for optional one-time migration scripts,
-  // but do not auto-seed Firestore on app boot.
+  // One-time cleanup of legacy demo/session state so sign-in starts fresh on Firebase Auth.
+  if (hasStoredValue(DEMO_DATA_PURGE_KEY)) return;
+
+  [
+    STORAGE_KEYS.users,
+    STORAGE_KEYS.currentUser,
+    STORAGE_KEYS.role,
+    ...OBSOLETE_CRM_STORAGE_KEYS,
+  ].forEach((key) => removeStoredValue(key));
+
+  writeStoredValue(DEMO_DATA_PURGE_KEY, 'true');
 }
 
 export {

@@ -91,7 +91,7 @@ export function LoginPage() {
                     id="displayName"
                     type="text"
                     autoComplete="name"
-                    placeholder="Njabulo Dlamini"
+                    placeholder="Your full name"
                     value={displayName}
                     onChange={(event) => setDisplayName(event.target.value)}
                   />
@@ -106,7 +106,7 @@ export function LoginPage() {
                     id="email"
                     type="email"
                     autoComplete="email"
-                    placeholder="njabulo@khulisamedia.co.za"
+                    placeholder="name@khulisamedia.co.za"
                     className="pl-9"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
