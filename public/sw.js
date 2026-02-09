@@ -79,3 +79,23 @@ self.addEventListener('fetch', (event) => {
       .catch(() => caches.match(request))
   );
 });
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const targetPath =
+    event.notification?.data?.link ||
+    event.notification?.data?.FCM_MSG?.fcmOptions?.link ||
+    '/';
+  const absoluteUrl = new URL(targetPath, self.location.origin).href;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existingClient = clients.find((client) => client.url === absoluteUrl);
+      if (existingClient) {
+        return existingClient.focus();
+      }
+      return self.clients.openWindow(absoluteUrl);
+    })
+  );
+});

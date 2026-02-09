@@ -72,3 +72,35 @@ This codebase is now wired so the service layer is the only data-access boundary
 - Local storage is still used for:
   - auth/session compatibility (`khulisa_users`, `khulisa_current_user`, `khulisa_role`)
   - UI theme preference (`khulisa_theme`)
+
+## Web Push Notifications (System-Level)
+
+This app includes FCM-based web push plumbing so agents/owners can receive OS notifications while the app is in background, tab is inactive, or phone screen is off.
+
+### Client setup
+
+1. Create a Firebase Web Push certificate key pair in Firebase Console:
+   - Project Settings -> Cloud Messaging -> Web Push certificates
+2. Add the public VAPID key to your frontend env:
+   - `VITE_FIREBASE_VAPID_KEY=YOUR_PUBLIC_VAPID_KEY`
+3. Ensure your app is served over HTTPS (required for push).
+
+### Backend trigger setup
+
+Push delivery is sent from Firebase Functions when a document is created in `notifications`.
+
+1. Install dependencies:
+   - `cd functions`
+   - `npm install`
+2. Deploy functions:
+   - `npm run deploy`
+
+The function `sendWebPushOnNotificationCreate` reads device tokens from `push_tokens` and sends an FCM web push with:
+- deep link payload (`/leads/:id`, `/clients/:id`, `/projects/:id`, `/invoices/:id`)
+- high-priority delivery
+- OS-level notification presentation/sound (Android/desktop defaults)
+
+### Notes
+
+- Users must grant notification permission at least once.
+- iOS web push requires installing the PWA to home screen and enabling notifications.

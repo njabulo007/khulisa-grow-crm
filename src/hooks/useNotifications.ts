@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService } from '@/services';
+import { pushService } from '@/services/pushService';
 import { Notification } from '@/types/notification';
 
 export type DesktopNotificationPermission = NotificationPermission | 'unsupported';
@@ -11,6 +12,7 @@ export interface UseNotificationsResult {
   desktopPermission: DesktopNotificationPermission;
   requestDesktopPermission: () => Promise<DesktopNotificationPermission>;
   markAsRead: (id: string) => Promise<void>;
+  dismiss: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
 }
 
@@ -169,6 +171,11 @@ export function useNotifications(): UseNotificationsResult {
     };
   }, [playNotificationSound, user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    void pushService.registerForUser(user.id, false);
+  }, [user?.id]);
+
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,
     [notifications]
@@ -176,6 +183,10 @@ export function useNotifications(): UseNotificationsResult {
 
   const markAsRead = useCallback(async (id: string) => {
     await notificationService.markAsRead(id);
+  }, []);
+
+  const dismiss = useCallback(async (id: string) => {
+    await notificationService.dismiss(id);
   }, []);
 
   const markAllAsRead = useCallback(async () => {
@@ -190,8 +201,11 @@ export function useNotifications(): UseNotificationsResult {
 
     const nextPermission = await window.Notification.requestPermission();
     setDesktopPermission(nextPermission);
+    if (nextPermission === 'granted' && user?.id) {
+      void pushService.registerForUser(user.id, false);
+    }
     return nextPermission;
-  }, []);
+  }, [user?.id]);
 
   return {
     notifications,
@@ -199,6 +213,7 @@ export function useNotifications(): UseNotificationsResult {
     desktopPermission,
     requestDesktopPermission,
     markAsRead,
+    dismiss,
     markAllAsRead,
   };
 }

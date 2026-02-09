@@ -3,6 +3,7 @@ import { Notification } from '@/types/notification';
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   onSnapshot,
@@ -22,6 +23,7 @@ export interface NotificationService {
     data: Omit<Notification, 'id' | 'userId' | 'isRead' | 'createdAt'>
   ) => Promise<string>;
   markAsRead: (id: string) => Promise<void>;
+  dismiss: (id: string) => Promise<void>;
   markAllAsRead: (userId: string) => Promise<void>;
   subscribeForUser: (
     userId: string,
@@ -103,6 +105,10 @@ class FirestoreNotificationService implements NotificationService {
 
   async markAsRead(id: string): Promise<void> {
     await updateDoc(doc(this.collectionRef, id), { isRead: true });
+  }
+
+  async dismiss(id: string): Promise<void> {
+    await deleteDoc(doc(this.collectionRef, id));
   }
 
   async markAllAsRead(userId: string): Promise<void> {

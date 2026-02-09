@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -68,6 +68,7 @@ export function Topbar({ onSearch }: TopbarProps) {
     desktopPermission,
     requestDesktopPermission,
     markAsRead,
+    dismiss,
     markAllAsRead,
   } = useNotifications();
   const [searchQuery, setSearchQuery] = useState('');
@@ -76,6 +77,8 @@ export function Topbar({ onSearch }: TopbarProps) {
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const touchStartByNotificationRef = useRef<Map<string, number>>(new Map());
+  const recentlySwipedRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     let isMounted = true;
@@ -206,6 +209,28 @@ export function Topbar({ onSearch }: TopbarProps) {
     }
   };
 
+  const handleNotificationTouchStart = (notificationId: string, event: React.TouchEvent<HTMLDivElement>) => {
+    const touch = event.touches[0];
+    if (!touch) return;
+    touchStartByNotificationRef.current.set(notificationId, touch.clientX);
+  };
+
+  const handleNotificationTouchEnd = (notificationId: string, event: React.TouchEvent<HTMLDivElement>) => {
+    const startX = touchStartByNotificationRef.current.get(notificationId);
+    touchStartByNotificationRef.current.delete(notificationId);
+    if (typeof startX !== 'number') return;
+    const touch = event.changedTouches[0];
+    if (!touch) return;
+    const deltaX = touch.clientX - startX;
+    if (Math.abs(deltaX) < 70) return;
+
+    recentlySwipedRef.current.add(notificationId);
+    window.setTimeout(() => {
+      recentlySwipedRef.current.delete(notificationId);
+    }, 500);
+    void dismiss(notificationId);
+  };
+
   const renderResultGroup = (
     groupTitle: string,
     icon: React.ReactNode,
@@ -321,6 +346,8 @@ export function Topbar({ onSearch }: TopbarProps) {
               {desktopNotificationLabel}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
+            <div className="px-3 py-1 text-[11px] text-muted-foreground">Tip: swipe a notification left or right to dismiss.</div>
+            <DropdownMenuSeparator />
             {recentNotifications.length === 0 ? (
               <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
             ) : (
@@ -329,6 +356,7 @@ export function Topbar({ onSearch }: TopbarProps) {
                   key={notification.id}
                   onSelect={(event) => {
                     event.preventDefault();
+                    if (recentlySwipedRef.current.has(notification.id)) return;
                     void handleNotificationClick(
                       notification.id,
                       notification.leadId,
@@ -338,6 +366,8 @@ export function Topbar({ onSearch }: TopbarProps) {
                     );
                   }}
                   className="flex cursor-pointer flex-col items-start gap-1 py-2"
+                  onTouchStart={(event) => handleNotificationTouchStart(notification.id, event)}
+                  onTouchEnd={(event) => handleNotificationTouchEnd(notification.id, event)}
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className="text-sm font-medium">{notification.title}</span>
