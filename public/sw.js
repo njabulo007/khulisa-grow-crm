@@ -1,4 +1,4 @@
-const SW_CACHE = 'khulisa-crm-cache-v3';
+const SW_CACHE = 'khulisa-crm-cache-v4';
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',

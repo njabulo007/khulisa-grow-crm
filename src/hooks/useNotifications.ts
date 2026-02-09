@@ -77,7 +77,7 @@ export function useNotifications(): UseNotificationsResult {
     if (!audio) return;
     audio.currentTime = 0;
     audio.muted = false;
-    audio.volume = 1;
+    audio.volume = 8;
     void audio.play().catch(() => {
       playFallbackTone();
     });
