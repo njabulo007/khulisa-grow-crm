@@ -27,20 +27,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const refreshCurrentUserFromCache = React.useCallback(() => {
+    setUser((previous) => {
+      if (!previous) return previous;
+
+      const normalizedEmail = previous.email.trim().toLowerCase();
+      const exactById = authService.getById(previous.id);
+      const byEmail = authService
+        .getAll()
+        .find((candidate) => candidate.email.toLowerCase() === normalizedEmail);
+      const resolved = exactById || byEmail;
+      if (!resolved) return previous;
+
+      authService.setCurrentUser(resolved.id);
+      return { ...resolved };
+    });
+  }, []);
+
   const upsertUserFromFirebase = React.useCallback(
-    (payload: { email: string | null; displayName: string | null; role: UserRole }): User | null => {
+    (payload: {
+      id: string;
+      uid: string;
+      email: string | null;
+      displayName: string | null;
+      role: UserRole;
+    }): User | null => {
       if (!payload.email) return null;
 
       const normalizedEmail = payload.email.trim().toLowerCase();
       const existing = authService
         .getAll()
         .find((candidate) => candidate.email.toLowerCase() === normalizedEmail);
+
+      const nextName =
+        payload.displayName ||
+        existing?.name ||
+        normalizedEmail.split('@')[0] ||
+        'User';
+
       if (existing) {
-        const nextName =
-          payload.displayName ||
-          existing.name ||
-          normalizedEmail.split('@')[0] ||
-          'User';
         const updates: Partial<User> = {
           name: nextName,
           role: payload.role,
@@ -48,21 +73,99 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         };
         const updated = authService.update(existing.id, updates) || existing;
         authService.setCurrentUser(updated.id);
+        void AuthService.ensureUserProfile({
+          uid: payload.uid,
+          email: normalizedEmail,
+          displayName: nextName,
+          role: payload.role,
+          appUserId: updated.id,
+        });
         return updated;
       }
 
       const created = authService.create({
+        id: payload.id,
         email: normalizedEmail,
-        name: payload.displayName || normalizedEmail.split('@')[0] || 'User',
+        name: nextName,
         role: payload.role,
         isActive: true,
         commissionRate: payload.role === 'owner' ? 0 : 15,
       });
       authService.setCurrentUser(created.id);
+      void AuthService.ensureUserProfile({
+        uid: payload.uid,
+        email: normalizedEmail,
+        displayName: nextName,
+        role: payload.role,
+        appUserId: created.id,
+      });
       return created;
     },
     []
   );
+
+  const syncUsersFromFirebaseProfiles = React.useCallback(async (): Promise<void> => {
+    try {
+      const profiles = await AuthService.listUserProfiles();
+      if (profiles.length === 0) return;
+
+      profiles.forEach((profile) => {
+        const normalizedEmail = profile.email.trim().toLowerCase();
+        const allUsers = authService.getAll();
+        const existingByEmail = allUsers.find((candidate) => candidate.email.toLowerCase() === normalizedEmail);
+        const targetId =
+          !profile.hasAppUserId && existingByEmail
+            ? existingByEmail.id
+            : profile.id;
+        const existingByTargetId = authService.getById(targetId);
+        const nextName =
+          profile.displayName ||
+          existingByTargetId?.name ||
+          existingByEmail?.name ||
+          normalizedEmail.split('@')[0] ||
+          'User';
+        const nextCommissionRate =
+          existingByTargetId?.commissionRate ??
+          existingByEmail?.commissionRate ??
+          (profile.role === 'owner' ? 0 : 15);
+
+        if (existingByTargetId) {
+          authService.update(existingByTargetId.id, {
+            email: normalizedEmail,
+            name: nextName,
+            role: profile.role,
+            isActive: true,
+            commissionRate: nextCommissionRate,
+          });
+        } else {
+          authService.create({
+            id: targetId,
+            email: normalizedEmail,
+            name: nextName,
+            role: profile.role,
+            isActive: true,
+            commissionRate: nextCommissionRate,
+          });
+        }
+
+        if (existingByEmail && existingByEmail.id !== targetId) {
+          if (profile.hasAppUserId) {
+            authService.remove(existingByEmail.id);
+          } else {
+            void AuthService.ensureUserProfile({
+              uid: profile.uid,
+              email: normalizedEmail,
+              displayName: nextName,
+              role: profile.role,
+              appUserId: existingByEmail.id,
+            });
+          }
+        }
+      });
+    } catch (error) {
+      console.error('[AuthContext] Failed to synchronize users from Firestore profiles.', error);
+    }
+  }, []);
 
   useEffect(() => {
     seedAppData();
@@ -76,20 +179,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const mapped = upsertUserFromFirebase({
+        id: firebaseUser.id,
+        uid: firebaseUser.uid,
         email: firebaseUser.email,
         displayName: firebaseUser.displayName,
         role: firebaseUser.role,
       });
       setUser(mapped);
       setIsLoading(false);
+      void syncUsersFromFirebaseProfiles().then(() => {
+        refreshCurrentUserFromCache();
+      });
     });
 
     return unsubscribe;
-  }, [upsertUserFromFirebase]);
+  }, [refreshCurrentUserFromCache, syncUsersFromFirebaseProfiles, upsertUserFromFirebase]);
 
   const login = async (email: string, password: string): Promise<void> => {
     const firebaseUser = await AuthService.loginWithPassword(email, password);
     const mapped = upsertUserFromFirebase({
+      id: firebaseUser.id,
+      uid: firebaseUser.uid,
       email: firebaseUser.email,
       displayName: firebaseUser.displayName,
       role: firebaseUser.role,
@@ -98,11 +208,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Authenticated user has no valid email.');
     }
     setUser(mapped);
+    await syncUsersFromFirebaseProfiles();
+    refreshCurrentUserFromCache();
   };
 
   const signup = async (email: string, password: string, displayName?: string): Promise<void> => {
     const firebaseUser = await AuthService.signupWithPassword(email, password, displayName);
     const mapped = upsertUserFromFirebase({
+      id: firebaseUser.id,
+      uid: firebaseUser.uid,
       email: firebaseUser.email,
       displayName: firebaseUser.displayName,
       role: firebaseUser.role,
@@ -111,6 +225,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Registered user has no valid email.');
     }
     setUser(mapped);
+    await syncUsersFromFirebaseProfiles();
+    refreshCurrentUserFromCache();
   };
 
   const logout = () => {

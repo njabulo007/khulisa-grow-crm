@@ -6,7 +6,6 @@ import {
   doc,
   getDocs,
   onSnapshot,
-  orderBy,
   query,
   serverTimestamp,
   updateDoc,
@@ -42,6 +41,9 @@ const toDate = (value: unknown): Date => {
   return new Date();
 };
 
+const sortByCreatedAtDesc = (items: Notification[]): Notification[] =>
+  [...items].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
 class FirestoreNotificationService implements NotificationService {
   private readonly collectionRef = collection(db, 'notifications');
 
@@ -67,11 +69,11 @@ class FirestoreNotificationService implements NotificationService {
       const notificationsQuery = query(
         this.collectionRef,
         where('userId', '==', userId),
-        orderBy('createdAt', 'desc'),
       );
       const snapshot = await getDocs(notificationsQuery);
-      return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
-    } catch {
+      return sortByCreatedAtDesc(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot)));
+    } catch (error) {
+      console.error('[NotificationService] Failed to fetch notifications for user.', error);
       return [];
     }
   }
@@ -121,14 +123,18 @@ class FirestoreNotificationService implements NotificationService {
     const notificationsQuery = query(
       this.collectionRef,
       where('userId', '==', userId),
-      orderBy('createdAt', 'desc'),
     );
 
-    return onSnapshot(notificationsQuery, (snapshot) => {
-      callback(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot)));
-    }, () => {
-      callback([]);
-    });
+    return onSnapshot(
+      notificationsQuery,
+      (snapshot) => {
+        callback(sortByCreatedAtDesc(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot))));
+      },
+      (error) => {
+        console.error('[NotificationService] Failed to subscribe to user notifications.', error);
+        callback([]);
+      }
+    );
   }
 }
 

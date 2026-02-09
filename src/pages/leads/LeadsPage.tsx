@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -43,9 +43,13 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DEFAULT_PACKAGE_ID, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLeads } from '@/hooks/useLeads';
-import { activityService, authService, clientService, generateId, projectService } from '@/services';
+import { activityService, AuthService, authService, clientService, generateId, projectService } from '@/services';
 import { Lead, LeadStage, LeadSource, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
+
+const AGENT_SELECT_LOADING_VALUE = '__agents_loading__';
+const AGENT_SELECT_EMPTY_VALUE = '__agents_empty__';
+const AGENT_SELECT_CACHED_VALUE = '__agents_cached__';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -89,7 +93,96 @@ export function LeadsPage() {
     industry: '',
   });
 
-  const agents = authService.getAll().filter((u) => u.role === 'agent');
+  const [agents, setAgents] = useState<Array<{ id: string; name: string; email: string }>>(() =>
+    authService
+      .getAll()
+      .filter((candidate) => candidate.role === 'agent' && candidate.isActive !== false)
+      .map((candidate) => ({
+        id: candidate.id,
+        name: candidate.name,
+        email: candidate.email.trim().toLowerCase(),
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  );
+  const [isAgentsLoading, setIsAgentsLoading] = useState(true);
+  const [agentsLoadError, setAgentsLoadError] = useState<string | null>(null);
+  const hasShownAgentsLoadError = useRef(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadAgents = async () => {
+      const localAgents = authService
+        .getAll()
+        .filter((candidate) => candidate.role === 'agent' && candidate.isActive !== false)
+        .map((candidate) => ({
+          id: candidate.id,
+          name: candidate.name,
+          email: candidate.email.trim().toLowerCase(),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      if (isMounted) {
+        setIsAgentsLoading(true);
+        setAgentsLoadError(null);
+      }
+
+      try {
+        const localByEmail = new Map(localAgents.map((candidate) => [candidate.email, candidate]));
+        const profiles = await AuthService.listUserProfiles();
+        const profileAgents = profiles
+          .filter((profile) => profile.role === 'agent')
+          .map((profile) => {
+            const normalizedEmail = profile.email.trim().toLowerCase();
+            const localMatch = localByEmail.get(normalizedEmail);
+            const resolvedName =
+              profile.displayName ||
+              localMatch?.name ||
+              normalizedEmail.split('@')[0] ||
+              'Agent';
+            return {
+              id: profile.id,
+              name: resolvedName,
+              email: normalizedEmail,
+            };
+          });
+
+        const mergedById = new Map<string, { id: string; name: string; email: string }>();
+        [...localAgents, ...profileAgents].forEach((candidate) => {
+          mergedById.set(candidate.id, candidate);
+        });
+
+        if (!isMounted) return;
+        setAgents(
+          Array.from(mergedById.values()).sort((a, b) => a.name.localeCompare(b.name))
+        );
+      } catch (error) {
+        console.error('[LeadsPage] Failed to refresh agent profiles; falling back to cached agents.', error);
+        if (!isMounted) return;
+        setAgents(localAgents);
+        setAgentsLoadError('Could not refresh agent list. Showing cached agents.');
+        if (!hasShownAgentsLoadError.current) {
+          toast.error('Could not refresh agent list. Showing cached agents.');
+          hasShownAgentsLoadError.current = true;
+        }
+      } finally {
+        if (!isMounted) return;
+        setIsAgentsLoading(false);
+      }
+    };
+
+    void loadAgents();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [showAddDialog, user?.id]);
+
+  const agentsById = useMemo(() => {
+    const next = new Map<string, { id: string; name: string; email: string }>();
+    agents.forEach((candidate) => next.set(candidate.id, candidate));
+    return next;
+  }, [agents]);
 
   // Filter leads based on role
   const allLeads = useMemo(() => {
@@ -391,7 +484,7 @@ export function LeadsPage() {
               </div>
               <div className="space-y-2 min-h-[200px]">
                 {leadsByStage[stageKey as LeadStage].map((lead) => {
-                  const agent = authService.getById(lead.assignedTo);
+                  const agent = authService.getById(lead.assignedTo) || agentsById.get(lead.assignedTo);
                   const isOverdue = lead.followUpDate && new Date(lead.followUpDate) < new Date();
                   
                   return (
@@ -607,11 +700,35 @@ export function LeadsPage() {
                 <Select
                   value={formData.assignedTo}
                   onValueChange={(value) => setFormData({ ...formData, assignedTo: value })}
+                  disabled={isAgentsLoading && agents.length === 0}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Select agent" />
+                    <SelectValue
+                      placeholder={
+                        isAgentsLoading
+                          ? 'Loading agents...'
+                          : agents.length === 0
+                            ? 'No agents found'
+                            : 'Select agent'
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
+                    {isAgentsLoading && agents.length === 0 && (
+                      <SelectItem value={AGENT_SELECT_LOADING_VALUE} disabled>
+                        Loading agents...
+                      </SelectItem>
+                    )}
+                    {!isAgentsLoading && agents.length === 0 && (
+                      <SelectItem value={AGENT_SELECT_EMPTY_VALUE} disabled>
+                        No agents found
+                      </SelectItem>
+                    )}
+                    {agentsLoadError && agents.length > 0 && (
+                      <SelectItem value={AGENT_SELECT_CACHED_VALUE} disabled>
+                        Using cached agents
+                      </SelectItem>
+                    )}
                     {agents.map((agent) => (
                       <SelectItem key={agent.id} value={agent.id}>{agent.name}</SelectItem>
                     ))}

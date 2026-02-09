@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Notification sound policy: wav is canonical; do not re-introduce placeholder mp3.
+public/sounds/notification.mp3

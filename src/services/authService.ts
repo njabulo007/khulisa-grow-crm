@@ -25,9 +25,19 @@ export type Role = 'owner' | 'agent';
 
 export interface AppUser {
   id: string;
+  uid: string;
   email: string | null;
   displayName: string | null;
   role: Role;
+}
+
+export interface AppUserProfile {
+  id: string;
+  uid: string;
+  email: string;
+  displayName: string | null;
+  role: Role;
+  hasAppUserId: boolean;
 }
 
 const OWNER_EMAILS = new Set(['njabulo@khulisamedia.co.za', 'njabulod007@gmail.com']);
@@ -41,6 +51,12 @@ function pickRole(data: Record<string, unknown>): Role | null {
   const rawRole = data.role || data.userRole || data.Role || data.user_role;
   if (rawRole === 'owner' || rawRole === 'agent') return rawRole;
   return null;
+}
+
+function pickAppUserId(data: Record<string, unknown>): string | null {
+  if (typeof data.appUserId !== 'string') return null;
+  const normalized = data.appUserId.trim();
+  return normalized || null;
 }
 
 function getFirebaseAuthErrorMessage(error: unknown): string {
@@ -74,6 +90,7 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
 
   let role: Role = getFallbackRoleForEmail(firebaseUser.email);
   let displayName = firebaseUser.displayName;
+  let appUserId: string | null = null;
 
   try {
     // Read extra data (role) from Firestore: users/{uid}
@@ -84,6 +101,10 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
       const candidateRole = pickRole(data);
       if (candidateRole) {
         role = candidateRole;
+      }
+      const candidateAppUserId = pickAppUserId(data);
+      if (candidateAppUserId) {
+        appUserId = candidateAppUserId;
       }
       if (!displayName && typeof data.displayName === 'string') {
         displayName = data.displayName;
@@ -103,6 +124,10 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
         if (candidateRole) {
           role = candidateRole;
         }
+        const candidateAppUserId = pickAppUserId(data);
+        if (candidateAppUserId) {
+          appUserId = candidateAppUserId;
+        }
         if (!displayName && typeof data.displayName === 'string') {
           displayName = data.displayName;
         }
@@ -118,7 +143,8 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
   role = role || getFallbackRoleForEmail(firebaseUser.email);
 
   return {
-    id: firebaseUser.uid,
+    id: appUserId || firebaseUser.uid,
+    uid: firebaseUser.uid,
     email: firebaseUser.email,
     displayName,
     role,
@@ -141,6 +167,7 @@ export const AuthService = {
           doc(db, 'users', cred.user.uid),
           {
             uid: cred.user.uid,
+            appUserId: cred.user.uid,
             email: normalizedEmail,
             displayName: trimmedDisplayName || cred.user.displayName || null,
             role,
@@ -176,6 +203,76 @@ export const AuthService = {
     await signOut(auth);
   },
 
+  async ensureUserProfile(payload: {
+    uid: string;
+    email: string;
+    displayName: string | null;
+    role: Role;
+    appUserId: string;
+  }): Promise<void> {
+    const normalizedEmail = payload.email.trim().toLowerCase();
+    const normalizedAppUserId = payload.appUserId.trim();
+    if (!payload.uid.trim() || !normalizedEmail || !normalizedAppUserId) return;
+
+    try {
+      await setDoc(
+        doc(db, 'users', payload.uid.trim()),
+        {
+          uid: payload.uid.trim(),
+          appUserId: normalizedAppUserId,
+          email: normalizedEmail,
+          displayName: payload.displayName || null,
+          name: payload.displayName || null,
+          role: payload.role,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch {
+      // Best-effort synchronization; local session should continue even if this write fails.
+    }
+  },
+
+  async listUserProfiles(): Promise<AppUserProfile[]> {
+    try {
+      const snapshot = await getDocs(collection(db, 'users'));
+      const profiles: AppUserProfile[] = [];
+
+      snapshot.docs.forEach((docSnapshot) => {
+        const data = docSnapshot.data() as Record<string, unknown>;
+        const normalizedUid =
+          typeof data.uid === 'string' && data.uid.trim() ? data.uid.trim() : docSnapshot.id;
+        const normalizedEmail =
+          typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+        if (!normalizedUid || !normalizedEmail) return;
+
+        const role = pickRole(data) || getFallbackRoleForEmail(normalizedEmail);
+        const displayNameRaw =
+          typeof data.displayName === 'string'
+            ? data.displayName
+            : typeof data.name === 'string'
+              ? data.name
+              : '';
+        const normalizedDisplayName = displayNameRaw.trim() || null;
+        const appUserId = pickAppUserId(data);
+
+        profiles.push({
+          id: appUserId || normalizedUid,
+          uid: normalizedUid,
+          email: normalizedEmail,
+          displayName: normalizedDisplayName,
+          role,
+          hasAppUserId: Boolean(appUserId),
+        });
+      });
+
+      return profiles;
+    } catch (error) {
+      console.error('[AuthService] Failed to load user profiles from Firestore users collection.', error);
+      throw new Error('Failed to load user profiles from Firestore.');
+    }
+  },
+
   subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       const user = await mapUser(firebaseUser);
@@ -189,7 +286,7 @@ export interface AuthService {
   // User profile source (local now, Firestore profile docs later)
   getAll: () => User[];
   getById: (id: string) => User | undefined;
-  create: (user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>) => User;
+  create: (user: Omit<User, 'createdAt' | 'updatedAt'> & { id?: string }) => User;
   update: (id: string, updates: Partial<User>) => User | null;
   remove: (id: string) => boolean;
   // Session helpers used by AuthContext
@@ -239,10 +336,13 @@ class LocalAuthService implements AuthService {
     return this.users.getById(id);
   }
 
-  create(user: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): User {
+  create(user: Omit<User, 'createdAt' | 'updatedAt'> & { id?: string }): User {
+    const normalizedId =
+      typeof user.id === 'string' && user.id.trim().length > 0 ? user.id.trim() : generateId();
+    const { id: _ignored, ...payload } = user;
     return this.users.create({
-      ...user,
-      id: generateId(),
+      ...payload,
+      id: normalizedId,
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
     });
