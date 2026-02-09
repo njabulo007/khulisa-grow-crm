@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Wallet,
@@ -84,7 +84,7 @@ export function AgentDashboard() {
         const totalClosedLeads = wonLeads.length + lostLeads.length;
         const conversionRate = totalClosedLeads > 0 ? Math.round((wonLeads.length / totalClosedLeads) * 100) : 0;
         const activeProjects = myProjects.filter(
-          (project) => project.status === 'in-progress' || project.status === 'waiting-client'
+          (project) => project.status !== 'completed' && project.status !== 'delivered'
         );
 
         const pendingCommissions = myCommissions.filter((commission) => commission.status === 'pending');
@@ -342,9 +342,9 @@ export function AgentDashboard() {
               <div className="space-y-3">
                 {stats.activeProjects.slice(0, 4).map((project) => {
                   const clientName = clientsById[project.clientId];
-                  const completedMilestones = project.milestones.filter(m => m.completed).length;
-                  const progress = Math.round((completedMilestones / project.milestones.length) * 100);
-                  const isOverdue = new Date(project.dueDate) < new Date() && project.status !== 'delivered';
+                  const completedMilestones = project.milestones.filter((m) => (m.isCompleted ?? m.completed) === true).length;
+                  const progress = project.milestones.length > 0 ? Math.round((completedMilestones / project.milestones.length) * 100) : 0;
+                  const isOverdue = new Date(project.dueDate) < new Date() && project.status !== 'completed' && project.status !== 'delivered';
                   
                   return (
                     <div
@@ -379,3 +379,4 @@ export function AgentDashboard() {
     </div>
   );
 }
+

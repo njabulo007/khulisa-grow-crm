@@ -1,8 +1,7 @@
-import { Payment } from '@/types/models';
-import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
+﻿import { Payment } from '@/types/models';
+import { syncCommissionsFromInvoices } from './commissionRules';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
 import { invoiceService } from './invoiceService';
-import { projectService } from './projectService';
 
 export interface PaymentService {
   getAll: () => Promise<Payment[]>;
@@ -16,7 +15,6 @@ export interface PaymentService {
 }
 
 class FirestorePaymentService implements PaymentService {
-  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
   private readonly collection = new FirestoreCollection<Payment>('payments');
 
   async getAll(): Promise<Payment[]> {
@@ -43,33 +41,37 @@ class FirestorePaymentService implements PaymentService {
       createdAt: getTimestamp(),
     };
     const persisted = await this.collection.create(created);
-
-    // Keep invoice payment fields in sync so paid transitions can trigger downstream rules/notifications.
-    const invoice = await invoiceService.getById(payment.invoiceId);
-    if (invoice) {
-      const [paymentsForInvoice, allProjects] = await Promise.all([
-        this.getByInvoice(payment.invoiceId),
-        projectService.getAll(),
-      ]);
-      const amountPaid = paymentsForInvoice.reduce((sum, entry) => sum + entry.amount, 0);
-      const totals = getInvoiceEffectiveTotals(invoice, buildProjectLookup(allProjects));
-      const isFullyPaid = amountPaid >= totals.total;
-      const nextStatus = isFullyPaid ? 'paid' : invoice.status;
-      await invoiceService.update(invoice.id, {
-        amountPaid,
-        status: nextStatus,
-      });
-    }
-
+    await invoiceService.refreshPaymentSummary(payment.invoiceId);
+    await syncCommissionsFromInvoices();
     return persisted;
   }
 
   async update(id: string, updates: Partial<Payment>): Promise<Payment | null> {
-    return this.collection.update(id, updates);
+    const current = await this.getById(id);
+    if (!current) return null;
+
+    const updated = await this.collection.update(id, updates);
+    if (!updated) return null;
+
+    await invoiceService.refreshPaymentSummary(current.invoiceId);
+    if (updated.invoiceId && updated.invoiceId !== current.invoiceId) {
+      await invoiceService.refreshPaymentSummary(updated.invoiceId);
+    }
+    await syncCommissionsFromInvoices();
+
+    return updated;
   }
 
   async remove(id: string): Promise<boolean> {
-    return this.collection.remove(id);
+    const current = await this.getById(id);
+    if (!current) return false;
+
+    const removed = await this.collection.remove(id);
+    if (removed) {
+      await invoiceService.refreshPaymentSummary(current.invoiceId);
+      await syncCommissionsFromInvoices();
+    }
+    return removed;
   }
 
   async seedIfMissing(seedData: Payment[]): Promise<void> {
@@ -78,3 +80,4 @@ class FirestorePaymentService implements PaymentService {
 }
 
 export const paymentService: PaymentService = new FirestorePaymentService();
+

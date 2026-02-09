@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -121,7 +121,7 @@ export function ClientsPage() {
     return allClients.reduce((acc, client) => {
       const projects = allProjects.filter((project) => project.clientId === client.id);
       const invoices = allInvoices.filter((invoice) => invoice.clientId === client.id);
-      const activeProjects = projects.filter((project) => project.status === 'in-progress' || project.status === 'waiting-client');
+      const activeProjects = projects.filter((project) => project.status !== 'completed' && project.status !== 'delivered');
       const paidInvoices = invoices.filter((invoice) => invoice.status === 'paid');
       const totalSpent = paidInvoices.reduce((sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total, 0);
 
@@ -505,3 +505,4 @@ export function ClientsPage() {
     </div>
   );
 }
+

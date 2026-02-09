@@ -195,10 +195,6 @@ export function InvoicePrintView({
                   <dt className="text-slate-600">Subtotal</dt>
                   <dd className="font-medium text-slate-900">{formatCurrency(totals.subtotal)}</dd>
                 </div>
-                <div className="flex items-center justify-between gap-3">
-                  <dt className="text-slate-600">Tax / VAT</dt>
-                  <dd className="font-medium text-slate-900">{formatCurrency(totals.tax)}</dd>
-                </div>
                 <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-2">
                   <dt className="font-semibold text-slate-800">Total</dt>
                   <dd className="font-semibold text-slate-900">{formatCurrency(totals.total)}</dd>

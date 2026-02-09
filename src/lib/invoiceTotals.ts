@@ -6,11 +6,10 @@ type ProjectLookup = Map<string, Project>;
 const roundCurrency = (value: number): number =>
   Math.round((value + Number.EPSILON) * 100) / 100;
 
-const getInvoiceTaxRate = (invoice: Invoice): number => {
-  if (invoice.subtotal > 0) return invoice.tax / invoice.subtotal;
-  const itemSubtotal = invoice.items.reduce((sum, item) => sum + item.total, 0);
-  if (itemSubtotal > 0) return invoice.tax / itemSubtotal;
-  return 0;
+const getInvoiceItemsSubtotal = (invoice: Invoice): number => {
+  const itemsSubtotal = invoice.items.reduce((sum, item) => sum + item.total, 0);
+  if (itemsSubtotal > 0) return roundCurrency(itemsSubtotal);
+  return roundCurrency(invoice.subtotal);
 };
 
 const getPackageSubtotal = (invoice: Invoice, projectLookup: ProjectLookup): number | null => {
@@ -27,26 +26,22 @@ export const buildProjectLookup = (projects: Project[]): ProjectLookup =>
 export const getInvoiceEffectiveTotals = (
   invoice: Invoice,
   projectLookup: ProjectLookup,
-): { subtotal: number; tax: number; total: number; fromPackagePrice: boolean } => {
+): { subtotal: number; total: number; fromPackagePrice: boolean } => {
   const packageSubtotal = getPackageSubtotal(invoice, projectLookup);
   if (packageSubtotal === null) {
+    const subtotal = getInvoiceItemsSubtotal(invoice);
     return {
-      subtotal: invoice.subtotal,
-      tax: invoice.tax,
-      total: invoice.total,
+      subtotal,
+      total: subtotal,
       fromPackagePrice: false,
     };
   }
 
-  const taxRate = getInvoiceTaxRate(invoice);
   const subtotal = roundCurrency(packageSubtotal);
-  const tax = roundCurrency(subtotal * taxRate);
-  const total = roundCurrency(subtotal + tax);
 
   return {
     subtotal,
-    tax,
-    total,
+    total: subtotal,
     fromPackagePrice: true,
   };
 };

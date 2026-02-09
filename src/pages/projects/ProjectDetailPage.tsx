@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -14,6 +14,7 @@ import {
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -22,13 +23,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
+import {
+  getAutoProjectStatusFromMilestones,
+  normalizeProjectMilestone,
+} from '@/lib/projectMilestones';
 import { authService, clientService, invoiceService, projectService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessProject } from '@/lib/permissions';
-import { Client, Invoice, Project } from '@/types/models';
+import { Client, Invoice, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
 import { toast } from 'sonner';
+
+const OWNER_EDITABLE_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -47,6 +61,8 @@ export function ProjectDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isSavingMilestones, setIsSavingMilestones] = useState(false);
+  const [isSavingStatus, setIsSavingStatus] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -73,6 +89,7 @@ export function ProjectDetailPage() {
       setClient(nextClient || null);
       setInvoices(allInvoices.filter((invoice) => invoice.projectId === nextProject.id));
     };
+
     void loadData();
     return () => {
       isMounted = false;
@@ -104,10 +121,73 @@ export function ProjectDetailPage() {
     );
   }
 
-  const completedMilestones = project.milestones.filter((milestone) => milestone.completed).length;
-  const progress = project.milestones.length > 0 ? Math.round((completedMilestones / project.milestones.length) * 100) : 0;
+  const milestones = project.milestones.map((milestone) => normalizeProjectMilestone(milestone));
+  const completedMilestones = milestones.filter((milestone) => milestone.isCompleted).length;
+  const progress = milestones.length > 0 ? Math.round((completedMilestones / milestones.length) * 100) : 0;
   const totalInvoiced = invoices.reduce((sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total, 0);
   const totalPaid = invoices.reduce((sum, invoice) => sum + invoice.amountPaid, 0);
+
+  const syncProjectState = (nextProject: Project) => {
+    setProject(nextProject);
+    setAllProjects((prev) => prev.map((entry) => (entry.id === nextProject.id ? nextProject : entry)));
+  };
+
+  const handleStatusChange = async (nextStatus: ProjectStatus) => {
+    if (!isOwner) {
+      toast.error('Only owners can change project status.');
+      return;
+    }
+
+    setIsSavingStatus(true);
+    try {
+      const updated = await projectService.update(project.id, { status: nextStatus });
+      if (!updated) {
+        toast.error('Project status could not be updated.');
+        return;
+      }
+      syncProjectState(updated);
+      toast.success('Project status updated.');
+    } finally {
+      setIsSavingStatus(false);
+    }
+  };
+
+  const handleMilestoneToggle = async (milestoneId: string, isCompleted: boolean) => {
+    if (!isOwner) {
+      toast.error('Only owners can update milestones.');
+      return;
+    }
+
+    const nextMilestones = milestones.map((milestone) => {
+      if (milestone.id !== milestoneId) return milestone;
+      return {
+        ...milestone,
+        isCompleted,
+        completed: isCompleted,
+        completedAt: isCompleted ? new Date().toISOString() : undefined,
+      };
+    });
+
+    // Keep status automation intentionally simple:
+    // none completed -> Not Started, some completed -> In Progress, all completed -> Completed.
+    const nextStatus = getAutoProjectStatusFromMilestones(nextMilestones, project.status);
+
+    setIsSavingMilestones(true);
+    try {
+      const updated = await projectService.update(project.id, {
+        milestones: nextMilestones,
+        status: nextStatus,
+      });
+      if (!updated) {
+        toast.error('Milestone update failed.');
+        return;
+      }
+      syncProjectState(updated);
+      toast.success('Milestone updated.');
+    } finally {
+      setIsSavingMilestones(false);
+    }
+  };
 
   const handleDeleteProject = async () => {
     if (!isOwner) {
@@ -203,20 +283,36 @@ export function ProjectDetailPage() {
               <CardTitle>Milestones</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {project.milestones.length === 0 ? (
+              {!isOwner && (
+                <p className="text-xs text-muted-foreground">Only owners can mark milestones as completed.</p>
+              )}
+              {milestones.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No milestones added yet.</p>
               ) : (
-                project.milestones.map((milestone) => (
+                milestones.map((milestone) => (
                   <div key={milestone.id} className="flex items-start gap-3 rounded-lg border p-3">
-                    {milestone.completed ? (
-                      <CheckCircle2 className="mt-0.5 h-4 w-4 text-success" />
-                    ) : (
-                      <Circle className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                    )}
+                    <div className="pt-0.5">
+                      {isOwner ? (
+                        <Checkbox
+                          checked={milestone.isCompleted}
+                          disabled={isSavingMilestones}
+                          onCheckedChange={(checked) => {
+                            void handleMilestoneToggle(milestone.id, checked === true);
+                          }}
+                        />
+                      ) : milestone.isCompleted ? (
+                        <CheckCircle2 className="h-4 w-4 text-success" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground" />
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-medium ${milestone.completed ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {milestone.name}
+                      <p className={`text-sm font-medium ${milestone.isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>
+                        {milestone.title || milestone.name}
                       </p>
+                      {milestone.description && (
+                        <p className="text-xs text-muted-foreground">{milestone.description}</p>
+                      )}
                       {milestone.completedAt && (
                         <p className="text-xs text-muted-foreground">
                           Completed {new Date(milestone.completedAt).toLocaleDateString('en-ZA')}
@@ -248,9 +344,28 @@ export function ProjectDetailPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
+                <p className="text-sm text-muted-foreground">Status</p>
+                {isOwner ? (
+                  <Select value={project.status} onValueChange={(value) => void handleStatusChange(value as ProjectStatus)}>
+                    <SelectTrigger disabled={isSavingStatus}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OWNER_EDITABLE_STATUSES.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {PROJECT_STATUSES[status].label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <StatusBadge status={project.status} type="project" />
+                )}
+              </div>
+              <div>
                 <p className="text-sm text-muted-foreground">Milestones Completed</p>
                 <p className="text-2xl font-bold text-accent">
-                  {completedMilestones}/{project.milestones.length}
+                  {completedMilestones}/{milestones.length}
                 </p>
               </div>
               <div>

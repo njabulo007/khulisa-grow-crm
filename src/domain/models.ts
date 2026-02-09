@@ -170,7 +170,6 @@ export interface Invoice extends DomainMetadata {
   status: InvoiceStatus;
   lineItems: InvoiceLineItem[];
   subtotal: number;
-  tax: number;
   total: number;
   amountPaid: number;
   currency: CurrencyCode;

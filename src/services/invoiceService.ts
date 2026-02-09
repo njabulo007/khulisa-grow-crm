@@ -1,6 +1,8 @@
-import { Invoice } from '@/types/models';
+﻿import { Invoice, Payment } from '@/types/models';
 import { getPackageById, resolvePackageId } from '@/config/packages';
 import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
+import { deriveInvoicePaymentSummary, InvoicePaymentSummary } from '@/lib/invoicePayments';
+import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
 import { clientService } from './clientService';
 import { leadService } from './leadService';
@@ -12,6 +14,8 @@ export interface InvoiceService {
   getById: (id: string) => Promise<Invoice | undefined>;
   getByClient: (clientId: string) => Promise<Invoice[]>;
   getNextNumber: () => Promise<string>;
+  getPaymentSummary: (invoiceId: string) => Promise<InvoicePaymentSummary | null>;
+  refreshPaymentSummary: (invoiceId: string) => Promise<InvoicePaymentSummary | null>;
   create: (invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Invoice>;
   update: (id: string, updates: Partial<Invoice>) => Promise<Invoice | null>;
   remove: (id: string) => Promise<boolean>;
@@ -19,12 +23,11 @@ export interface InvoiceService {
 }
 
 class FirestoreInvoiceService implements InvoiceService {
-  // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
   private readonly collection = new FirestoreCollection<Invoice & { packageType?: string }>('invoices');
+  private readonly paymentsCollection = new FirestoreCollection<Payment>('payments');
 
   private async notifyInvoicePaid(nextInvoice: Invoice, previousStatus: Invoice['status'] | null): Promise<void> {
-    if (nextInvoice.status !== 'paid') return;
-    if (previousStatus === 'paid') return;
+    if (nextInvoice.status !== 'paid' || previousStatus === 'paid') return;
 
     const [projects, leads, clients] = await Promise.all([
       projectService.getAll(),
@@ -35,13 +38,7 @@ class FirestoreInvoiceService implements InvoiceService {
     if (!agentId) return;
 
     const existingNotifications = await notificationService.getForUser(agentId);
-    if (
-      existingNotifications.some(
-        (entry) => entry.type === 'invoice_paid' && entry.invoiceId === nextInvoice.id
-      )
-    ) {
-      return;
-    }
+    if (existingNotifications.some((entry) => entry.type === 'invoice_paid' && entry.invoiceId === nextInvoice.id)) return;
 
     const clientName = clients.find((entry) => entry.id === nextInvoice.clientId)?.businessName || 'client';
     const packageName =
@@ -66,38 +63,78 @@ class FirestoreInvoiceService implements InvoiceService {
     packageIdValue?: string
   ): Promise<{ packageId?: Invoice['packageId']; packageName?: Invoice['packageName']; packagePrice?: number }> {
     const project = projectId ? await projectService.getById(projectId) : undefined;
-    const fromProject = project?.packageId;
-    const rawPackageId = packageIdValue ?? fromProject;
+    const rawPackageId = packageIdValue ?? project?.packageId;
     if (!rawPackageId) return {};
     const packageId = resolvePackageId(rawPackageId);
     const pkg = getPackageById(packageId);
-    return {
-      packageId,
-      packageName: pkg?.name,
-      packagePrice: pkg?.price,
-    };
+    return { packageId, packageName: pkg?.name, packagePrice: pkg?.price };
   }
 
   private async normalizeInvoice(invoice: Invoice & { packageType?: string }): Promise<Invoice> {
-    const packageSnapshot = await this.resolvePackageSnapshot(
-      invoice.projectId,
-      invoice.packageId ?? invoice.packageType
-    );
+    const packageSnapshot = await this.resolvePackageSnapshot(invoice.projectId, invoice.packageId ?? invoice.packageType);
+    return { ...invoice, ...packageSnapshot };
+  }
 
-    return {
-      ...invoice,
-      ...packageSnapshot,
-    };
+  private async getPaymentSummaryForInvoice(
+    invoice: Invoice,
+    projects?: Awaited<ReturnType<typeof projectService.getAll>>,
+    payments?: Payment[],
+  ): Promise<InvoicePaymentSummary> {
+    const [resolvedProjects, resolvedPayments] = await Promise.all([
+      projects ? Promise.resolve(projects) : projectService.getAll(),
+      payments ? Promise.resolve(payments) : this.paymentsCollection.getAll(),
+    ]);
+
+    const totals = getInvoiceEffectiveTotals(invoice, buildProjectLookup(resolvedProjects));
+    const amountPaid = resolvedPayments
+      .filter((payment) => payment.invoiceId === invoice.id)
+      .reduce((sum, payment) => sum + payment.amount, 0);
+
+    return deriveInvoicePaymentSummary(invoice, totals.total, amountPaid, new Date());
+  }
+
+  async getPaymentSummary(invoiceId: string): Promise<InvoicePaymentSummary | null> {
+    const invoice = await this.collection.getById(invoiceId);
+    if (!invoice) return null;
+    const normalized = await this.normalizeInvoice(invoice);
+    return this.getPaymentSummaryForInvoice(normalized);
+  }
+
+  async refreshPaymentSummary(invoiceId: string): Promise<InvoicePaymentSummary | null> {
+    const summary = await this.getPaymentSummary(invoiceId);
+    if (!summary) return null;
+
+    await this.update(invoiceId, {
+      amountPaid: summary.amountPaid,
+      status: summary.status,
+    });
+
+    return summary;
   }
 
   async getAll(): Promise<Invoice[]> {
-    const invoices = await this.collection.getAll();
-    return Promise.all(invoices.map((invoice) => this.normalizeInvoice(invoice)));
+    const [invoices, projects, payments] = await Promise.all([
+      this.collection.getAll(),
+      projectService.getAll(),
+      this.paymentsCollection.getAll(),
+    ]);
+
+    const normalized = await Promise.all(invoices.map((invoice) => this.normalizeInvoice(invoice)));
+    return Promise.all(
+      normalized.map(async (invoice) => {
+        const summary = await this.getPaymentSummaryForInvoice(invoice, projects, payments);
+        return { ...invoice, amountPaid: summary.amountPaid, status: summary.status };
+      })
+    );
   }
 
   async getById(id: string): Promise<Invoice | undefined> {
     const invoice = await this.collection.getById(id);
-    return invoice ? this.normalizeInvoice(invoice) : undefined;
+    if (!invoice) return undefined;
+
+    const normalized = await this.normalizeInvoice(invoice);
+    const summary = await this.getPaymentSummaryForInvoice(normalized);
+    return { ...normalized, amountPaid: summary.amountPaid, status: summary.status };
   }
 
   async getByClient(clientId: string): Promise<Invoice[]> {
@@ -108,8 +145,7 @@ class FirestoreInvoiceService implements InvoiceService {
   async getNextNumber(): Promise<string> {
     const year = new Date().getFullYear();
     const invoices = await this.collection.getAll();
-    const count = invoices
-      .filter((invoice) => invoice.invoiceNumber.startsWith(`KM-${year}`)).length + 1;
+    const count = invoices.filter((invoice) => invoice.invoiceNumber.startsWith(`KM-${year}`)).length + 1;
     return `KM-${year}-${count.toString().padStart(4, '0')}`;
   }
 
@@ -122,9 +158,12 @@ class FirestoreInvoiceService implements InvoiceService {
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
     });
+
     const normalized = await this.normalizeInvoice(created);
-    await this.notifyInvoicePaid(normalized, null);
-    return normalized;
+    const summary = await this.getPaymentSummaryForInvoice(normalized);
+    const withSummary = { ...normalized, amountPaid: summary.amountPaid, status: summary.status };
+    await this.notifyInvoicePaid(withSummary, null);
+    return withSummary;
   }
 
   async update(id: string, updates: Partial<Invoice>): Promise<Invoice | null> {
@@ -141,12 +180,13 @@ class FirestoreInvoiceService implements InvoiceService {
       ...packageSnapshot,
       updatedAt: getTimestamp(),
     });
-
     if (!updated) return null;
 
     const normalized = await this.normalizeInvoice(updated);
-    await this.notifyInvoicePaid(normalized, previousStatus);
-    return normalized;
+    const summary = await this.getPaymentSummaryForInvoice(normalized);
+    const withSummary = { ...normalized, amountPaid: summary.amountPaid, status: summary.status };
+    await this.notifyInvoicePaid(withSummary, previousStatus);
+    return withSummary;
   }
 
   async remove(id: string): Promise<boolean> {

@@ -30,6 +30,7 @@ export function useNotifications(): UseNotificationsResult {
   const hasHydratedRef = useRef(false);
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
   const audioContextRef = useRef<AudioContext | null>(null);
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
   const audioUnlockedRef = useRef(false);
 
   const playFallbackTone = useCallback(() => {
@@ -60,13 +61,27 @@ export function useNotifications(): UseNotificationsResult {
     oscillator.stop(ctx.currentTime + 0.24);
   }, []);
 
+  const getNotificationAudio = useCallback(() => {
+    if (typeof window === 'undefined') return null;
+    if (!notificationAudioRef.current) {
+      const audio = new Audio('/sounds/notification.wav');
+      audio.preload = 'auto';
+      audio.volume = 1;
+      notificationAudioRef.current = audio;
+    }
+    return notificationAudioRef.current;
+  }, []);
+
   const playNotificationSound = useCallback(() => {
-    const audio = new Audio('/sounds/notification.wav');
+    const audio = getNotificationAudio();
+    if (!audio) return;
+    audio.currentTime = 0;
+    audio.muted = false;
     audio.volume = 1;
     void audio.play().catch(() => {
       playFallbackTone();
     });
-  }, [playFallbackTone]);
+  }, [getNotificationAudio, playFallbackTone]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -74,7 +89,26 @@ export function useNotifications(): UseNotificationsResult {
     const unlockAudio = () => {
       if (audioUnlockedRef.current) return;
       audioUnlockedRef.current = true;
-      playFallbackTone();
+
+      const audio = getNotificationAudio();
+      if (audio) {
+        audio.muted = true;
+        audio.volume = 0;
+        audio.currentTime = 0;
+        void audio
+          .play()
+          .then(() => {
+            audio.pause();
+            audio.currentTime = 0;
+            audio.muted = false;
+            audio.volume = 1;
+          })
+          .catch(() => undefined);
+      }
+
+      if (audioContextRef.current?.state === 'suspended') {
+        void audioContextRef.current.resume().catch(() => undefined);
+      }
     };
 
     window.addEventListener('pointerdown', unlockAudio, { once: true });
@@ -86,7 +120,7 @@ export function useNotifications(): UseNotificationsResult {
       window.removeEventListener('keydown', unlockAudio);
       window.removeEventListener('touchstart', unlockAudio);
     };
-  }, [playFallbackTone]);
+  }, [getNotificationAudio]);
 
   useEffect(() => {
     const updatePermission = () => {

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { PageHeader, EmptyState, StatusBadge } from '@/components/common';
@@ -34,6 +34,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { authService, clientService, invoiceService, leadService, projectService } from '@/services';
 import { Client, Invoice, Lead, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
 import { getAgentLinkedClientIds } from '@/lib/permissions';
+import { createProjectMilestonesForPackage } from '@/lib/projectMilestones';
 import { toast } from 'sonner';
 
 export function ProjectsPage() {
@@ -157,7 +158,7 @@ export function ProjectsPage() {
       clientId: formData.clientId,
       packageId: formData.packageId,
       status: formData.status,
-      milestones: [],
+      milestones: createProjectMilestonesForPackage(formData.packageId),
       dueDate: formData.dueDate,
       startDate: formData.startDate,
       assignedTo,
@@ -485,3 +486,4 @@ export function ProjectsPage() {
     </div>
   );
 }
+

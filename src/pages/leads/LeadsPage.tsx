@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -43,7 +43,8 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DEFAULT_PACKAGE_ID, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLeads } from '@/hooks/useLeads';
-import { activityService, AuthService, authService, clientService, generateId, projectService } from '@/services';
+import { createProjectMilestonesForPackage } from '@/lib/projectMilestones';
+import { activityService, AuthService, authService, clientService, projectService } from '@/services';
 import { Lead, LeadStage, LeadSource, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 
@@ -166,8 +167,9 @@ export function LeadsPage() {
           hasShownAgentsLoadError.current = true;
         }
       } finally {
-        if (!isMounted) return;
-        setIsAgentsLoading(false);
+        if (isMounted) {
+          setIsAgentsLoading(false);
+        }
       }
     };
 
@@ -332,11 +334,8 @@ export function LeadsPage() {
         clientId: client.id,
         packageId: convertData.packageId,
         status: 'not-started',
-        milestones: [
-          { id: generateId(), name: 'Kickoff meeting', completed: false },
-          { id: generateId(), name: 'Requirements gathering', completed: false },
-          { id: generateId(), name: 'Delivery', completed: false },
-        ],
+        milestones: createProjectMilestonesForPackage(convertData.packageId),
+
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         startDate: new Date().toISOString(),
         assignedTo: selectedLead.assignedTo,
@@ -858,3 +857,4 @@ export function LeadsPage() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -55,11 +55,10 @@ export function ClientDetailPage() {
   useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
-      const [clients, leads, projects, allInvoices] = await Promise.all([
+      const [clients, leads, projects] = await Promise.all([
         clientService.getAll(),
         leadService.getAll(),
         projectService.getAll(),
-        invoiceService.getAll(),
       ]);
       if (!isMounted) return;
       setAllClients(clients);
@@ -75,10 +74,10 @@ export function ClientDetailPage() {
         return;
       }
 
-      const visibleInvoices = allInvoices.filter((invoice) => invoice.clientId === nextClient.id);
-      setInvoices(visibleInvoices);
+      const clientInvoices = await invoiceService.getByClient(nextClient.id);
+      setInvoices(clientInvoices);
       const paymentsEntries = await Promise.all(
-        visibleInvoices.map(async (invoice) => [invoice.id, await paymentService.getByInvoice(invoice.id)] as const)
+        clientInvoices.map(async (invoice) => [invoice.id, await paymentService.getByInvoiceId(invoice.id)] as const)
       );
       if (!isMounted) return;
       setPaymentsByInvoice(
@@ -534,3 +533,5 @@ export function ClientDetailPage() {
     </div>
   );
 }
+
+

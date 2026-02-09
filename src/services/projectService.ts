@@ -1,4 +1,9 @@
-import { getPackageById, resolvePackageId } from '@/config/packages';
+﻿import { getPackageById, resolvePackageId } from '@/config/packages';
+import {
+  getAutoProjectStatusFromMilestones,
+  normalizeProjectMilestones,
+  normalizeProjectStatus,
+} from '@/lib/projectMilestones';
 import { Project } from '@/types/models';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
 
@@ -20,11 +25,15 @@ class FirestoreProjectService implements ProjectService {
   private normalizeProject(project: Project & { packageType?: string }): Project {
     const packageId = resolvePackageId(project.packageId ?? project.packageType);
     const pkg = getPackageById(packageId);
+    const milestones = normalizeProjectMilestones(project.milestones, packageId);
+
     return {
       ...project,
       packageId,
       packageName: pkg?.name,
       packagePrice: pkg?.price,
+      status: normalizeProjectStatus(project.status),
+      milestones,
     };
   }
 
@@ -51,11 +60,16 @@ class FirestoreProjectService implements ProjectService {
   async create(project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> {
     const packageId = resolvePackageId(project.packageId);
     const pkg = getPackageById(packageId);
+    const milestones = normalizeProjectMilestones(project.milestones, packageId);
+    const status = normalizeProjectStatus(project.status);
+
     const created = await this.collection.create({
       ...project,
       packageId,
       packageName: pkg?.name,
       packagePrice: pkg?.price,
+      status,
+      milestones,
       id: generateId(),
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
@@ -64,16 +78,35 @@ class FirestoreProjectService implements ProjectService {
   }
 
   async update(id: string, updates: Partial<Project>): Promise<Project | null> {
+    const current = await this.getById(id);
+    if (!current) return null;
+
+    const nextPackageId = updates.packageId ? resolvePackageId(updates.packageId) : current.packageId;
     const normalizedUpdates: Partial<Project> = {
       ...updates,
       updatedAt: getTimestamp(),
     };
+
     if (updates.packageId) {
-      const nextPackageId = resolvePackageId(updates.packageId);
       const pkg = getPackageById(nextPackageId);
       normalizedUpdates.packageId = nextPackageId;
       normalizedUpdates.packageName = pkg?.name;
       normalizedUpdates.packagePrice = pkg?.price;
+    }
+
+    if (updates.status) {
+      normalizedUpdates.status = normalizeProjectStatus(updates.status);
+    }
+
+    if (updates.milestones) {
+      const normalizedMilestones = normalizeProjectMilestones(updates.milestones, nextPackageId);
+      normalizedUpdates.milestones = normalizedMilestones;
+      if (!updates.status) {
+        normalizedUpdates.status = getAutoProjectStatusFromMilestones(
+          normalizedMilestones,
+          normalizeProjectStatus(current.status),
+        );
+      }
     }
 
     const updated = await this.collection.update(id, normalizedUpdates);

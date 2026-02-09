@@ -1,4 +1,4 @@
-// Khulisa CRM - Data Models
+﻿// Khulisa CRM - Data Models
 // Designed for easy Firebase/Firestore migration
 import type { PackageId, PackageName } from '@/config/packages';
 
@@ -54,13 +54,17 @@ export interface Client {
   createdBy: string;
 }
 
-export type ProjectStatus = 'not-started' | 'in-progress' | 'waiting-client' | 'delivered' | 'on-hold';
+export type ProjectStatus = 'not-started' | 'in-progress' | 'completed' | 'on-hold' | 'waiting-client' | 'delivered';
 
 export interface ProjectMilestone {
   id: string;
-  name: string;
-  completed: boolean;
+  title?: string;
+  description?: string;
+  isCompleted?: boolean;
   completedAt?: string;
+  // Legacy fields retained for backwards compatibility while existing project docs normalize.
+  name?: string;
+  completed?: boolean;
 }
 
 export interface Project {
@@ -82,7 +86,7 @@ export interface Project {
   createdBy: string;
 }
 
-export type InvoiceStatus = 'draft' | 'sent' | 'overdue' | 'paid';
+export type InvoiceStatus = 'draft' | 'sent' | 'partially-paid' | 'overdue' | 'paid';
 
 export interface InvoiceItem {
   id: string;
@@ -102,7 +106,7 @@ export interface Invoice {
   packagePrice?: number;
   items: InvoiceItem[];
   subtotal: number;
-  tax: number;
+  tax?: number; // Legacy Firestore field; ignored in invoice totals.
   total: number;
   amountPaid: number;
   status: InvoiceStatus;
@@ -180,14 +184,18 @@ export const LEAD_SOURCES: Record<LeadSource, string> = {
 export const PROJECT_STATUSES: Record<ProjectStatus, { label: string; color: string }> = {
   'not-started': { label: 'Not Started', color: 'muted' },
   'in-progress': { label: 'In Progress', color: 'info' },
-  'waiting-client': { label: 'Waiting on Client', color: 'warning' },
-  delivered: { label: 'Delivered', color: 'success' },
+  completed: { label: 'Completed', color: 'success' },
   'on-hold': { label: 'On Hold', color: 'destructive' },
+  'waiting-client': { label: 'In Progress', color: 'info' },
+  delivered: { label: 'Completed', color: 'success' },
 };
 
 export const INVOICE_STATUSES: Record<InvoiceStatus, { label: string; color: string }> = {
   draft: { label: 'Draft', color: 'muted' },
   sent: { label: 'Sent', color: 'info' },
+  'partially-paid': { label: 'Partially Paid', color: 'warning' },
   overdue: { label: 'Overdue', color: 'destructive' },
   paid: { label: 'Paid', color: 'success' },
 };
+
+

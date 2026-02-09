@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Building2, Calendar, CreditCard, FolderKanban, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar, FolderKanban, Printer, Trash2 } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -36,6 +36,8 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
+const toIsoFromDateInput = (dateInput: string): string => new Date(`${dateInput}T12:00:00Z`).toISOString();
+
 export function InvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -47,60 +49,55 @@ export function InvoiceDetailPage() {
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [paymentSummary, setPaymentSummary] = useState<Awaited<ReturnType<typeof invoiceService.getPaymentSummary>>>(null);
 
   useEffect(() => {
     void syncCommissionsFromInvoices();
   }, []);
 
-  useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
-      const [loadedInvoice, projects, leads, clients] = await Promise.all([
-        invoiceService.getById(id || ''),
-        projectService.getAll(),
-        leadService.getAll(),
-        clientService.getAll(),
-      ]);
-      if (!isMounted) return;
-      setInvoice(loadedInvoice);
-      setAllProjects(projects);
-      setAllLeads(leads);
-      setAllClients(clients);
+  const loadData = useCallback(async () => {
+    const [loadedInvoice, projects, leads, clients] = await Promise.all([
+      invoiceService.getById(id || ''),
+      projectService.getAll(),
+      leadService.getAll(),
+      clientService.getAll(),
+    ]);
 
-      if (!loadedInvoice) {
-        setClient(null);
-        setPayments([]);
-        return;
-      }
+    setInvoice(loadedInvoice);
+    setAllProjects(projects);
+    setAllLeads(leads);
+    setAllClients(clients);
 
-      const [loadedClient, loadedPayments] = await Promise.all([
-        clientService.getById(loadedInvoice.clientId),
-        paymentService.getByInvoice(loadedInvoice.id),
-      ]);
-      if (!isMounted) return;
-      setClient(loadedClient || null);
-      setPayments(loadedPayments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()));
-    };
-    void loadData();
-    return () => {
-      isMounted = false;
-    };
+    if (!loadedInvoice) {
+      setClient(null);
+      setPayments([]);
+      setPaymentSummary(null);
+      return;
+    }
+
+    const [loadedClient, loadedPayments, summary] = await Promise.all([
+      clientService.getById(loadedInvoice.clientId),
+      paymentService.getByInvoiceId(loadedInvoice.id),
+      invoiceService.getPaymentSummary(loadedInvoice.id),
+    ]);
+
+    setClient(loadedClient || null);
+    setPayments(loadedPayments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()));
+    setPaymentSummary(summary);
   }, [id]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
 
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
   const project = useMemo(
     () => (invoice?.projectId ? allProjects.find((entry) => entry.id === invoice.projectId) || null : null),
     [allProjects, invoice]
   );
+
   const canViewInvoice = useMemo(
-    () =>
-      canAccessInvoice(
-        user,
-        invoice,
-        allLeads,
-        allClients,
-        allProjects
-      ),
+    () => canAccessInvoice(user, invoice, allLeads, allClients, allProjects),
     [allClients, allLeads, allProjects, invoice, user]
   );
 
@@ -127,8 +124,80 @@ export function InvoiceDetailPage() {
   }
 
   const effectiveTotals = getInvoiceEffectiveTotals(invoice, projectLookup);
-  const amountPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
-  const outstanding = Math.max(effectiveTotals.total - amountPaid, 0);
+  const amountPaid = paymentSummary?.amountPaid ?? payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const balance = paymentSummary?.balance ?? Math.max(effectiveTotals.total - amountPaid, 0);
+  const effectiveStatus = paymentSummary?.status ?? invoice.status;
+
+  const refreshPaymentData = async () => {
+    const [loadedPayments, summary, refreshedInvoice] = await Promise.all([
+      paymentService.getByInvoiceId(invoice.id),
+      invoiceService.getPaymentSummary(invoice.id),
+      invoiceService.getById(invoice.id),
+    ]);
+    setPayments(loadedPayments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()));
+    setPaymentSummary(summary);
+    if (refreshedInvoice) setInvoice(refreshedInvoice);
+  };
+
+  const handleRecordPayment = async () => {
+    if (!isOwner || !user) {
+      toast.error('Only owners can record payments.');
+      return;
+    }
+
+    const amountInput = window.prompt('Payment amount');
+    const amount = Number(amountInput);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('Enter a valid payment amount.');
+      return;
+    }
+    if (balance > 0 && amount > balance + 0.01) {
+      toast.error('Payment amount cannot exceed the balance.');
+      return;
+    }
+
+    const dateInput = window.prompt('Payment date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10));
+    if (!dateInput) return;
+    const methodInput = (window.prompt('Method: eft, cash, card, other', 'eft') || 'eft').toLowerCase();
+    const method = ['eft', 'cash', 'card', 'other'].includes(methodInput) ? methodInput : 'other';
+    const reference = window.prompt('Reference (optional)', '') || 'PAYMENT';
+
+    await paymentService.create({
+      invoiceId: invoice.id,
+      amount,
+      method: method as Payment['method'],
+      reference,
+      paidAt: toIsoFromDateInput(dateInput),
+      createdBy: user.id,
+    });
+
+    await refreshPaymentData();
+    toast.success('Payment recorded.');
+  };
+
+  const handleMarkRemainingPaid = async () => {
+    if (!isOwner || !user) {
+      toast.error('Only owners can mark invoices as paid.');
+      return;
+    }
+    if (balance <= 0) {
+      toast.error('Invoice is already fully paid.');
+      return;
+    }
+
+    // Chosen approach: create a balancing payment for the remaining amount.
+    await paymentService.create({
+      invoiceId: invoice.id,
+      amount: balance,
+      method: 'other',
+      reference: 'MANUAL-SETTLEMENT',
+      paidAt: new Date().toISOString(),
+      createdBy: user.id,
+    });
+
+    await refreshPaymentData();
+    toast.success('Invoice marked as paid.');
+  };
 
   const handleDeleteInvoice = async () => {
     if (!isOwner) {
@@ -181,7 +250,7 @@ export function InvoiceDetailPage() {
                 Delete Invoice
               </Button>
             )}
-            <StatusBadge status={invoice.status} type="invoice" />
+            <StatusBadge status={effectiveStatus} type="invoice" />
           </div>
         </PageHeader>
       </div>
@@ -208,9 +277,7 @@ export function InvoiceDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Package</p>
-                  <p className="font-medium">
-                    {project ? getPackageNameById(project.packageId) : 'Unlinked'}
-                  </p>
+                  <p className="font-medium">{project ? getPackageNameById(project.packageId) : 'Unlinked'}</p>
                   <p className="text-sm text-muted-foreground">Project: {project?.name || 'Unlinked'}</p>
                 </div>
               </div>
@@ -247,9 +314,7 @@ export function InvoiceDetailPage() {
                       <p className="font-medium">{item.description}</p>
                       {isOwner ? (
                         <p className="text-sm text-muted-foreground">Qty {item.quantity}</p>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">Pricing details are visible to owners only.</p>
-                      )}
+                      ) : null}
                     </div>
                     {isOwner && <p className="font-semibold">{formatCurrency(item.total)}</p>}
                   </div>
@@ -278,14 +343,6 @@ export function InvoiceDetailPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Subtotal</p>
-                  <p className="font-medium">{formatCurrency(effectiveTotals.subtotal)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Tax</p>
-                  <p className="font-medium">{formatCurrency(effectiveTotals.tax)}</p>
-                </div>
-                <div>
                   <p className="text-sm text-muted-foreground">Total</p>
                   <p className="text-2xl font-bold text-accent">{formatCurrency(effectiveTotals.total)}</p>
                 </div>
@@ -294,10 +351,18 @@ export function InvoiceDetailPage() {
                   <p className="font-semibold text-success">{formatCurrency(amountPaid)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Outstanding</p>
-                  <p className={`font-semibold ${outstanding > 0 ? 'text-destructive' : 'text-success'}`}>
-                    {formatCurrency(outstanding)}
+                  <p className="text-sm text-muted-foreground">Balance</p>
+                  <p className={`font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                    {formatCurrency(balance)}
                   </p>
+                </div>
+                <div className="grid gap-2">
+                  <Button onClick={() => void handleRecordPayment()} disabled={balance <= 0}>
+                    Record Payment
+                  </Button>
+                  <Button variant="outline" onClick={() => void handleMarkRemainingPaid()} disabled={balance <= 0}>
+                    Mark Remaining as Paid
+                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -320,9 +385,7 @@ export function InvoiceDetailPage() {
                           {payment.method} {payment.reference ? `| ${payment.reference}` : ''}
                         </p>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(payment.paidAt).toLocaleDateString('en-ZA')}
-                      </p>
+                      <p className="text-xs text-muted-foreground">{new Date(payment.paidAt).toLocaleDateString('en-ZA')}</p>
                     </div>
                   </div>
                 ))
@@ -379,3 +442,5 @@ export function InvoiceDetailPage() {
     </div>
   );
 }
+
+

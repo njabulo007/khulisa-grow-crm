@@ -65,7 +65,6 @@ interface InvoiceFormState {
   description: string;
   quantity: number;
   unitPrice: number;
-  taxRate: number;
   notes: string;
 }
 
@@ -101,7 +100,6 @@ export function InvoicesPage() {
     description: DEFAULT_PACKAGE_NAME,
     quantity: 1,
     unitPrice: DEFAULT_PACKAGE_PRICE,
-    taxRate: 15,
     notes: '',
   });
 
@@ -185,7 +183,6 @@ export function InvoicesPage() {
       description: DEFAULT_PACKAGE_NAME,
       quantity: 1,
       unitPrice: DEFAULT_PACKAGE_PRICE,
-      taxRate: 15,
       notes: '',
     });
   };
@@ -227,15 +224,13 @@ export function InvoicesPage() {
 
     const quantity = isPackageBackedInvoice ? 1 : Number(formData.quantity) || 0;
     const unitPrice = isPackageBackedInvoice ? selectedPackage!.price : Number(formData.unitPrice) || 0;
-    const taxRate = Number(formData.taxRate) || 0;
     if (quantity <= 0 || unitPrice <= 0) {
       toast.error('Quantity and unit price must be greater than zero.');
       return;
     }
 
     const subtotal = quantity * unitPrice;
-    const tax = subtotal * (taxRate / 100);
-    const total = subtotal + tax;
+    const total = subtotal;
     const invoiceNumber = await getNextNumber();
 
     await createInvoice({
@@ -253,7 +248,6 @@ export function InvoicesPage() {
         },
       ],
       subtotal,
-      tax,
       total,
       amountPaid: 0,
       status: formData.status,
@@ -553,7 +547,7 @@ export function InvoicesPage() {
                 disabled={isPackageBackedDraft}
               />
             </div>
-            <div className={`grid gap-4 ${isOwner ? 'grid-cols-3' : 'grid-cols-1'}`}>
+            <div className={`grid gap-4 ${isOwner ? 'grid-cols-2' : 'grid-cols-1'}`}>
               <div className="grid gap-2">
                 <Label htmlFor="invoice-qty">Qty *</Label>
                 <Input
@@ -575,18 +569,6 @@ export function InvoicesPage() {
                     value={isPackageBackedDraft ? selectedPackageForDraft?.price || 0 : formData.unitPrice}
                     onChange={(event) => setFormData((prev) => ({ ...prev, unitPrice: Number(event.target.value) }))}
                     disabled={isPackageBackedDraft}
-                  />
-                </div>
-              )}
-              {isOwner && (
-                <div className="grid gap-2">
-                  <Label htmlFor="invoice-tax">Tax %</Label>
-                  <Input
-                    id="invoice-tax"
-                    type="number"
-                    min={0}
-                    value={formData.taxRate}
-                    onChange={(event) => setFormData((prev) => ({ ...prev, taxRate: Number(event.target.value) }))}
                   />
                 </div>
               )}

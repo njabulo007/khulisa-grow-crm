@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -11,6 +11,7 @@ import {
   Users,
   Building2,
   FileText,
+  X,
 } from 'lucide-react';
 import { useTheme } from '@/contexts/ThemeContext';
 import { useAuth } from '@/contexts/AuthContext';
@@ -346,7 +347,7 @@ export function Topbar({ onSearch }: TopbarProps) {
               {desktopNotificationLabel}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
-            <div className="px-3 py-1 text-[11px] text-muted-foreground">Tip: swipe a notification left or right to dismiss.</div>
+            <div className="px-3 py-1 text-[11px] text-muted-foreground">Tip: swipe on touch devices, or use X on desktop to dismiss.</div>
             <DropdownMenuSeparator />
             {recentNotifications.length === 0 ? (
               <div className="px-3 py-4 text-sm text-muted-foreground">No notifications yet.</div>
@@ -371,9 +372,27 @@ export function Topbar({ onSearch }: TopbarProps) {
                 >
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className="text-sm font-medium">{notification.title}</span>
-                    {!notification.isRead && (
-                      <span className="inline-flex h-2 w-2 rounded-full bg-accent" />
-                    )}
+                    <div className="flex items-center gap-2">
+                      {!notification.isRead && (
+                        <span className="inline-flex h-2 w-2 rounded-full bg-accent" />
+                      )}
+                      <button
+                        type="button"
+                        aria-label="Dismiss notification"
+                        className="hidden rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground md:inline-flex"
+                        onPointerDown={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                        }}
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void dismiss(notification.id);
+                        }}
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                   <span className="line-clamp-2 text-xs text-muted-foreground">{notification.message}</span>
                   <span className="text-[11px] text-muted-foreground">
@@ -419,3 +438,5 @@ export function Topbar({ onSearch }: TopbarProps) {
     </header>
   );
 }
+
+

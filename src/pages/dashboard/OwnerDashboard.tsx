@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DollarSign,
@@ -138,10 +138,10 @@ export function OwnerDashboard() {
     }, {} as Record<string, number>);
 
     // Projects by status
-    const activeProjects = projects.filter((project) => project.status !== 'delivered');
+    const activeProjects = projects.filter((project) => project.status !== 'completed' && project.status !== 'delivered');
     const overdueProjects = projects.filter((project) => {
       const dueDate = new Date(project.dueDate);
-      return dueDate < now && project.status !== 'delivered';
+      return dueDate < now && project.status !== 'completed' && project.status !== 'delivered';
     });
 
     // Top agents by paid invoice revenue linked to their leads/projects
@@ -430,3 +430,4 @@ export function OwnerDashboard() {
     </div>
   );
 }
+
