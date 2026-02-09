@@ -14,7 +14,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
-import { authService, clientService, invoiceService, leadService, projectService } from '@/services';
+import { activityService, authService, clientService, invoiceService, leadService, projectService } from '@/services';
 import { Invoice } from '@/types/models';
 import {
   Bar,
@@ -54,23 +54,26 @@ export function ReportsPage() {
   const [projects, setProjects] = useState<Awaited<ReturnType<typeof projectService.getAll>>>([]);
   const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof invoiceService.getAll>>>([]);
   const [clients, setClients] = useState<Awaited<ReturnType<typeof clientService.getAll>>>([]);
+  const [activities, setActivities] = useState<Awaited<ReturnType<typeof activityService.getAll>>>([]);
 
   useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [nextLeads, nextProjects, nextInvoices, nextClients] = await Promise.all([
+        const [nextLeads, nextProjects, nextInvoices, nextClients, nextActivities] = await Promise.all([
           leadService.getAll(),
           projectService.getAll(),
           invoiceService.getAll(),
           clientService.getAll(),
+          activityService.getAll(),
         ]);
         if (!isMounted) return;
         setLeads(nextLeads);
         setProjects(nextProjects);
         setInvoices(nextInvoices);
         setClients(nextClients);
+        setActivities(nextActivities);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -173,6 +176,25 @@ export function ReportsPage() {
       })
       .sort((a, b) => b.revenue - a.revenue);
 
+    const usersById = new Map(users.map((user) => [user.id, user]));
+    const leadActivityReport = leads
+      .map((lead) => {
+        const leadActivities = activities
+          .filter((activity) => activity.entityType === 'lead' && activity.entityId === lead.id)
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        const latest = leadActivities[0];
+        return {
+          leadId: lead.id,
+          businessName: lead.businessName,
+          agentName: usersById.get(lead.assignedTo)?.name || 'Unassigned',
+          activityCount: leadActivities.length,
+          latestActivityAt: latest?.createdAt,
+          latestActivityDescription: latest?.description || 'No activity yet',
+          latestActivityBy: latest ? usersById.get(latest.createdBy)?.name || 'Unknown user' : '',
+        };
+      })
+      .sort((a, b) => b.activityCount - a.activityCount);
+
     return {
       revenueByMonth,
       revenueByPackage,
@@ -180,8 +202,9 @@ export function ReportsPage() {
       winRate,
       lossRate,
       agentPerformance,
+      leadActivityReport,
     };
-  }, [clients, invoices, leads, projectLookup, projects, users]);
+  }, [activities, clients, invoices, leads, projectLookup, projects, users]);
 
   if (!isOwner) {
     return (
@@ -199,7 +222,7 @@ export function ReportsPage() {
     );
   }
 
-  if (isLoading && leads.length === 0 && projects.length === 0 && invoices.length === 0 && clients.length === 0) {
+  if (isLoading && leads.length === 0 && projects.length === 0 && invoices.length === 0 && clients.length === 0 && activities.length === 0) {
     return (
       <div className="space-y-6 animate-fade-in">
         <PageHeader title="Reports" description="Business analytics and insights" />
@@ -425,6 +448,61 @@ export function ReportsPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Lead Activity Report</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Lead</TableHead>
+                <TableHead>Assigned Agent</TableHead>
+                <TableHead className="text-right">Activities</TableHead>
+                <TableHead>Last Activity</TableHead>
+                <TableHead>When</TableHead>
+                <TableHead className="text-right">Open</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {reportData.leadActivityReport.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="py-6 text-center text-muted-foreground">
+                    No leads or activities found.
+                  </TableCell>
+                </TableRow>
+              ) : (
+                reportData.leadActivityReport.map((row) => (
+                  <TableRow key={row.leadId}>
+                    <TableCell className="font-medium">{row.businessName}</TableCell>
+                    <TableCell>{row.agentName}</TableCell>
+                    <TableCell className="text-right">{row.activityCount}</TableCell>
+                    <TableCell className="max-w-[360px] truncate">
+                      {row.latestActivityDescription}
+                      {row.latestActivityBy ? ` (${row.latestActivityBy})` : ''}
+                    </TableCell>
+                    <TableCell>
+                      {row.latestActivityAt
+                        ? new Date(row.latestActivityAt).toLocaleDateString('en-ZA', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                        : '-'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button size="sm" variant="outline" onClick={() => navigate(`/leads/${row.leadId}`)}>
+                        View
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }

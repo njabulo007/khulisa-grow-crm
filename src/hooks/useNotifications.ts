@@ -28,6 +28,7 @@ export function useNotifications(): UseNotificationsResult {
   const hasHydratedRef = useRef(false);
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
   const audioContextRef = useRef<AudioContext | null>(null);
+  const audioUnlockedRef = useRef(false);
 
   const playFallbackTone = useCallback(() => {
     if (typeof window === 'undefined') return;
@@ -63,6 +64,26 @@ export function useNotifications(): UseNotificationsResult {
     void audio.play().catch(() => {
       playFallbackTone();
     });
+  }, [playFallbackTone]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const unlockAudio = () => {
+      if (audioUnlockedRef.current) return;
+      audioUnlockedRef.current = true;
+      playFallbackTone();
+    };
+
+    window.addEventListener('pointerdown', unlockAudio, { once: true });
+    window.addEventListener('keydown', unlockAudio, { once: true });
+    window.addEventListener('touchstart', unlockAudio, { once: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', unlockAudio);
+      window.removeEventListener('keydown', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
   }, [playFallbackTone]);
 
   useEffect(() => {
