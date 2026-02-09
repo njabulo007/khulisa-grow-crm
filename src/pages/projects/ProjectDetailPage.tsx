@@ -8,17 +8,27 @@ import {
   Circle,
   FolderKanban,
   Link as LinkIcon,
+  Trash2,
   User,
 } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { authService, clientService, invoiceService, projectService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessProject } from '@/lib/permissions';
 import { Client, Invoice, Project } from '@/types/models';
+import { toast } from 'sonner';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -36,6 +46,7 @@ export function ProjectDetailPage() {
   const [project, setProject] = useState<Project | undefined>(undefined);
   const [client, setClient] = useState<Client | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -98,6 +109,30 @@ export function ProjectDetailPage() {
   const totalInvoiced = invoices.reduce((sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total, 0);
   const totalPaid = invoices.reduce((sum, invoice) => sum + invoice.amountPaid, 0);
 
+  const handleDeleteProject = async () => {
+    if (!isOwner) {
+      toast.error('Only owners can delete projects.');
+      return;
+    }
+
+    // Chosen approach: prevent deleting projects that still have linked invoices.
+    if (invoices.length > 0) {
+      toast.error('This project has invoices linked. Delete or detach those invoices first.');
+      setShowDeleteDialog(false);
+      return;
+    }
+
+    const removed = await projectService.remove(project.id);
+    if (!removed) {
+      toast.error('Project could not be deleted.');
+      return;
+    }
+
+    toast.success('Project deleted successfully.');
+    setShowDeleteDialog(false);
+    navigate('/projects');
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex items-center gap-4">
@@ -105,7 +140,15 @@ export function ProjectDetailPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <PageHeader title={project.name} description={getPackageNameById(project.packageId)} className="mb-0 flex-1">
-          <StatusBadge status={project.status} type="project" />
+          <div className="flex items-center gap-2">
+            {isOwner && (
+              <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Project
+              </Button>
+            )}
+            <StatusBadge status={project.status} type="project" />
+          </div>
         </PageHeader>
       </div>
 
@@ -265,6 +308,26 @@ export function ProjectDetailPage() {
           )}
         </div>
       </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Delete this project? This will not delete invoices or leads, but the project will be removed from the
+              system.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDeleteProject()}>
+              Delete Project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

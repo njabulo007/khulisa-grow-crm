@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import { EmptyState, PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -33,9 +33,16 @@ import { DEFAULT_PACKAGE_ID, getPackageById, getPackageNameById } from '@/config
 import { useAuth } from '@/contexts/AuthContext';
 import { useInvoices } from '@/hooks/useInvoices';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
-import { clientService, leadService, projectService, syncCommissionsFromInvoices } from '@/services';
+import {
+  clientService,
+  commissionService,
+  leadService,
+  paymentService,
+  projectService,
+  syncCommissionsFromInvoices,
+} from '@/services';
 import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
-import { Client, INVOICE_STATUSES, InvoiceStatus, Lead, Project } from '@/types/models';
+import { Client, INVOICE_STATUSES, Invoice, InvoiceStatus, Lead, Payment, Project } from '@/types/models';
 import { toast } from 'sonner';
 
 const formatCurrency = (amount: number) => {
@@ -66,16 +73,25 @@ export function InvoicesPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, isOwner } = useAuth();
-  const { invoices: allInvoices, isLoading: isInvoicesLoading, createInvoice, getNextNumber } = useInvoices();
+  const {
+    invoices: allInvoices,
+    isLoading: isInvoicesLoading,
+    createInvoice,
+    getNextNumber,
+    removeInvoice,
+  } = useInvoices();
   const presetClientId = searchParams.get('client') || '';
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
   const [openedFromPreset, setOpenedFromPreset] = useState(false);
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [allPayments, setAllPayments] = useState<Payment[]>([]);
   const [formData, setFormData] = useState<InvoiceFormState>({
     clientId: '',
     projectId: '',
@@ -96,15 +112,17 @@ export function InvoicesPage() {
   useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
-      const [clients, projects, leads] = await Promise.all([
+      const [clients, projects, leads, payments] = await Promise.all([
         clientService.getAll(),
         projectService.getAll(),
         leadService.getAll(),
+        paymentService.getAll(),
       ]);
       if (!isMounted) return;
       setAllClients(clients);
       setAllProjects(projects);
       setAllLeads(leads);
+      setAllPayments(payments);
     };
     void loadData();
     return () => {
@@ -142,6 +160,13 @@ export function InvoicesPage() {
       );
     });
   }, [accessibleInvoices, allClients, presetClientId, searchQuery, statusFilter]);
+
+  const paymentsByInvoice = useMemo(() => {
+    return allPayments.reduce<Record<string, number>>((acc, payment) => {
+      acc[payment.invoiceId] = (acc[payment.invoiceId] || 0) + payment.amount;
+      return acc;
+    }, {});
+  }, [allPayments]);
 
   useEffect(() => {
     if (!presetClientId || openedFromPreset || !accessibleClientIds.has(presetClientId)) return;
@@ -244,6 +269,46 @@ export function InvoicesPage() {
     resetForm();
   };
 
+  const requestDeleteInvoice = (invoice: Invoice) => {
+    if (!isOwner) {
+      toast.error('Only owners can delete invoices.');
+      return;
+    }
+    setInvoiceToDelete(invoice);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteInvoice = async () => {
+    if (!invoiceToDelete) return;
+    if (!isOwner) {
+      toast.error('Only owners can delete invoices.');
+      return;
+    }
+
+    const [linkedPayments, linkedCommissions] = await Promise.all([
+      paymentService.getByInvoiceId(invoiceToDelete.id),
+      commissionService.getByInvoiceId(invoiceToDelete.id),
+    ]);
+    if (linkedPayments.length > 0 || linkedCommissions.length > 0) {
+      toast.error('This invoice has payments/commissions linked and cannot be deleted. Void or adjust it instead.');
+      setShowDeleteDialog(false);
+      setInvoiceToDelete(null);
+      return;
+    }
+
+    const removed = await removeInvoice(invoiceToDelete.id);
+    if (!removed) {
+      toast.error('Invoice could not be deleted.');
+      return;
+    }
+
+    toast.success('Invoice deleted successfully.');
+    setShowDeleteDialog(false);
+    setInvoiceToDelete(null);
+    const payments = await paymentService.getAll();
+    setAllPayments(payments);
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Invoices" description="Manage billing and payments">
@@ -316,7 +381,10 @@ export function InvoicesPage() {
                   <TableHead>Issue Date</TableHead>
                   <TableHead>Due Date</TableHead>
                   {isOwner && <TableHead className="text-right">Total</TableHead>}
+                  {isOwner && <TableHead className="text-right">Amount Paid</TableHead>}
+                  {isOwner && <TableHead className="text-right">Outstanding</TableHead>}
                   <TableHead>Status</TableHead>
+                  {isOwner && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -325,6 +393,8 @@ export function InvoicesPage() {
                   const project = allProjects.find((entry) => entry.id === invoice.projectId);
                   const packageName = project ? getPackageNameById(project.packageId) : 'Unlinked';
                   const effectiveTotals = getInvoiceEffectiveTotals(invoice, projectLookup);
+                  const amountPaid = paymentsByInvoice[invoice.id] ?? 0;
+                  const outstanding = Math.max(effectiveTotals.total - amountPaid, 0);
                   return (
                     <TableRow
                       key={invoice.id}
@@ -338,9 +408,27 @@ export function InvoicesPage() {
                       <TableCell>{new Date(invoice.issuedDate).toLocaleDateString('en-ZA')}</TableCell>
                       <TableCell>{new Date(invoice.dueDate).toLocaleDateString('en-ZA')}</TableCell>
                       {isOwner && <TableCell className="text-right font-semibold">{formatCurrency(effectiveTotals.total)}</TableCell>}
+                      {isOwner && <TableCell className="text-right">{formatCurrency(amountPaid)}</TableCell>}
+                      {isOwner && <TableCell className="text-right">{formatCurrency(outstanding)}</TableCell>}
                       <TableCell>
                         <StatusBadge status={invoice.status} type="invoice" />
                       </TableCell>
+                      {isOwner && (
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestDeleteInvoice(invoice);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -523,6 +611,31 @@ export function InvoicesPage() {
               }}
             >
               Create Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Invoice</DialogTitle>
+            <DialogDescription>
+              Delete this invoice? If payments or commissions are linked, deletion will be blocked for safety.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setInvoiceToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void confirmDeleteInvoice()}>
+              Delete Invoice
             </Button>
           </DialogFooter>
         </DialogContent>

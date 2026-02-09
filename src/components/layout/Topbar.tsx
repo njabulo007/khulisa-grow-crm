@@ -178,10 +178,23 @@ export function Topbar({ onSearch }: TopbarProps) {
     setIsSearchFocused(false);
   };
 
-  const handleNotificationClick = async (notificationId: string, leadId?: string) => {
+  const handleNotificationClick = async (
+    notificationId: string,
+    leadId?: string,
+    invoiceId?: string,
+    clientId?: string,
+  ) => {
     const selected = notifications.find((entry) => entry.id === notificationId);
     if (selected && !selected.isRead) {
       await markAsRead(notificationId);
+    }
+    if (invoiceId) {
+      navigate(`/invoices/${invoiceId}`);
+      return;
+    }
+    if (clientId) {
+      navigate(`/clients/${clientId}`);
+      return;
     }
     if (leadId) {
       navigate(`/leads/${leadId}`);
@@ -311,7 +324,12 @@ export function Topbar({ onSearch }: TopbarProps) {
                   key={notification.id}
                   onSelect={(event) => {
                     event.preventDefault();
-                    void handleNotificationClick(notification.id, notification.leadId);
+                    void handleNotificationClick(
+                      notification.id,
+                      notification.leadId,
+                      notification.invoiceId,
+                      notification.clientId,
+                    );
                   }}
                   className="flex cursor-pointer flex-col items-start gap-1 py-2"
                 >

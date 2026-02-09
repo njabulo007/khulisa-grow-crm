@@ -8,6 +8,7 @@ export interface CommissionService {
   getById: (id: string) => Promise<Commission | undefined>;
   getByAgent: (agentId: string) => Promise<Commission[]>;
   getByInvoice: (invoiceId: string) => Promise<Commission | undefined>;
+  getByInvoiceId: (invoiceId: string) => Promise<Commission[]>;
   create: (commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Commission>;
   update: (id: string, updates: Partial<Commission>) => Promise<Commission | null>;
   remove: (id: string) => Promise<boolean>;
@@ -63,6 +64,11 @@ class FirestoreCommissionService implements CommissionService {
   async getByInvoice(invoiceId: string): Promise<Commission | undefined> {
     const commissions = await this.getAll();
     return commissions.find((commission) => commission.invoiceId === invoiceId);
+  }
+
+  async getByInvoiceId(invoiceId: string): Promise<Commission[]> {
+    const commissions = await this.getAll();
+    return commissions.filter((commission) => commission.invoiceId === invoiceId);
   }
 
   async create(commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>): Promise<Commission> {

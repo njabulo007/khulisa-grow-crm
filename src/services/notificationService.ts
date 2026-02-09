@@ -47,11 +47,14 @@ class FirestoreNotificationService implements NotificationService {
 
   private mapSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Notification {
     const data = snapshot.data() as Record<string, unknown>;
+    const type = data.type === 'invoice_paid' ? 'invoice_paid' : 'lead_assigned';
     return {
       id: snapshot.id,
       userId: String(data.userId || ''),
-      type: data.type === 'lead_assigned' ? 'lead_assigned' : 'lead_assigned',
+      type,
       leadId: typeof data.leadId === 'string' ? data.leadId : undefined,
+      invoiceId: typeof data.invoiceId === 'string' ? data.invoiceId : undefined,
+      clientId: typeof data.clientId === 'string' ? data.clientId : undefined,
       title: String(data.title || ''),
       message: String(data.message || ''),
       isRead: Boolean(data.isRead),
@@ -81,6 +84,8 @@ class FirestoreNotificationService implements NotificationService {
       userId,
       type: data.type,
       leadId: data.leadId || null,
+      invoiceId: data.invoiceId || null,
+      clientId: data.clientId || null,
       title: data.title,
       message: data.message,
       isRead: false,
@@ -129,6 +134,8 @@ class FirestoreNotificationService implements NotificationService {
 
 // Notifications summary:
 // - Collection: notifications
-// - Shape: { userId, type, leadId?, title, message, isRead, createdAt }
-// - Current producer: lead assignment/reassignment events (type = lead_assigned)
+// - Shape: { userId, type, leadId?, invoiceId?, clientId?, title, message, isRead, createdAt }
+// - Current producers:
+//   - lead assignment/reassignment events (type = lead_assigned)
+//   - invoice fully paid events for agents (type = invoice_paid)
 export const notificationService: NotificationService = new FirestoreNotificationService();

@@ -318,3 +318,33 @@
     @apply bg-muted-foreground/30;
   }
 }
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: #fff !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .invoice-print-page {
+    min-height: auto !important;
+    background: #fff !important;
+    padding: 0 !important;
+  }
+
+  .invoice-print-document {
+    box-shadow: none !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    max-width: none !important;
+    padding: 0 !important;
+  }
+}

@@ -1,15 +1,32 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Building2, Calendar, CreditCard, FolderKanban } from 'lucide-react';
+import { ArrowLeft, Building2, Calendar, CreditCard, FolderKanban, Printer, Trash2 } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
-import { clientService, invoiceService, leadService, paymentService, projectService, syncCommissionsFromInvoices } from '@/services';
+import {
+  clientService,
+  commissionService,
+  invoiceService,
+  leadService,
+  paymentService,
+  projectService,
+  syncCommissionsFromInvoices,
+} from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessInvoice } from '@/lib/permissions';
 import { Client, Invoice, Lead, Payment, Project } from '@/types/models';
+import { toast } from 'sonner';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -29,6 +46,7 @@ export function InvoiceDetailPage() {
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
   useEffect(() => {
     void syncCommissionsFromInvoices();
@@ -109,7 +127,35 @@ export function InvoiceDetailPage() {
   }
 
   const effectiveTotals = getInvoiceEffectiveTotals(invoice, projectLookup);
-  const outstanding = Math.max(effectiveTotals.total - invoice.amountPaid, 0);
+  const amountPaid = payments.reduce((sum, payment) => sum + payment.amount, 0);
+  const outstanding = Math.max(effectiveTotals.total - amountPaid, 0);
+
+  const handleDeleteInvoice = async () => {
+    if (!isOwner) {
+      toast.error('Only owners can delete invoices.');
+      return;
+    }
+
+    const [linkedPayments, linkedCommissions] = await Promise.all([
+      paymentService.getByInvoiceId(invoice.id),
+      commissionService.getByInvoiceId(invoice.id),
+    ]);
+    if (linkedPayments.length > 0 || linkedCommissions.length > 0) {
+      toast.error('This invoice has payments/commissions linked and cannot be deleted. Void or adjust it instead.');
+      setShowDeleteDialog(false);
+      return;
+    }
+
+    const removed = await invoiceService.remove(invoice.id);
+    if (!removed) {
+      toast.error('Invoice could not be deleted.');
+      return;
+    }
+
+    toast.success('Invoice deleted successfully.');
+    setShowDeleteDialog(false);
+    navigate('/invoices');
+  };
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -118,7 +164,25 @@ export function InvoiceDetailPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <PageHeader title={invoice.invoiceNumber} description="Invoice Details" className="mb-0 flex-1">
-          <StatusBadge status={invoice.status} type="invoice" />
+          <div className="flex items-center gap-2">
+            {isOwner && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`/invoices/${invoice.id}/print`, '_blank', 'noopener,noreferrer')}
+              >
+                <Printer className="mr-2 h-4 w-4" />
+                Download / Print Invoice
+              </Button>
+            )}
+            {isOwner && (
+              <Button variant="destructive" size="sm" onClick={() => setShowDeleteDialog(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete Invoice
+              </Button>
+            )}
+            <StatusBadge status={invoice.status} type="invoice" />
+          </div>
         </PageHeader>
       </div>
 
@@ -181,7 +245,11 @@ export function InvoiceDetailPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-medium">{item.description}</p>
-                      <p className="text-sm text-muted-foreground">Qty {item.quantity}</p>
+                      {isOwner ? (
+                        <p className="text-sm text-muted-foreground">Qty {item.quantity}</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Pricing details are visible to owners only.</p>
+                      )}
                     </div>
                     {isOwner && <p className="font-semibold">{formatCurrency(item.total)}</p>}
                   </div>
@@ -223,7 +291,7 @@ export function InvoiceDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Amount Paid</p>
-                  <p className="font-semibold text-success">{formatCurrency(invoice.amountPaid)}</p>
+                  <p className="font-semibold text-success">{formatCurrency(amountPaid)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Outstanding</p>
@@ -289,6 +357,25 @@ export function InvoiceDetailPage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Invoice</DialogTitle>
+            <DialogDescription>
+              Delete this invoice? If payments or commissions are linked, deletion will be blocked for safety.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void handleDeleteInvoice()}>
+              Delete Invoice
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

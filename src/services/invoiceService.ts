@@ -1,6 +1,10 @@
 import { Invoice } from '@/types/models';
 import { getPackageById, resolvePackageId } from '@/config/packages';
+import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { clientService } from './clientService';
+import { leadService } from './leadService';
+import { notificationService } from './notificationService';
 import { projectService } from './projectService';
 
 export interface InvoiceService {
@@ -17,6 +21,45 @@ export interface InvoiceService {
 class FirestoreInvoiceService implements InvoiceService {
   // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
   private readonly collection = new FirestoreCollection<Invoice & { packageType?: string }>('invoices');
+
+  private async notifyInvoicePaid(nextInvoice: Invoice, previousStatus: Invoice['status'] | null): Promise<void> {
+    if (nextInvoice.status !== 'paid') return;
+    if (previousStatus === 'paid') return;
+
+    const [projects, leads, clients] = await Promise.all([
+      projectService.getAll(),
+      leadService.getAll(),
+      clientService.getAll(),
+    ]);
+    const agentId = resolveAgentIdForInvoice(nextInvoice, projects, leads, clients);
+    if (!agentId) return;
+
+    const existingNotifications = await notificationService.getForUser(agentId);
+    if (
+      existingNotifications.some(
+        (entry) => entry.type === 'invoice_paid' && entry.invoiceId === nextInvoice.id
+      )
+    ) {
+      return;
+    }
+
+    const clientName = clients.find((entry) => entry.id === nextInvoice.clientId)?.businessName || 'client';
+    const packageName =
+      nextInvoice.packageName ||
+      getPackageById(nextInvoice.packageId)?.name ||
+      (nextInvoice.projectId
+        ? getPackageById(projects.find((entry) => entry.id === nextInvoice.projectId)?.packageId)?.name
+        : undefined) ||
+      'the selected package';
+
+    await notificationService.createForUser(agentId, {
+      type: 'invoice_paid',
+      invoiceId: nextInvoice.id,
+      clientId: nextInvoice.clientId,
+      title: 'Client payment received',
+      message: `Client ${clientName} has paid for ${packageName}. Your commission is now available.`,
+    });
+  }
 
   private async resolvePackageSnapshot(
     projectId?: string,
@@ -79,12 +122,15 @@ class FirestoreInvoiceService implements InvoiceService {
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
     });
-    return this.normalizeInvoice(created);
+    const normalized = await this.normalizeInvoice(created);
+    await this.notifyInvoicePaid(normalized, null);
+    return normalized;
   }
 
   async update(id: string, updates: Partial<Invoice>): Promise<Invoice | null> {
     const current = await this.collection.getById(id);
     if (!current) return null;
+    const previousStatus = current.status;
 
     const nextProjectId = updates.projectId ?? current.projectId;
     const nextPackageId = updates.packageId ?? current.packageId;
@@ -96,7 +142,11 @@ class FirestoreInvoiceService implements InvoiceService {
       updatedAt: getTimestamp(),
     });
 
-    return updated ? this.normalizeInvoice(updated) : null;
+    if (!updated) return null;
+
+    const normalized = await this.normalizeInvoice(updated);
+    await this.notifyInvoicePaid(normalized, previousStatus);
+    return normalized;
   }
 
   async remove(id: string): Promise<boolean> {

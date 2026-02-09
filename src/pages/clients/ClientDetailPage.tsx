@@ -17,6 +17,14 @@ import {
 import { PageHeader, StatusBadge, EmptyState } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { authService, clientService, invoiceService, leadService, paymentService, projectService } from '@/services';
@@ -112,6 +120,27 @@ export function ClientDetailPage() {
     return linkedIds.has(client.id);
   }, [allClients, allLeads, allProjects, client, isOwner, user]);
 
+  const paidAmountByInvoice = useMemo(() => {
+    return Object.entries(paymentsByInvoice).reduce<Record<string, number>>((acc, [invoiceId, payments]) => {
+      acc[invoiceId] = payments.reduce((sum, payment) => sum + payment.amount, 0);
+      return acc;
+    }, {});
+  }, [paymentsByInvoice]);
+
+  const ownerBillingSummary = useMemo(() => {
+    const totalBilled = visibleInvoices.reduce((sum, invoice) => {
+      const totals = getInvoiceEffectiveTotals(invoice, projectLookup);
+      return sum + totals.total;
+    }, 0);
+    const totalReceived = visibleInvoices.reduce((sum, invoice) => sum + (paidAmountByInvoice[invoice.id] || 0), 0);
+    const totalOutstanding = Math.max(totalBilled - totalReceived, 0);
+    return {
+      totalBilled,
+      totalReceived,
+      totalOutstanding,
+    };
+  }, [paidAmountByInvoice, projectLookup, visibleInvoices]);
+
   if (!isLoaded && !client) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
@@ -150,7 +179,8 @@ export function ClientDetailPage() {
     .filter(i => i.status !== 'paid' && i.status !== 'draft')
     .reduce((sum, i) => {
       const totals = getInvoiceEffectiveTotals(i, projectLookup);
-      return sum + (totals.total - i.amountPaid);
+      const amountPaid = paidAmountByInvoice[i.id] || 0;
+      return sum + Math.max(totals.total - amountPaid, 0);
     }, 0);
 
   const clientStatus: 'Prospect' | 'Onboarding' | 'Contract' = client.contractSigned
@@ -376,6 +406,74 @@ export function ClientDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {isOwner && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Billing / Payments</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {visibleInvoices.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No invoices available for this client.</p>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Invoice</TableHead>
+                          <TableHead>Issue Date</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Total</TableHead>
+                          <TableHead className="text-right">Amount Paid</TableHead>
+                          <TableHead className="text-right">Outstanding</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {visibleInvoices.map((invoice) => {
+                          const totals = getInvoiceEffectiveTotals(invoice, projectLookup);
+                          const amountPaid = paidAmountByInvoice[invoice.id] || 0;
+                          const invoiceOutstanding = Math.max(totals.total - amountPaid, 0);
+                          return (
+                            <TableRow
+                              key={invoice.id}
+                              className="cursor-pointer"
+                              onClick={() => navigate(`/invoices/${invoice.id}`)}
+                            >
+                              <TableCell className="font-medium">{invoice.invoiceNumber}</TableCell>
+                              <TableCell>{new Date(invoice.issuedDate).toLocaleDateString('en-ZA')}</TableCell>
+                              <TableCell>
+                                <StatusBadge status={invoice.status} type="invoice" />
+                              </TableCell>
+                              <TableCell className="text-right">{formatCurrency(totals.total)}</TableCell>
+                              <TableCell className="text-right text-success">{formatCurrency(amountPaid)}</TableCell>
+                              <TableCell className="text-right">{formatCurrency(invoiceOutstanding)}</TableCell>
+                            </TableRow>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-lg border p-3">
+                    <p className="text-sm text-muted-foreground">Total billed</p>
+                    <p className="text-xl font-semibold">{formatCurrency(ownerBillingSummary.totalBilled)}</p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-sm text-muted-foreground">Total received</p>
+                    <p className="text-xl font-semibold text-success">{formatCurrency(ownerBillingSummary.totalReceived)}</p>
+                  </div>
+                  <div className="rounded-lg border p-3">
+                    <p className="text-sm text-muted-foreground">Outstanding</p>
+                    <p className={`text-xl font-semibold ${ownerBillingSummary.totalOutstanding > 0 ? 'text-destructive' : 'text-success'}`}>
+                      {formatCurrency(ownerBillingSummary.totalOutstanding)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Sidebar */}

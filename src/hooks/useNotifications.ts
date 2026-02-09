@@ -62,7 +62,7 @@ export function useNotifications(): UseNotificationsResult {
 
       if (hasHydratedRef.current) {
         if (newlyUnread.length > 0) {
-          const audio = new Audio('/sounds/notification.mp3');
+          const audio = new Audio('/sounds/notification.wav');
           void audio.play().catch(() => undefined);
 
           const permission = getDesktopPermission();
@@ -77,6 +77,14 @@ export function useNotifications(): UseNotificationsResult {
 
                 browserNotification.onclick = () => {
                   window.focus();
+                  if (notification.invoiceId) {
+                    window.location.assign(`/invoices/${notification.invoiceId}`);
+                    return;
+                  }
+                  if (notification.clientId) {
+                    window.location.assign(`/clients/${notification.clientId}`);
+                    return;
+                  }
                   if (notification.leadId) {
                     window.location.assign(`/leads/${notification.leadId}`);
                   }

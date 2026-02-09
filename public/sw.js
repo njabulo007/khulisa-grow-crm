@@ -1,10 +1,10 @@
-const SW_CACHE = 'khulisa-crm-cache-v2';
+const SW_CACHE = 'khulisa-crm-cache-v3';
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',
   '/images/khulisa-logo.png',
   '/images/khulisa-logo-icon.png',
-  '/sounds/notification.mp3',
+  '/sounds/notification.wav',
 ];
 
 self.addEventListener('install', (event) => {

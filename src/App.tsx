@@ -15,6 +15,7 @@ import { ProjectsPage } from "@/pages/projects/ProjectsPage";
 import { ProjectDetailPage } from "@/pages/projects/ProjectDetailPage";
 import { InvoicesPage } from "@/pages/invoices/InvoicesPage";
 import { InvoiceDetailPage } from "@/pages/invoices/InvoiceDetailPage";
+import { InvoicePrintPage } from "@/pages/invoices/InvoicePrintPage";
 import { CommissionsPage } from "@/pages/commissions/CommissionsPage";
 import { ReportsPage } from "@/pages/reports/ReportsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
@@ -34,6 +35,7 @@ const App = () => (
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signin" element={<LoginPage />} />
               <Route element={<RequireAuth />}>
+                <Route path="/invoices/:id/print" element={<InvoicePrintPage />} />
                 <Route element={<MainLayout />}>
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/leads" element={<LeadsPage />} />

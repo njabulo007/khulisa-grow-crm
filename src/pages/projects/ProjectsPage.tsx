@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Plus, Search } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import { PageHeader, EmptyState, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,8 +31,8 @@ import {
 } from '@/components/ui/select';
 import { DEFAULT_PACKAGE_ID, getPackageById, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
-import { authService, clientService, leadService, projectService } from '@/services';
-import { Client, Lead, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
+import { authService, clientService, invoiceService, leadService, projectService } from '@/services';
+import { Client, Invoice, Lead, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
 import { getAgentLinkedClientIds } from '@/lib/permissions';
 import { toast } from 'sonner';
 
@@ -45,6 +45,8 @@ export function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [openedFromPreset, setOpenedFromPreset] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -59,6 +61,7 @@ export function ProjectsPage() {
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
+  const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const agents = authService.getAll().filter((candidate) => candidate.role === 'agent');
@@ -66,14 +69,16 @@ export function ProjectsPage() {
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [clients, projects, leads] = await Promise.all([
+      const [clients, projects, leads, invoices] = await Promise.all([
         clientService.getAll(),
         projectService.getAll(),
         leadService.getAll(),
+        invoiceService.getAll(),
       ]);
       setAllClients(clients);
       setAllProjects(projects);
       setAllLeads(leads);
+      setAllInvoices(invoices);
     } finally {
       setIsLoading(false);
     }
@@ -166,6 +171,43 @@ export function ProjectsPage() {
     resetForm();
   };
 
+  const requestDeleteProject = (project: Project) => {
+    if (!isOwner) {
+      toast.error('Only owners can delete projects.');
+      return;
+    }
+    setProjectToDelete(project);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+    if (!isOwner) {
+      toast.error('Only owners can delete projects.');
+      return;
+    }
+
+    // Chosen approach: prevent deleting projects that still have linked invoices.
+    const hasLinkedInvoices = allInvoices.some((invoice) => invoice.projectId === projectToDelete.id);
+    if (hasLinkedInvoices) {
+      toast.error('This project has invoices linked. Delete or detach those invoices first.');
+      setShowDeleteDialog(false);
+      setProjectToDelete(null);
+      return;
+    }
+
+    const removed = await projectService.remove(projectToDelete.id);
+    if (!removed) {
+      toast.error('Project could not be deleted.');
+      return;
+    }
+
+    toast.success('Project deleted successfully.');
+    setShowDeleteDialog(false);
+    setProjectToDelete(null);
+    await loadData();
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Projects" description="Track your project deliverables">
@@ -233,6 +275,7 @@ export function ProjectsPage() {
                   <TableHead>Status</TableHead>
                   <TableHead>Due Date</TableHead>
                   <TableHead>Assigned</TableHead>
+                  {isOwner && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -253,6 +296,22 @@ export function ProjectsPage() {
                       </TableCell>
                       <TableCell>{new Date(project.dueDate).toLocaleDateString('en-ZA')}</TableCell>
                       <TableCell>{agent?.name || 'Unassigned'}</TableCell>
+                      {isOwner && (
+                        <TableCell className="text-right">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              requestDeleteProject(project);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   );
                 })}
@@ -393,6 +452,32 @@ export function ProjectsPage() {
               }}
             >
               Create Project
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Project</DialogTitle>
+            <DialogDescription>
+              Delete this project? This will not delete invoices or leads, but the project will be removed from the
+              system.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setProjectToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => void confirmDeleteProject()}>
+              Delete Project
             </Button>
           </DialogFooter>
         </DialogContent>
