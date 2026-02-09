@@ -29,37 +29,9 @@ export function useNotifications(): UseNotificationsResult {
   const [desktopPermission, setDesktopPermission] = useState<DesktopNotificationPermission>(getDesktopPermission());
   const hasHydratedRef = useRef(false);
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
-  const audioContextRef = useRef<AudioContext | null>(null);
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
-  const audioUnlockedRef = useRef(false);
-
-  const playFallbackTone = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
-
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContextCtor();
-    }
-
-    const ctx = audioContextRef.current;
-    if (!ctx) return;
-    if (ctx.state === 'suspended') {
-      void ctx.resume().catch(() => undefined);
-    }
-
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    oscillator.type = 'sine';
-    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
-    gainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.24);
-  }, []);
+  const userInteractedRef = useRef(false);
+  const pendingSoundRef = useRef(false);
 
   const getNotificationAudio = useCallback(() => {
     if (typeof window === 'undefined') return null;
@@ -72,55 +44,49 @@ export function useNotifications(): UseNotificationsResult {
     return notificationAudioRef.current;
   }, []);
 
-  const playNotificationSound = useCallback(() => {
+  const tryPlayNotificationSound = useCallback(() => {
     const audio = getNotificationAudio();
     if (!audio) return;
     audio.currentTime = 0;
     audio.muted = false;
-    audio.volume = 8;
-    void audio.play().catch(() => {
-      playFallbackTone();
-    });
-  }, [getNotificationAudio, playFallbackTone]);
+    audio.volume = 1;
+    void audio
+      .play()
+      .then(() => {
+        pendingSoundRef.current = false;
+      })
+      .catch(() => {
+        pendingSoundRef.current = true;
+      });
+  }, [getNotificationAudio]);
+
+  const playNotificationSound = useCallback(() => {
+    if (!userInteractedRef.current) {
+      pendingSoundRef.current = true;
+      return;
+    }
+    tryPlayNotificationSound();
+  }, [tryPlayNotificationSound]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
 
-    const unlockAudio = () => {
-      if (audioUnlockedRef.current) return;
-      audioUnlockedRef.current = true;
-
-      const audio = getNotificationAudio();
-      if (audio) {
-        audio.muted = true;
-        audio.volume = 0;
-        audio.currentTime = 0;
-        void audio
-          .play()
-          .then(() => {
-            audio.pause();
-            audio.currentTime = 0;
-            audio.muted = false;
-            audio.volume = 1;
-          })
-          .catch(() => undefined);
-      }
-
-      if (audioContextRef.current?.state === 'suspended') {
-        void audioContextRef.current.resume().catch(() => undefined);
-      }
+    const onUserInteraction = () => {
+      userInteractedRef.current = true;
+      if (!pendingSoundRef.current) return;
+      tryPlayNotificationSound();
     };
 
-    window.addEventListener('pointerdown', unlockAudio, { once: true });
-    window.addEventListener('keydown', unlockAudio, { once: true });
-    window.addEventListener('touchstart', unlockAudio, { once: true });
+    window.addEventListener('pointerdown', onUserInteraction);
+    window.addEventListener('keydown', onUserInteraction);
+    window.addEventListener('touchstart', onUserInteraction);
 
     return () => {
-      window.removeEventListener('pointerdown', unlockAudio);
-      window.removeEventListener('keydown', unlockAudio);
-      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('pointerdown', onUserInteraction);
+      window.removeEventListener('keydown', onUserInteraction);
+      window.removeEventListener('touchstart', onUserInteraction);
     };
-  }, [getNotificationAudio]);
+  }, [tryPlayNotificationSound]);
 
   useEffect(() => {
     const updatePermission = () => {
@@ -141,6 +107,7 @@ export function useNotifications(): UseNotificationsResult {
       setNotifications([]);
       hasHydratedRef.current = false;
       previousUnreadIdsRef.current = new Set();
+      pendingSoundRef.current = false;
       return;
     }
 
