@@ -1,4 +1,4 @@
-export type NotificationType = 'lead_assigned' | 'invoice_paid';
+export type NotificationType = 'lead_assigned' | 'invoice_paid' | 'activity';
 
 export interface Notification {
   id: string;
@@ -7,6 +7,7 @@ export interface Notification {
   leadId?: string;
   invoiceId?: string;
   clientId?: string;
+  projectId?: string;
   title: string;
   message: string;
   isRead: boolean;

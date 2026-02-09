@@ -27,6 +27,43 @@ export function useNotifications(): UseNotificationsResult {
   const [desktopPermission, setDesktopPermission] = useState<DesktopNotificationPermission>(getDesktopPermission());
   const hasHydratedRef = useRef(false);
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const playFallbackTone = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const AudioContextCtor = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContextCtor();
+    }
+
+    const ctx = audioContextRef.current;
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      void ctx.resume().catch(() => undefined);
+    }
+
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, ctx.currentTime);
+    gainNode.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.07, ctx.currentTime + 0.01);
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.24);
+  }, []);
+
+  const playNotificationSound = useCallback(() => {
+    const audio = new Audio('/sounds/notification.wav');
+    audio.volume = 1;
+    void audio.play().catch(() => {
+      playFallbackTone();
+    });
+  }, [playFallbackTone]);
 
   useEffect(() => {
     const updatePermission = () => {
@@ -62,8 +99,7 @@ export function useNotifications(): UseNotificationsResult {
 
       if (hasHydratedRef.current) {
         if (newlyUnread.length > 0) {
-          const audio = new Audio('/sounds/notification.wav');
-          void audio.play().catch(() => undefined);
+          playNotificationSound();
 
           const permission = getDesktopPermission();
           setDesktopPermission(permission);
@@ -83,6 +119,10 @@ export function useNotifications(): UseNotificationsResult {
                   }
                   if (notification.clientId) {
                     window.location.assign(`/clients/${notification.clientId}`);
+                    return;
+                  }
+                  if (notification.projectId) {
+                    window.location.assign(`/projects/${notification.projectId}`);
                     return;
                   }
                   if (notification.leadId) {
@@ -106,7 +146,7 @@ export function useNotifications(): UseNotificationsResult {
     return () => {
       unsubscribe();
     };
-  }, [user?.id]);
+  }, [playNotificationSound, user?.id]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,

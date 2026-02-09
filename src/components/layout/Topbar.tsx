@@ -183,6 +183,7 @@ export function Topbar({ onSearch }: TopbarProps) {
     leadId?: string,
     invoiceId?: string,
     clientId?: string,
+    projectId?: string,
   ) => {
     const selected = notifications.find((entry) => entry.id === notificationId);
     if (selected && !selected.isRead) {
@@ -194,6 +195,10 @@ export function Topbar({ onSearch }: TopbarProps) {
     }
     if (clientId) {
       navigate(`/clients/${clientId}`);
+      return;
+    }
+    if (projectId) {
+      navigate(`/projects/${projectId}`);
       return;
     }
     if (leadId) {
@@ -329,6 +334,7 @@ export function Topbar({ onSearch }: TopbarProps) {
                       notification.leadId,
                       notification.invoiceId,
                       notification.clientId,
+                      notification.projectId,
                     );
                   }}
                   className="flex cursor-pointer flex-col items-start gap-1 py-2"
