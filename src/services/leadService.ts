@@ -1,4 +1,12 @@
-import { Lead } from '@/types/models';
+import {
+  formatCommissionRatePercent,
+  getCommissionRateForAgent,
+} from '@/config/commission';
+import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
+import { Invoice, Lead } from '@/types/models';
+import { authService } from './authService';
+import { clientService } from './clientService';
+import { projectService } from './projectService';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
 import { notificationService } from './notificationService';
 
@@ -15,6 +23,60 @@ export interface LeadService {
 class FirestoreLeadService implements LeadService {
   // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
   private readonly collection = new FirestoreCollection<Lead>('leads');
+  private readonly invoicesCollection = new FirestoreCollection<Invoice & { packageType?: string }>('invoices');
+
+  private roundCurrency(value: number): number {
+    return Math.round((value + Number.EPSILON) * 100) / 100;
+  }
+
+  private formatCurrency(amount: number): string {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  }
+
+  private async getCurrentCommissionRateForAgent(agentId: string): Promise<number> {
+    const agentEmail = authService.getById(agentId)?.email;
+    const [invoices, projects, leads, clients] = await Promise.all([
+      this.invoicesCollection.getAll(),
+      projectService.getAll(),
+      this.collection.getAll(),
+      clientService.getAll(),
+    ]);
+
+    const paidSalesCount = invoices.reduce((count, invoice) => {
+      if (invoice.status !== 'paid') return count;
+      const resolvedAgentId = resolveAgentIdForInvoice(invoice, projects, leads, clients);
+      return resolvedAgentId === agentId ? count + 1 : count;
+    }, 0);
+
+    return getCommissionRateForAgent({
+      agentEmail,
+      paidSalesCount,
+    });
+  }
+
+  private async buildLeadAssignmentMessage(lead: Lead, nextAssignedTo: string): Promise<string> {
+    const fallbackRate = getCommissionRateForAgent({
+      agentEmail: authService.getById(nextAssignedTo)?.email,
+      paidSalesCount: 0,
+    });
+    let rate = fallbackRate;
+
+    try {
+      rate = await this.getCurrentCommissionRateForAgent(nextAssignedTo);
+    } catch (error) {
+      console.error('[LeadService] Failed to calculate dynamic commission rate for assignment notification.', error);
+    }
+
+    const estimatedValue = Number.isFinite(lead.estimatedValue) ? Math.max(0, lead.estimatedValue) : 0;
+    const potentialCommission = this.roundCurrency(estimatedValue * rate);
+
+    return `You've been assigned a new lead: ${lead.businessName}. Potential commission: ${this.formatCurrency(potentialCommission)} (${formatCommissionRatePercent(rate)}).`;
+  }
 
   private async notifyAssignment(lead: Lead, previousAssignedTo?: string): Promise<void> {
     const nextAssignedTo = lead.assignedTo?.trim();
@@ -23,11 +85,13 @@ class FirestoreLeadService implements LeadService {
     // Skip notifying on self-assigned lead creation by the same agent.
     if (!previousAssignedTo && lead.createdBy === nextAssignedTo) return;
 
+    const message = await this.buildLeadAssignmentMessage(lead, nextAssignedTo);
+
     await notificationService.createForUser(nextAssignedTo, {
       type: 'lead_assigned',
       leadId: lead.id,
       title: 'New lead assigned',
-      message: `You've been assigned a new lead: ${lead.businessName}`,
+      message,
     });
   }
 

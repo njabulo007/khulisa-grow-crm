@@ -47,8 +47,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first for static assets only.
-  if (['script', 'style', 'image', 'font', 'audio'].includes(request.destination)) {
+  // Use network-first for scripts and styles so deployments load fresh code first.
+  if (['script', 'style'].includes(request.destination)) {
+    event.respondWith(
+      fetch(request)
+        .then((networkResponse) => {
+          if (!networkResponse || networkResponse.status !== 200) {
+            return networkResponse;
+          }
+          const responseClone = networkResponse.clone();
+          caches.open(SW_CACHE).then((cache) => cache.put(request, responseClone));
+          return networkResponse;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Cache-first for static media assets.
+  if (['image', 'font', 'audio'].includes(request.destination)) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) return cachedResponse;

@@ -30,10 +30,18 @@ class FirestoreCommissionService implements CommissionService {
   ): Commission {
     const packageId = resolvePackageId(commission.packageId ?? commission.packageType);
     const pkg = getPackageById(packageId);
-    const normalizedRate = COMMISSION_RATE;
-    const normalizedAmount = pkg
-      ? this.roundCurrency(pkg.price * normalizedRate)
-      : commission.commissionAmount ?? commission.amount ?? 0;
+    const normalizedRate =
+      typeof commission.rate === 'number' && Number.isFinite(commission.rate)
+        ? commission.rate
+        : COMMISSION_RATE;
+    const normalizedAmount =
+      typeof commission.commissionAmount === 'number' && Number.isFinite(commission.commissionAmount)
+        ? commission.commissionAmount
+        : typeof commission.amount === 'number' && Number.isFinite(commission.amount)
+          ? commission.amount
+          : pkg
+            ? this.roundCurrency(pkg.price * normalizedRate)
+            : 0;
 
     return {
       ...commission,
@@ -74,14 +82,24 @@ class FirestoreCommissionService implements CommissionService {
   async create(commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>): Promise<Commission> {
     const packageId = resolvePackageId(commission.packageId);
     const pkg = getPackageById(packageId);
+    const normalizedRate =
+      typeof commission.rate === 'number' && Number.isFinite(commission.rate)
+        ? commission.rate
+        : COMMISSION_RATE;
+    const normalizedAmount =
+      typeof commission.commissionAmount === 'number' && Number.isFinite(commission.commissionAmount)
+        ? commission.commissionAmount
+        : pkg
+          ? this.roundCurrency(pkg.price * normalizedRate)
+          : 0;
 
     const created = await this.collection.create({
       ...commission,
       packageId,
       packageName: pkg?.name,
       packagePrice: pkg?.price,
-      commissionAmount: pkg ? this.roundCurrency(pkg.price * COMMISSION_RATE) : commission.commissionAmount,
-      rate: COMMISSION_RATE,
+      commissionAmount: normalizedAmount,
+      rate: normalizedRate,
       id: generateId(),
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
@@ -101,14 +119,24 @@ class FirestoreCommissionService implements CommissionService {
       normalizedUpdates.packageName = pkg?.name;
       normalizedUpdates.packagePrice = pkg?.price;
     }
-    if (typeof updates.rate === 'number') {
-      normalizedUpdates.rate = COMMISSION_RATE;
-    }
-    if (normalizedUpdates.packageId) {
+    if (
+      normalizedUpdates.packageId &&
+      typeof normalizedUpdates.commissionAmount !== 'number'
+    ) {
       const pkg = getPackageById(normalizedUpdates.packageId);
       if (pkg) {
-        normalizedUpdates.commissionAmount = this.roundCurrency(pkg.price * COMMISSION_RATE);
-        normalizedUpdates.rate = COMMISSION_RATE;
+        let rateForCalculation: number;
+        if (typeof normalizedUpdates.rate === 'number' && Number.isFinite(normalizedUpdates.rate)) {
+          rateForCalculation = normalizedUpdates.rate;
+        } else {
+          const existing = await this.collection.getById(id);
+          rateForCalculation =
+            typeof existing?.rate === 'number' && Number.isFinite(existing.rate)
+              ? existing.rate
+              : COMMISSION_RATE;
+        }
+        normalizedUpdates.commissionAmount = this.roundCurrency(pkg.price * rateForCalculation);
+        normalizedUpdates.rate = rateForCalculation;
       }
     }
     const updated = await this.collection.update(id, normalizedUpdates);

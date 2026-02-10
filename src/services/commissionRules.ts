@@ -1,4 +1,4 @@
-import { COMMISSION_RATE } from '@/config/commission';
+import { getCommissionRateForAgent } from '@/config/commission';
 import { getPackageById, type PackageId } from '@/config/packages';
 import { Commission, CommissionStatus, Invoice } from '@/types/models';
 import { authService } from './authService';
@@ -9,6 +9,22 @@ import { leadService } from './leadService';
 import { projectService } from './projectService';
 
 const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+const toTimestamp = (value?: string): number => {
+  if (!value) return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+const getCommissionOrderTimestamp = (invoice: Invoice): number =>
+  invoice.status === 'paid' ? toTimestamp(invoice.updatedAt) : toTimestamp(invoice.createdAt);
+const sortInvoicesForCommission = (left: Invoice, right: Invoice): number => {
+  const byOrder = getCommissionOrderTimestamp(left) - getCommissionOrderTimestamp(right);
+  if (byOrder !== 0) return byOrder;
+
+  const byCreated = toTimestamp(left.createdAt) - toTimestamp(right.createdAt);
+  if (byCreated !== 0) return byCreated;
+
+  return left.id.localeCompare(right.id);
+};
 
 const resolveAgentIdForInvoice = (
   invoice: Invoice,
@@ -58,33 +74,44 @@ const resolveEarnedDate = (
 
 export async function syncCommissionsFromInvoices(): Promise<void> {
   // TODO: Replace implementation with Firebase-triggered commission rules.
-  const [users, invoices, projects, clients, leads] = await Promise.all([
+  const [users, invoices, projects, clients, leads, existingCommissions] = await Promise.all([
     authService.getAll(),
     invoiceService.getAll(),
     projectService.getAll(),
     clientService.getAll(),
     leadService.getAll(),
+    commissionService.getAll(),
   ]);
   const projectsById = new Map(projects.map((project) => [project.id, project]));
+  const usersById = new Map(users.map((user) => [user.id, user]));
   const agentIds = new Set(users.filter((user) => user.role === 'agent').map((user) => user.id));
+  const existingByInvoiceId = new Map(existingCommissions.map((commission) => [commission.invoiceId, commission]));
+  const paidSalesCountByAgent = new Map<string, number>();
+  const invoicesByCommissionOrder = [...invoices].sort(sortInvoicesForCommission);
 
-  const rate = COMMISSION_RATE;
-
-  for (const invoice of invoices) {
+  for (const invoice of invoicesByCommissionOrder) {
     const agentId = resolveAgentIdForInvoice(invoice, agentIds, projectsById, leads, clients);
     const packageId = resolvePackageIdForInvoice(invoice, projectsById);
     if (!agentId) continue;
     if (!packageId) continue;
+
+    const paidSalesBeforeInvoice = paidSalesCountByAgent.get(agentId) || 0;
+    const paidSalesIncludingCurrent =
+      invoice.status === 'paid' ? paidSalesBeforeInvoice + 1 : paidSalesBeforeInvoice;
+    const rate = getCommissionRateForAgent({
+      agentEmail: usersById.get(agentId)?.email,
+      paidSalesCount: paidSalesIncludingCurrent,
+    });
 
     const pkg = getPackageById(packageId);
     if (!pkg) continue;
 
     const expectedAmount = roundCurrency(pkg.price * rate);
     const baseStatus = getBaseStatusForInvoice(invoice);
-    const existing = await commissionService.getByInvoice(invoice.id);
+    const existing = existingByInvoiceId.get(invoice.id);
 
     if (!existing) {
-      await commissionService.create({
+      const created = await commissionService.create({
         agentId,
         invoiceId: invoice.id,
         projectId: invoice.projectId,
@@ -96,6 +123,10 @@ export async function syncCommissionsFromInvoices(): Promise<void> {
         status: baseStatus,
         earnedDate: baseStatus === 'earned' ? invoice.updatedAt : undefined,
       });
+      existingByInvoiceId.set(invoice.id, created);
+      if (invoice.status === 'paid') {
+        paidSalesCountByAgent.set(agentId, paidSalesIncludingCurrent);
+      }
       continue;
     }
 
@@ -112,9 +143,14 @@ export async function syncCommissionsFromInvoices(): Promise<void> {
       existing.status !== nextStatus ||
       existing.earnedDate !== nextEarnedDate;
 
-    if (!needsUpdate) continue;
+    if (!needsUpdate) {
+      if (invoice.status === 'paid') {
+        paidSalesCountByAgent.set(agentId, paidSalesIncludingCurrent);
+      }
+      continue;
+    }
 
-    await commissionService.update(existing.id, {
+    const updated = await commissionService.update(existing.id, {
       agentId,
       projectId: invoice.projectId,
       packageId,
@@ -125,5 +161,11 @@ export async function syncCommissionsFromInvoices(): Promise<void> {
       status: nextStatus,
       earnedDate: nextEarnedDate,
     });
+    if (updated) {
+      existingByInvoiceId.set(invoice.id, updated);
+    }
+    if (invoice.status === 'paid') {
+      paidSalesCountByAgent.set(agentId, paidSalesIncludingCurrent);
+    }
   }
 }

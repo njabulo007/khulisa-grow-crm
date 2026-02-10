@@ -1,7 +1,7 @@
 import { OBSOLETE_CRM_STORAGE_KEYS, STORAGE_KEYS, hasStoredValue, removeStoredValue, writeStoredValue } from '@/services/storage';
 import { seedActivities, seedClients, seedCommissions, seedInvoices, seedLeads, seedPayments, seedProjects, seedUsers } from './data';
 
-const DEMO_DATA_PURGE_KEY = 'khulisa_demo_data_purged_v1';
+const DEMO_DATA_PURGE_KEY = 'khulisa_demo_data_purged_v3';
 
 export function seedAppData(): void {
   // One-time cleanup of legacy demo/session state so sign-in starts fresh on Firebase Auth.

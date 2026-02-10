@@ -5,6 +5,10 @@
 // - signOut for logout
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import {
+  getDefaultCommissionRatePercentForAgent,
+  isSpecialCommissionAgentEmail,
+} from '@/config/commission';
 import { User, UserRole } from '@/types/models';
 import { authService, AuthService } from '@/services/authService';
 import { seedAppData } from '@/seed';
@@ -66,10 +70,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         'User';
 
       if (existing) {
+        const nextCommissionRate =
+          payload.role === 'owner'
+            ? 0
+            : isSpecialCommissionAgentEmail(normalizedEmail)
+              ? getDefaultCommissionRatePercentForAgent(normalizedEmail)
+              : typeof existing.commissionRate === 'number'
+                ? existing.commissionRate
+                : getDefaultCommissionRatePercentForAgent(normalizedEmail);
+
         const updates: Partial<User> = {
           name: nextName,
           role: payload.role,
           isActive: true,
+          commissionRate: nextCommissionRate,
         };
         const updated = authService.update(existing.id, updates) || existing;
         authService.setCurrentUser(updated.id);
@@ -89,7 +103,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: nextName,
         role: payload.role,
         isActive: true,
-        commissionRate: payload.role === 'owner' ? 0 : 15,
+        commissionRate:
+          payload.role === 'owner'
+            ? 0
+            : getDefaultCommissionRatePercentForAgent(normalizedEmail),
       });
       authService.setCurrentUser(created.id);
       void AuthService.ensureUserProfile({
@@ -124,10 +141,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           existingByEmail?.name ||
           normalizedEmail.split('@')[0] ||
           'User';
-        const nextCommissionRate =
+        const defaultCommissionRate =
+          profile.role === 'owner'
+            ? 0
+            : getDefaultCommissionRatePercentForAgent(normalizedEmail);
+        const existingCommissionRate =
           existingByTargetId?.commissionRate ??
-          existingByEmail?.commissionRate ??
-          (profile.role === 'owner' ? 0 : 15);
+          existingByEmail?.commissionRate;
+        const nextCommissionRate =
+          profile.role === 'owner'
+            ? 0
+            : isSpecialCommissionAgentEmail(normalizedEmail)
+              ? defaultCommissionRate
+              : existingCommissionRate ?? defaultCommissionRate;
 
         if (existingByTargetId) {
           authService.update(existingByTargetId.id, {
