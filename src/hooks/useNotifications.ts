@@ -177,6 +177,12 @@ export function useNotifications(): UseNotificationsResult {
     void pushService.registerForUser(user.id, false);
   }, [user?.id]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    if (desktopPermission !== 'granted') return;
+    void pushService.registerForUser(user.id, false);
+  }, [desktopPermission, user?.id]);
+
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,
     [notifications]
