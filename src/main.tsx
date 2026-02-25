@@ -1,31 +1,27 @@
 import { createRoot } from "react-dom/client";
+import { registerSW } from "virtual:pwa-register";
+import { toast } from "sonner";
 import App from "./App.tsx";
 import "./index.css";
 
 createRoot(document.getElementById("root")!).render(<App />);
 
-const clearKhulisaCaches = async (): Promise<void> => {
-  if (!("caches" in window)) return;
-  const cacheNames = await caches.keys();
-  await Promise.all(
-    cacheNames
-      .filter((name) => name.startsWith("khulisa-crm-cache"))
-      .map((name) => caches.delete(name))
-  );
-};
-
-const cleanupServiceWorkersForDev = async (): Promise<void> => {
-  const registrations = await navigator.serviceWorker.getRegistrations();
-  await Promise.all(registrations.map((registration) => registration.unregister()));
-  await clearKhulisaCaches();
-};
-
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    if (import.meta.env.PROD) {
-      void navigator.serviceWorker.register("/sw.js").catch(() => undefined);
-      return;
-    }
-    void cleanupServiceWorkersForDev().catch(() => undefined);
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  const updateSW = registerSW({
+    immediate: true,
+    onNeedRefresh() {
+      toast("New version available. Refresh now?", {
+        duration: Infinity,
+        action: {
+          label: "Refresh",
+          onClick: () => {
+            void updateSW(true);
+          },
+        },
+      });
+    },
+    onOfflineReady() {
+      toast.success("Offline cache is ready.");
+    },
   });
 }

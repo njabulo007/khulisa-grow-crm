@@ -13,3 +13,4 @@ export * from './invoiceAgentResolver';
 export * from './themeService';
 export * from './storageService';
 export * from './pushService';
+export * from './settingsService';

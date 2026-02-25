@@ -7,8 +7,17 @@ import { commissionService } from './commissionService';
 import { invoiceService } from './invoiceService';
 import { leadService } from './leadService';
 import { projectService } from './projectService';
+import { settingsService } from './settingsService';
 
 const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
+const normalizeCommissionRatePercent = (value: number, fallbackPercent: number): number => {
+  const baseline = Number.isFinite(fallbackPercent) ? fallbackPercent : 0;
+  if (!Number.isFinite(value)) return Math.max(0, Math.min(100, baseline));
+  const resolved = value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, resolved));
+};
+const rateFromPercent = (percent: number): number =>
+  Math.round((percent / 100 + Number.EPSILON) * 10000) / 10000;
 const toTimestamp = (value?: string): number => {
   if (!value) return 0;
   const parsed = new Date(value).getTime();
@@ -74,7 +83,8 @@ const resolveEarnedDate = (
 
 export async function syncCommissionsFromInvoices(): Promise<void> {
   // TODO: Replace implementation with Firebase-triggered commission rules.
-  const [users, invoices, projects, clients, leads, existingCommissions] = await Promise.all([
+  const [globalSettings, users, invoices, projects, clients, leads, existingCommissions] = await Promise.all([
+    settingsService.getGlobal(),
     authService.getAll(),
     invoiceService.getAll(),
     projectService.getAll(),
@@ -98,10 +108,17 @@ export async function syncCommissionsFromInvoices(): Promise<void> {
     const paidSalesBeforeInvoice = paidSalesCountByAgent.get(agentId) || 0;
     const paidSalesIncludingCurrent =
       invoice.status === 'paid' ? paidSalesBeforeInvoice + 1 : paidSalesBeforeInvoice;
-    const rate = getCommissionRateForAgent({
-      agentEmail: usersById.get(agentId)?.email,
-      paidSalesCount: paidSalesIncludingCurrent,
-    });
+    const manualRatePercent = normalizeCommissionRatePercent(
+      usersById.get(agentId)?.commissionRate ?? globalSettings.defaultManualCommissionRate,
+      globalSettings.defaultManualCommissionRate,
+    );
+    const rate =
+      globalSettings.commissionMode === 'manual'
+        ? rateFromPercent(manualRatePercent)
+        : getCommissionRateForAgent({
+            agentEmail: usersById.get(agentId)?.email,
+            paidSalesCount: paidSalesIncludingCurrent,
+          });
 
     const pkg = getPackageById(packageId);
     if (!pkg) continue;

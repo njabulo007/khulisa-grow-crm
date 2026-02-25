@@ -34,8 +34,14 @@ const ensureServiceWorkerReady = async (): Promise<ServiceWorkerRegistration | n
   const existing = await navigator.serviceWorker.getRegistration('/');
   if (existing) return existing;
 
-  await navigator.serviceWorker.register('/sw.js');
-  return navigator.serviceWorker.ready;
+  if (!import.meta.env.PROD) return null;
+
+  try {
+    await navigator.serviceWorker.register('/sw.js');
+    return navigator.serviceWorker.ready;
+  } catch {
+    return null;
+  }
 };
 
 class PushService {

@@ -1,7 +1,13 @@
 import { getApp, getApps, initializeApp, type FirebaseApp, type FirebaseOptions } from "firebase/app";
 import { getAnalytics, type Analytics } from "firebase/analytics";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  type Firestore,
+} from "firebase/firestore";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig: FirebaseOptions = {
@@ -26,13 +32,25 @@ let firebaseAuth: Auth | null = null;
 let firestoreDb: Firestore | null = null;
 let storageBucket: FirebaseStorage | null = null;
 
+const initializeDbWithIndexedDbCache = (appInstance: FirebaseApp): Firestore => {
+  try {
+    return initializeFirestore(appInstance, {
+      // IndexedDB is used only as a local cache; Cloud Firestore remains source of truth.
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch (error) {
+    console.warn("[Firebase] Falling back to default Firestore cache initialization.", error);
+    return getFirestore(appInstance);
+  }
+};
+
 if (isFirebaseConfigured) {
   firebaseApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
   if (typeof window !== "undefined") {
     firebaseAnalytics = getAnalytics(firebaseApp);
   }
   firebaseAuth = getAuth(firebaseApp);
-  firestoreDb = getFirestore(firebaseApp);
+  firestoreDb = initializeDbWithIndexedDbCache(firebaseApp);
   storageBucket = getStorage(firebaseApp);
 }
 

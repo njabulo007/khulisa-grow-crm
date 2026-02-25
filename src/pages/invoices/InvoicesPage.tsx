@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -86,6 +87,7 @@ export function InvoicesPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [invoiceToDelete, setInvoiceToDelete] = useState<Invoice | null>(null);
+  const [forceDeleteLinkedData, setForceDeleteLinkedData] = useState(false);
   const [openedFromPreset, setOpenedFromPreset] = useState(false);
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -269,6 +271,7 @@ export function InvoicesPage() {
       return;
     }
     setInvoiceToDelete(invoice);
+    setForceDeleteLinkedData(false);
     setShowDeleteDialog(true);
   };
 
@@ -283,11 +286,21 @@ export function InvoicesPage() {
       paymentService.getByInvoiceId(invoiceToDelete.id),
       commissionService.getByInvoiceId(invoiceToDelete.id),
     ]);
-    if (linkedPayments.length > 0 || linkedCommissions.length > 0) {
-      toast.error('This invoice has payments/commissions linked and cannot be deleted. Void or adjust it instead.');
-      setShowDeleteDialog(false);
-      setInvoiceToDelete(null);
+    const hasLinkedRecords = linkedPayments.length > 0 || linkedCommissions.length > 0;
+
+    if (hasLinkedRecords && !forceDeleteLinkedData) {
+      toast.error('This invoice has linked payments/commissions. Enable force delete to remove linked records too.');
       return;
+    }
+
+    if (hasLinkedRecords && forceDeleteLinkedData) {
+      for (const payment of linkedPayments) {
+        await paymentService.remove(payment.id);
+      }
+      const commissionsAfterPaymentRemoval = await commissionService.getByInvoiceId(invoiceToDelete.id);
+      for (const commission of commissionsAfterPaymentRemoval) {
+        await commissionService.remove(commission.id);
+      }
     }
 
     const removed = await removeInvoice(invoiceToDelete.id);
@@ -296,9 +309,14 @@ export function InvoicesPage() {
       return;
     }
 
-    toast.success('Invoice deleted successfully.');
+    if (hasLinkedRecords && forceDeleteLinkedData) {
+      toast.success('Invoice and linked records deleted successfully.');
+    } else {
+      toast.success('Invoice deleted successfully.');
+    }
     setShowDeleteDialog(false);
     setInvoiceToDelete(null);
+    setForceDeleteLinkedData(false);
     const payments = await paymentService.getAll();
     setAllPayments(payments);
   };
@@ -598,20 +616,40 @@ export function InvoicesPage() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) {
+            setInvoiceToDelete(null);
+            setForceDeleteLinkedData(false);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete Invoice</DialogTitle>
             <DialogDescription>
-              Delete this invoice? If payments or commissions are linked, deletion will be blocked for safety.
+              Delete this invoice. Linked payments/commissions are protected unless you explicitly force delete.
             </DialogDescription>
           </DialogHeader>
+          <div className="flex items-start gap-3 rounded-lg border p-3">
+            <Checkbox
+              id="force-delete-linked-list"
+              checked={forceDeleteLinkedData}
+              onCheckedChange={(checked) => setForceDeleteLinkedData(Boolean(checked))}
+            />
+            <Label htmlFor="force-delete-linked-list" className="text-sm font-normal leading-5">
+              Force delete linked payments and commissions (owner override)
+            </Label>
+          </div>
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
                 setShowDeleteDialog(false);
                 setInvoiceToDelete(null);
+                setForceDeleteLinkedData(false);
               }}
             >
               Cancel

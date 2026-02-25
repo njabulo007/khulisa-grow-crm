@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
+import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
 // https://vitejs.dev/config/
@@ -16,7 +17,29 @@ export default defineConfig(() => ({
       overlay: false,
     },
   },
-  plugins: [react()],
+  plugins: [
+    react(),
+    VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.js",
+      registerType: "autoUpdate",
+      injectRegister: false,
+      manifest: false,
+      includeAssets: [
+        "images/khulisa-logo.png",
+        "images/khulisa-logo-icon.png",
+        "sounds/notification.wav",
+        "manifest.webmanifest",
+      ],
+      workbox: {
+        cleanupOutdatedCaches: true,
+      },
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,webmanifest,wav,woff2}"],
+      },
+    }),
+  ],
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -3,12 +3,23 @@ import {
   getCommissionRateForAgent,
 } from '@/config/commission';
 import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
-import { Invoice, Lead } from '@/types/models';
+import { GlobalSettings, Invoice, Lead } from '@/types/models';
 import { authService } from './authService';
 import { clientService } from './clientService';
 import { projectService } from './projectService';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
 import { notificationService } from './notificationService';
+import { settingsService } from './settingsService';
+
+const normalizeCommissionRatePercent = (value: number, fallbackPercent: number): number => {
+  const baseline = Number.isFinite(fallbackPercent) ? fallbackPercent : 0;
+  if (!Number.isFinite(value)) return Math.max(0, Math.min(100, baseline));
+  const resolved = value <= 1 ? value * 100 : value;
+  return Math.max(0, Math.min(100, resolved));
+};
+
+const rateFromPercent = (percent: number): number =>
+  Math.round((percent / 100 + Number.EPSILON) * 10000) / 10000;
 
 export interface LeadService {
   getAll: () => Promise<Lead[]>;
@@ -38,7 +49,19 @@ class FirestoreLeadService implements LeadService {
     }).format(amount);
   }
 
-  private async getCurrentCommissionRateForAgent(agentId: string): Promise<number> {
+  private async getCurrentCommissionRateForAgent(
+    agentId: string,
+    globalSettings?: GlobalSettings
+  ): Promise<number> {
+    const settings = globalSettings ?? (await settingsService.getGlobal());
+    if (settings.commissionMode === 'manual') {
+      const manualRatePercent = normalizeCommissionRatePercent(
+        authService.getById(agentId)?.commissionRate ?? settings.defaultManualCommissionRate,
+        settings.defaultManualCommissionRate,
+      );
+      return rateFromPercent(manualRatePercent);
+    }
+
     const agentEmail = authService.getById(agentId)?.email;
     const [invoices, projects, leads, clients] = await Promise.all([
       this.invoicesCollection.getAll(),
@@ -60,14 +83,21 @@ class FirestoreLeadService implements LeadService {
   }
 
   private async buildLeadAssignmentMessage(lead: Lead, nextAssignedTo: string): Promise<string> {
-    const fallbackRate = getCommissionRateForAgent({
-      agentEmail: authService.getById(nextAssignedTo)?.email,
-      paidSalesCount: 0,
-    });
+    const agent = authService.getById(nextAssignedTo);
+    const fallbackRate = getCommissionRateForAgent({ agentEmail: agent?.email, paidSalesCount: 0 });
     let rate = fallbackRate;
 
     try {
-      rate = await this.getCurrentCommissionRateForAgent(nextAssignedTo);
+      const globalSettings = await settingsService.getGlobal();
+      if (globalSettings.commissionMode === 'manual') {
+        const manualRatePercent = normalizeCommissionRatePercent(
+          agent?.commissionRate ?? globalSettings.defaultManualCommissionRate,
+          globalSettings.defaultManualCommissionRate,
+        );
+        rate = rateFromPercent(manualRatePercent);
+      } else {
+        rate = await this.getCurrentCommissionRateForAgent(nextAssignedTo, globalSettings);
+      }
     } catch (error) {
       console.error('[LeadService] Failed to calculate dynamic commission rate for assignment notification.', error);
     }

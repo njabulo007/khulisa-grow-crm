@@ -150,6 +150,16 @@ export interface Commission {
   updatedAt: string;
 }
 
+export type CommissionCalculationMode = 'automatic' | 'manual';
+
+export interface GlobalSettings {
+  id: string;
+  commissionMode: CommissionCalculationMode;
+  defaultManualCommissionRate: number; // Percent value (15 = 15%)
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ActivityType = 'note' | 'call' | 'email' | 'whatsapp' | 'meeting' | 'status-change' | 'payment';
 
 export interface Activity {
