@@ -93,6 +93,7 @@ export function InvoicesPage() {
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
+  const [isInvoiceMetaLoading, setIsInvoiceMetaLoading] = useState(true);
   const [formData, setFormData] = useState<InvoiceFormState>({
     clientId: '',
     projectId: '',
@@ -112,17 +113,23 @@ export function InvoicesPage() {
   useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
-      const [clients, projects, leads, payments] = await Promise.all([
-        clientService.getAll(),
-        projectService.getAll(),
-        leadService.getAll(),
-        paymentService.getAll(),
-      ]);
-      if (!isMounted) return;
-      setAllClients(clients);
-      setAllProjects(projects);
-      setAllLeads(leads);
-      setAllPayments(payments);
+      try {
+        const [clients, projects, leads, payments] = await Promise.all([
+          clientService.getAll(),
+          projectService.getAll(),
+          leadService.getAll(),
+          paymentService.getAll(),
+        ]);
+        if (!isMounted) return;
+        setAllClients(clients);
+        setAllProjects(projects);
+        setAllLeads(leads);
+        setAllPayments(payments);
+      } finally {
+        if (isMounted) {
+          setIsInvoiceMetaLoading(false);
+        }
+      }
     };
     void loadData();
     return () => {
@@ -346,7 +353,7 @@ export function InvoicesPage() {
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[200px]">
+          <SelectTrigger className="w-full sm:w-[200px]">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
           <SelectContent>
@@ -360,7 +367,7 @@ export function InvoicesPage() {
         </Select>
       </div>
 
-      {isInvoicesLoading && allInvoices.length === 0 ? (
+      {(isInvoicesLoading && allInvoices.length === 0) || isInvoiceMetaLoading ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">Loading invoices...</CardContent>
         </Card>

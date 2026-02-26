@@ -59,6 +59,7 @@ export function InvoiceDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
   const [invoice, setInvoice] = useState<Invoice | undefined>(undefined);
   const [client, setClient] = useState<Client | null>(null);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -77,34 +78,39 @@ export function InvoiceDetailPage() {
   }, []);
 
   const loadData = useCallback(async () => {
-    const [loadedInvoice, projects, leads, clients] = await Promise.all([
-      invoiceService.getById(id || ''),
-      projectService.getAll(),
-      leadService.getAll(),
-      clientService.getAll(),
-    ]);
+    setIsLoading(true);
+    try {
+      const [loadedInvoice, projects, leads, clients] = await Promise.all([
+        invoiceService.getById(id || ''),
+        projectService.getAll(),
+        leadService.getAll(),
+        clientService.getAll(),
+      ]);
 
-    setInvoice(loadedInvoice);
-    setAllProjects(projects);
-    setAllLeads(leads);
-    setAllClients(clients);
+      setInvoice(loadedInvoice);
+      setAllProjects(projects);
+      setAllLeads(leads);
+      setAllClients(clients);
 
-    if (!loadedInvoice) {
-      setClient(null);
-      setPayments([]);
-      setPaymentSummary(null);
-      return;
+      if (!loadedInvoice) {
+        setClient(null);
+        setPayments([]);
+        setPaymentSummary(null);
+        return;
+      }
+
+      const [loadedClient, loadedPayments, summary] = await Promise.all([
+        clientService.getById(loadedInvoice.clientId),
+        paymentService.getByInvoiceId(loadedInvoice.id),
+        invoiceService.getPaymentSummary(loadedInvoice.id),
+      ]);
+
+      setClient(loadedClient || null);
+      setPayments(loadedPayments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()));
+      setPaymentSummary(summary);
+    } finally {
+      setIsLoading(false);
     }
-
-    const [loadedClient, loadedPayments, summary] = await Promise.all([
-      clientService.getById(loadedInvoice.clientId),
-      paymentService.getByInvoiceId(loadedInvoice.id),
-      invoiceService.getPaymentSummary(loadedInvoice.id),
-    ]);
-
-    setClient(loadedClient || null);
-    setPayments(loadedPayments.sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime()));
-    setPaymentSummary(summary);
   }, [id]);
 
   useEffect(() => {
@@ -134,6 +140,14 @@ export function InvoiceDetailPage() {
     () => canAccessInvoice(user, invoice, allLeads, allClients, allProjects),
     [allClients, allLeads, allProjects, invoice, user]
   );
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12">
+        <p className="text-muted-foreground">Loading invoice...</p>
+      </div>
+    );
+  }
 
   if (!invoice) {
     return (
@@ -369,9 +383,9 @@ export function InvoiceDetailPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <PageHeader title={invoice.invoiceNumber} description="Invoice Details" className="mb-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
             {isOwner && (
-              <Button variant="outline" size="sm" onClick={openEditDialog}>
+              <Button variant="outline" size="sm" onClick={openEditDialog} className="w-full sm:w-auto">
                 <Pencil className="mr-2 h-4 w-4" />
                 Edit Invoice
               </Button>
@@ -381,6 +395,7 @@ export function InvoiceDetailPage() {
                 variant="outline"
                 size="sm"
                 onClick={() => window.open(`/invoices/${invoice.id}/print`, '_blank', 'noopener,noreferrer')}
+                className="w-full sm:w-auto"
               >
                 <Printer className="mr-2 h-4 w-4" />
                 Download / Print Invoice
@@ -390,6 +405,7 @@ export function InvoiceDetailPage() {
               <Button
                 variant="destructive"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => {
                   setForceDeleteLinkedData(false);
                   setShowDeleteDialog(true);

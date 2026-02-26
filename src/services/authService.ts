@@ -63,25 +63,25 @@ function getFirebaseAuthErrorMessage(error: unknown): string {
   const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
   switch (code) {
     case 'auth/invalid-credential':
-      return 'Invalid email/password for this Firebase project (khulisa-grow-crm). Confirm the user exists in Firebase Authentication -> Users.';
+      return 'Email or password is incorrect. Please try again.';
     case 'auth/wrong-password':
-      return 'Wrong password for this account.';
+      return 'Email or password is incorrect. Please try again.';
     case 'auth/user-not-found':
-      return 'No user found for this email in Firebase Authentication.';
+      return 'Email or password is incorrect. Please try again.';
     case 'auth/invalid-email':
-      return 'Email address format is invalid.';
+      return 'Please enter a valid email address.';
     case 'auth/too-many-requests':
-      return 'Too many attempts. Try again later.';
+      return 'Too many attempts. Please wait a moment and try again.';
     case 'auth/network-request-failed':
-      return 'Network error. Check internet connection and try again.';
+      return 'We could not connect right now. Check your internet and try again.';
     case 'auth/operation-not-allowed':
-      return 'Email/Password sign-in is disabled in Firebase Auth.';
+      return 'Sign-in is currently unavailable. Please contact support.';
     case 'auth/email-already-in-use':
-      return 'This email is already in use.';
+      return 'An account with this email already exists. Try logging in instead.';
     case 'auth/weak-password':
-      return 'Password is too weak. Use at least 6 characters.';
+      return 'Password must be at least 6 characters.';
     default:
-      return code ? `Firebase login failed (${code}).` : 'Firebase login failed.';
+      return 'Unable to sign in right now. Please try again.';
   }
 }
 
