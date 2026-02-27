@@ -79,7 +79,7 @@ export function LoginPage() {
           <CardHeader>
             <CardTitle className="text-2xl">{mode === 'signup' ? 'Create account' : 'Welcome back'}</CardTitle>
             <CardDescription>
-              {mode === 'signup' ? 'Create your Firebase account' : 'Log in with your Firebase account'}
+              {mode === 'signup' ? 'Create your Khulisa CRM account' : 'Log in with your Khulisa CRM account'}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
