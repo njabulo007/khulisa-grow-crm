@@ -105,7 +105,7 @@ class FirestoreLeadService implements LeadService {
     const estimatedValue = Number.isFinite(lead.estimatedValue) ? Math.max(0, lead.estimatedValue) : 0;
     const potentialCommission = this.roundCurrency(estimatedValue * rate);
 
-    return `You've been assigned a new lead: ${lead.businessName}. Potential commission: ${this.formatCurrency(potentialCommission)} (${formatCommissionRatePercent(rate)}).`;
+    return `You've been assigned a new lead: ${lead.businessName}. Potential commission: ${this.formatCurrency(potentialCommission)}.`;
   }
 
   private async notifyAssignment(lead: Lead, previousAssignedTo?: string): Promise<void> {

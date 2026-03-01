@@ -3,8 +3,15 @@ import { registerSW } from "virtual:pwa-register";
 import { toast } from "sonner";
 import App from "./App.tsx";
 import "./index.css";
+import { notificationService } from "./services/notificationService";
+import { AuthService } from "./services/authService";
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+let currentUserId: string | null = null;
+AuthService.subscribeToAuthChanges((user) => {
+  currentUserId = user?.id ?? null;
+});
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
   const updateSW = registerSW({
@@ -19,6 +26,22 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
           },
         },
       });
+
+      if (currentUserId) {
+        void (async () => {
+          try {
+            await notificationService.createForUser(currentUserId, {
+              type: 'activity',
+              title: 'Update available',
+              message: 'A new version of the app is available. Refresh to apply updates.',
+            });
+          } catch (err) {
+            // Best-effort; don't block the UX if notification write fails
+            // eslint-disable-next-line no-console
+            console.error('Failed to create update notification for user', err);
+          }
+        })();
+      }
     },
     onOfflineReady() {
       toast.success("Offline cache is ready.");
