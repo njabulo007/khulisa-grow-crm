@@ -12,5 +12,6 @@ export * from './notificationService';
 export * from './invoiceAgentResolver';
 export * from './themeService';
 export * from './storageService';
+export * from './projectShareService';
 export * from './pushService';
 export * from './settingsService';

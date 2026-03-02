@@ -5,6 +5,7 @@ import {
   Building2,
   Calendar,
   CheckCircle2,
+  Copy,
   Circle,
   FolderKanban,
   Link as LinkIcon,
@@ -30,6 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import {
@@ -37,6 +40,11 @@ import {
   normalizeProjectMilestone,
 } from '@/lib/projectMilestones';
 import { authService, clientService, invoiceService, projectService } from '@/services';
+import {
+  projectShareService,
+  type ProjectShareRecord,
+  type ProjectShareStatus,
+} from '@/services/projectShareService';
 import { useAuth } from '@/contexts/AuthContext';
 import { canAccessProject } from '@/lib/permissions';
 import { Client, Invoice, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
@@ -52,6 +60,23 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
+const formatDateTime = (value?: string | null): string => {
+  if (!value) return 'Not available';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Not available';
+  return new Intl.DateTimeFormat('en-ZA', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+};
+
+const getComputedShareStatus = (share: ProjectShareRecord): ProjectShareStatus => {
+  if (share.status === 'revoked' || !!share.revokedAt) return 'revoked';
+  if (share.status === 'expired') return 'expired';
+  if (share.expiresAt && new Date(share.expiresAt).getTime() <= Date.now()) return 'expired';
+  return 'active';
+};
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -63,6 +88,15 @@ export function ProjectDetailPage() {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isSavingMilestones, setIsSavingMilestones] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
+  const [shareExpiryDate, setShareExpiryDate] = useState(() =>
+    new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  );
+  const [portalShares, setPortalShares] = useState<ProjectShareRecord[]>([]);
+  const [portalSharesError, setPortalSharesError] = useState<string | null>(null);
+  const [isLoadingShares, setIsLoadingShares] = useState(false);
+  const [isCreatingShare, setIsCreatingShare] = useState(false);
+  const [isRevokingShareId, setIsRevokingShareId] = useState<string | null>(null);
+  const [latestShareLink, setLatestShareLink] = useState<{ shareId: string; url: string } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -96,8 +130,47 @@ export function ProjectDetailPage() {
     };
   }, [id]);
 
+  const loadPortalShares = React.useCallback(
+    async (projectId: string) => {
+      if (!isOwner) return;
+      setPortalSharesError(null);
+      setIsLoadingShares(true);
+      try {
+        const shares = await projectShareService.list(projectId);
+        setPortalShares(shares);
+        setPortalSharesError(null);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to load share links.';
+        setPortalSharesError(message);
+      } finally {
+        setIsLoadingShares(false);
+      }
+    },
+    [isOwner]
+  );
+
+  useEffect(() => {
+    if (!project || !isOwner) {
+      setPortalShares([]);
+      setPortalSharesError(null);
+      setLatestShareLink(null);
+      return;
+    }
+    void loadPortalShares(project.id);
+  }, [isOwner, loadPortalShares, project]);
+
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
   const agent = useMemo(() => (project ? authService.getById(project.assignedTo) : null), [project]);
+  const portalShareHistory = useMemo(() => {
+    return [...portalShares].sort((a, b) => {
+      const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bMs = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bMs - aMs;
+    });
+  }, [portalShares]);
+  const activePortalShare = useMemo(() => {
+    return portalShareHistory.find((share) => getComputedShareStatus(share) === 'active') || null;
+  }, [portalShareHistory]);
 
   if (!project) {
     return (
@@ -211,6 +284,74 @@ export function ProjectDetailPage() {
     toast.success('Project deleted successfully.');
     setShowDeleteDialog(false);
     navigate('/projects');
+  };
+
+  const handleCreatePortalLink = async () => {
+    if (!isOwner) {
+      toast.error('Only owners can generate client portal links.');
+      return;
+    }
+
+    const expiresAt = `${shareExpiryDate}T23:59:59`;
+    const parsed = new Date(expiresAt);
+    if (Number.isNaN(parsed.getTime()) || parsed.getTime() <= Date.now()) {
+      toast.error('Choose a valid future expiry date.');
+      return;
+    }
+
+    setIsCreatingShare(true);
+    try {
+      const created = await projectShareService.create(project.id, parsed.toISOString());
+      setLatestShareLink({ shareId: created.shareId, url: created.url });
+      await loadPortalShares(project.id);
+      toast.success('Client portal link generated.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to create portal link.';
+      toast.error(message);
+    } finally {
+      setIsCreatingShare(false);
+    }
+  };
+
+  const handleRevokePortalLink = async (shareId: string) => {
+    if (!isOwner) {
+      toast.error('Only owners can revoke client portal links.');
+      return;
+    }
+
+    setIsRevokingShareId(shareId);
+    try {
+      await projectShareService.revoke(shareId);
+      if (latestShareLink?.shareId === shareId) {
+        setLatestShareLink(null);
+      }
+      await loadPortalShares(project.id);
+      toast.success('Portal link revoked.');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to revoke portal link.';
+      toast.error(message);
+    } finally {
+      setIsRevokingShareId(null);
+    }
+  };
+
+  const handleCopyLatestPortalLink = async () => {
+    if (!latestShareLink?.url) {
+      toast.error('Generate a new link first, then copy it.');
+      return;
+    }
+
+    if (typeof navigator === 'undefined' || !navigator.clipboard) {
+      toast.error('Clipboard is unavailable. Copy from the link field.');
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(latestShareLink.url);
+      toast.success('Portal link copied.');
+    } catch {
+      toast.error('Could not copy link automatically. Please copy it manually from the field.');
+    }
   };
 
   return (
@@ -402,6 +543,130 @@ export function ProjectDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {isOwner && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Client Portal Link</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="portal-expiry-date">Link Expiry Date</Label>
+                  <Input
+                    id="portal-expiry-date"
+                    type="date"
+                    value={shareExpiryDate}
+                    onChange={(event) => setShareExpiryDate(event.target.value)}
+                    disabled={isCreatingShare}
+                  />
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button disabled={isCreatingShare} onClick={() => void handleCreatePortalLink()}>
+                    {activePortalShare ? 'Regenerate Link' : 'Generate Link'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={!latestShareLink?.url}
+                    onClick={() => void handleCopyLatestPortalLink()}
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Latest Link
+                  </Button>
+                </div>
+
+                {latestShareLink?.url && (
+                  <div className="grid gap-2">
+                    <Label htmlFor="latest-portal-link">Latest Generated Link</Label>
+                    <Input id="latest-portal-link" value={latestShareLink.url} readOnly />
+                  </div>
+                )}
+
+                {portalSharesError ? (
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                    {portalSharesError}
+                  </div>
+                ) : isLoadingShares ? (
+                  <p className="text-sm text-muted-foreground">Loading portal link status...</p>
+                ) : activePortalShare ? (
+                  <div className="rounded-lg border p-3 space-y-3">
+                    <p className="text-sm">
+                      Active link expires: <span className="font-medium">{formatDateTime(activePortalShare.expiresAt)}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Last viewed: {formatDateTime(activePortalShare.lastViewedAt)}
+                    </p>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      disabled={isRevokingShareId === activePortalShare.id}
+                      onClick={() => void handleRevokePortalLink(activePortalShare.id)}
+                    >
+                      Revoke Active Link
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">No active client portal link.</p>
+                )}
+
+                {!isLoadingShares && !portalSharesError && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Share History</p>
+                    {portalShareHistory.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No portal links generated yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {portalShareHistory.map((share) => {
+                          const computedStatus = getComputedShareStatus(share);
+                          const isShareActive = computedStatus === 'active';
+                          return (
+                            <div key={share.id} className="rounded-lg border p-3 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-xs text-muted-foreground">
+                                  Link ID: <span className="font-medium text-foreground">{share.id.slice(0, 8)}</span>
+                                </p>
+                                <span
+                                  className={`text-xs font-medium uppercase ${
+                                    computedStatus === 'active'
+                                      ? 'text-success'
+                                      : computedStatus === 'revoked'
+                                        ? 'text-destructive'
+                                        : 'text-muted-foreground'
+                                  }`}
+                                >
+                                  {computedStatus}
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">Created: {formatDateTime(share.createdAt)}</p>
+                              <p className="text-xs text-muted-foreground">Expires: {formatDateTime(share.expiresAt)}</p>
+                              <p className="text-xs text-muted-foreground">Last viewed: {formatDateTime(share.lastViewedAt)}</p>
+                              {share.revokedAt && (
+                                <p className="text-xs text-muted-foreground">Revoked: {formatDateTime(share.revokedAt)}</p>
+                              )}
+                              {isShareActive && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={isRevokingShareId === share.id}
+                                  onClick={() => void handleRevokePortalLink(share.id)}
+                                >
+                                  Revoke Link
+                                </Button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  Owner-only control: agents cannot generate, revoke, or copy client portal links.
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {project.driveLink && (
             <Card>

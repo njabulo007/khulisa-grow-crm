@@ -8,6 +8,7 @@ import {
   persistentMultipleTabManager,
   type Firestore,
 } from "firebase/firestore";
+import { getFunctions, type Functions } from "firebase/functions";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig: FirebaseOptions = {
@@ -31,6 +32,7 @@ let firebaseAnalytics: Analytics | null = null;
 let firebaseAuth: Auth | null = null;
 let firestoreDb: Firestore | null = null;
 let storageBucket: FirebaseStorage | null = null;
+let firebaseFunctions: Functions | null = null;
 
 const initializeDbWithIndexedDbCache = (appInstance: FirebaseApp): Firestore => {
   try {
@@ -52,6 +54,7 @@ if (isFirebaseConfigured) {
   firebaseAuth = getAuth(firebaseApp);
   firestoreDb = initializeDbWithIndexedDbCache(firebaseApp);
   storageBucket = getStorage(firebaseApp);
+  firebaseFunctions = getFunctions(firebaseApp);
 }
 
 export {
@@ -62,6 +65,7 @@ export {
   firebaseConfig,
   isFirebaseConfigured,
   storageBucket,
+  firebaseFunctions,
 };
 
 // Firebase aliases used by service modules.
@@ -70,9 +74,10 @@ export const analytics = firebaseAnalytics as Analytics;
 export const auth = firebaseAuth as Auth;
 export const db = firestoreDb as Firestore;
 export const storage = storageBucket as FirebaseStorage;
+export const functions = firebaseFunctions as Functions;
 
 export const getFirebaseServices = () => {
-  if (!firebaseApp || !firebaseAuth || !firestoreDb || !storageBucket) {
+  if (!firebaseApp || !firebaseAuth || !firestoreDb || !storageBucket || !firebaseFunctions) {
     throw new Error("Firebase is not configured. Missing required VITE_FIREBASE_* variables.");
   }
 
@@ -82,5 +87,6 @@ export const getFirebaseServices = () => {
     auth: firebaseAuth,
     db: firestoreDb,
     storage: storageBucket,
+    functions: firebaseFunctions,
   };
 };
