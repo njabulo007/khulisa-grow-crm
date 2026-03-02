@@ -17,6 +17,8 @@ import { projectShareService, type PublicProjectPortalData } from '@/services/pr
 import { StatusBadge } from '@/components/common';
 import { getPackageById, getPackageCombinedFeatures } from '@/config/packages';
 
+const AUTO_REFRESH_MS = 10 * 60 * 1000;
+
 const formatDate = (value: string | null): string => {
   if (!value) return 'Not available';
   const date = new Date(value);
@@ -69,35 +71,44 @@ export function ProjectPortalPage() {
   const [data, setData] = useState<PublicProjectPortalData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
-    const loadPortal = async () => {
+    const loadPortal = async (silent = false) => {
       if (!token) {
         setError('Invalid portal link.');
         setIsLoading(false);
         return;
       }
 
-      setIsLoading(true);
+      if (!silent) {
+        setIsLoading(true);
+      }
       setError('');
       try {
         const next = await projectShareService.resolve(token);
         if (!isMounted) return;
         setData(next);
+        setLastSyncedAt(new Date().toISOString());
       } catch (err) {
         if (!isMounted) return;
         const message = err instanceof Error ? err.message : 'This link is invalid or expired.';
         setError(message);
         setData(null);
       } finally {
-        if (isMounted) setIsLoading(false);
+        if (isMounted && !silent) setIsLoading(false);
       }
     };
 
-    void loadPortal();
+    void loadPortal(false);
+    const intervalId = setInterval(() => {
+      void loadPortal(true);
+    }, AUTO_REFRESH_MS);
+
     return () => {
       isMounted = false;
+      clearInterval(intervalId);
     };
   }, [token]);
 
@@ -158,23 +169,31 @@ export function ProjectPortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-b from-amber-50/30 via-white to-slate-100 px-4 py-8">
       <div className="mx-auto w-full max-w-6xl space-y-6">
         <Card className="overflow-hidden border-slate-200 shadow-sm">
-          <CardHeader className="space-y-4 bg-slate-950 text-slate-50">
+          <CardHeader className="space-y-4 border-t-4 border-amber-400 bg-slate-950 text-slate-50">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="space-y-1">
-                <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Client Project Portal</p>
-                <h1 className="text-2xl font-semibold tracking-tight">{data.project.name}</h1>
-                <p className="text-sm text-slate-200">{data.client.businessName}</p>
+              <div className="flex items-start gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 ring-1 ring-amber-300/60">
+                  <img src="/images/khulisa-logo-icon.png" alt="Khulisa Grow CRM" className="h-9 w-9 object-contain" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs uppercase tracking-[0.18em] text-slate-300">Client Project Portal</p>
+                  <h1 className="text-2xl font-semibold tracking-tight">{data.project.name}</h1>
+                  <p className="text-sm text-slate-200">{data.client.businessName}</p>
+                </div>
               </div>
-              <div className="rounded-lg bg-white/10 px-3 py-2">
+              <div className="rounded-lg bg-white/10 px-3 py-2 ring-1 ring-amber-300/50">
                 <StatusBadge status={data.project.status} type="project" />
               </div>
             </div>
             <p className="text-sm text-slate-200">{projectPulse}</p>
+            <p className="text-xs text-slate-300">
+              Auto-refreshes every 10 minutes. Last synced: {formatDateTime(lastSyncedAt)}
+            </p>
             <div className="grid gap-3 sm:grid-cols-4">
-              <div className="rounded-lg border border-white/20 bg-white/10 p-3">
+              <div className="rounded-lg border border-amber-300/40 bg-white/10 p-3">
                 <p className="text-xs text-slate-300">Completion</p>
                 <p className="text-lg font-semibold">{milestoneSummary.progress}%</p>
               </div>
@@ -207,7 +226,7 @@ export function ProjectPortalPage() {
                 <div className="space-y-2">
                   <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
                     <div
-                      className="h-full rounded-full bg-emerald-500 transition-all"
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-500 to-amber-400 transition-all"
                       style={{ width: `${milestoneSummary.progress}%` }}
                     />
                   </div>
