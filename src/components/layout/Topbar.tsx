@@ -394,7 +394,28 @@ export function Topbar({ onSearch }: TopbarProps) {
                       </button>
                     </div>
                   </div>
-                  <span className="line-clamp-2 text-xs text-muted-foreground">{notification.message}</span>
+                  <span className="line-clamp-2 text-xs text-muted-foreground">
+                    {(() => {
+                      try {
+                        if (notification.type === 'lead_assigned' && notification.leadId) {
+                          const lead = allLeads.find((l) => l.id === notification.leadId);
+                          if (lead && Number.isFinite(lead.estimatedValue)) {
+                            const percentMatch = /([0-9]+(?:\.[0-9]+)?)\s*%/.exec(notification.message);
+                            if (percentMatch) {
+                              const percent = Number.parseFloat(percentMatch[1]);
+                              if (!Number.isNaN(percent)) {
+                                const amount = Math.round((lead.estimatedValue * (percent / 100) + Number.EPSILON) * 100) / 100;
+                                return `You've been assigned a new lead: ${lead.businessName}. Potential commission: ${new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', minimumFractionDigits: 2 }).format(amount)}.`;
+                              }
+                            }
+                          }
+                        }
+                      } catch (err) {
+                        // fall back to original message on any error
+                      }
+                      return notification.message;
+                    })()}
+                  </span>
                   <span className="text-[11px] text-muted-foreground">
                     {formatNotificationTime(notification.createdAt)}
                   </span>
