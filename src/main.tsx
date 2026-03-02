@@ -17,15 +17,12 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
   const updateSW = registerSW({
     immediate: true,
     onNeedRefresh() {
-      toast("New version available. Refresh now?", {
-        duration: Infinity,
-        action: {
-          label: "Refresh",
-          onClick: () => {
-            void updateSW(true);
-          },
-        },
+      toast("New version available. Updating now...", {
+        duration: 1500,
       });
+      window.setTimeout(() => {
+        void updateSW(true);
+      }, 800);
 
       if (currentUserId) {
         void (async () => {
@@ -37,7 +34,6 @@ if ("serviceWorker" in navigator && import.meta.env.PROD) {
             });
           } catch (err) {
             // Best-effort; don't block the UX if notification write fails
-            // eslint-disable-next-line no-console
             console.error('Failed to create update notification for user', err);
           }
         })();

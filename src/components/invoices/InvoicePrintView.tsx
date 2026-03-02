@@ -3,8 +3,9 @@ import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { INVOICE_STATUSES, Client, Invoice, Payment, Project } from '@/types/models';
 
-const KHULISA_IDENTITY_LINE = 'Khulisa Media | Reg No: 2025/065968/07 | POPIA Registration No.: 2025-065968';
+const KHULISA_IDENTITY_LINE = 'Khulisa Media | Reg No: 2025/855572/07 | POPIA Registration No.: 2025-065968';
 const KHULISA_CONTACT_LINE = 'info@khulisamedia.co.za | www.khulisamedia.co.za | 063 031 0393';
+const KHULISA_BANK_DETAILS_LINE = 'Capitec account number: 1055 0119 86 | Branch code: 470010';
 const KHULISA_TAGLINE = 'Serve with care. Create with strategy. Grow with purpose.';
 const CONFIDENTIALITY_NOTICE = 'This document is confidential and prepared exclusively for the intended recipient.';
 
@@ -168,6 +169,7 @@ export function InvoicePrintView({
               <p className="mt-2 text-sm text-slate-700">
                 Please use <span className="font-semibold">{invoice.invoiceNumber}</span> as your payment reference.
               </p>
+              <p className="mt-2 text-sm text-slate-700">{KHULISA_BANK_DETAILS_LINE}</p>
               {invoice.notes && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{invoice.notes}</p>}
             </div>
 

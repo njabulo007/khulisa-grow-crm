@@ -59,6 +59,27 @@ const formatNotificationTime = (value: Date): string => {
   return value.toLocaleDateString('en-ZA');
 };
 
+const formatLeadAssignedMessage = (message: string, lead?: Lead): string => {
+  try {
+    if (lead && Number.isFinite(lead.estimatedValue)) {
+      const percentMatch = /([0-9]+(?:\.[0-9]+)?)\s*%/.exec(message);
+      if (percentMatch) {
+        const percent = Number.parseFloat(percentMatch[1]);
+        if (!Number.isNaN(percent)) {
+          const amount = Math.round((lead.estimatedValue * (percent / 100) + Number.EPSILON) * 100) / 100;
+          return `You've been assigned a new lead: ${lead.businessName}. Potential commission: ${new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', minimumFractionDigits: 2 }).format(amount)}.`;
+        }
+      }
+    }
+
+    // Legacy notifications may include a commission percentage; hide it in the UI.
+    const withoutPercent = message.replace(/\s*\(?[0-9]+(?:\.[0-9]+)?\s*%\)?/g, '');
+    return withoutPercent.replace(/\s{2,}/g, ' ').trim();
+  } catch (_err) {
+    return message.replace(/\s*\(?[0-9]+(?:\.[0-9]+)?\s*%\)?/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+};
+
 export function Topbar({ onSearch }: TopbarProps) {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -396,22 +417,9 @@ export function Topbar({ onSearch }: TopbarProps) {
                   </div>
                   <span className="line-clamp-2 text-xs text-muted-foreground">
                     {(() => {
-                      try {
-                        if (notification.type === 'lead_assigned' && notification.leadId) {
-                          const lead = allLeads.find((l) => l.id === notification.leadId);
-                          if (lead && Number.isFinite(lead.estimatedValue)) {
-                            const percentMatch = /([0-9]+(?:\.[0-9]+)?)\s*%/.exec(notification.message);
-                            if (percentMatch) {
-                              const percent = Number.parseFloat(percentMatch[1]);
-                              if (!Number.isNaN(percent)) {
-                                const amount = Math.round((lead.estimatedValue * (percent / 100) + Number.EPSILON) * 100) / 100;
-                                return `You've been assigned a new lead: ${lead.businessName}. Potential commission: ${new Intl.NumberFormat('en-ZA', { style: 'currency', currency: 'ZAR', minimumFractionDigits: 2 }).format(amount)}.`;
-                              }
-                            }
-                          }
-                        }
-                      } catch (err) {
-                        // fall back to original message on any error
+                      if (notification.type === 'lead_assigned') {
+                        const lead = notification.leadId ? allLeads.find((l) => l.id === notification.leadId) : undefined;
+                        return formatLeadAssignedMessage(notification.message, lead);
                       }
                       return notification.message;
                     })()}
