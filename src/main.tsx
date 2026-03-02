@@ -14,8 +14,24 @@ AuthService.subscribeToAuthChanges((user) => {
 });
 
 if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  const UPDATE_CHECK_INTERVAL_MS = 60 * 1000;
+
   const updateSW = registerSW({
     immediate: true,
+    onRegisteredSW(_swUrl, registration) {
+      if (!registration) return;
+
+      const checkForUpdates = () => {
+        void registration.update().catch(() => {
+          // Ignore transient update-check failures (offline/timeout).
+        });
+      };
+
+      checkForUpdates();
+      window.setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+      window.addEventListener("focus", checkForUpdates);
+      window.addEventListener("online", checkForUpdates);
+    },
     onNeedRefresh() {
       toast("New version available. Updating now...", {
         duration: 1500,
