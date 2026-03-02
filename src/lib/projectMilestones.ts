@@ -4,24 +4,102 @@ import { generateId } from '@/services/storage';
 
 const PACKAGE_MILESTONE_TEMPLATES: Record<PackageId, Array<{ title: string; description?: string }>> = {
   'digital-starter-presence': [
-    { title: 'Website or landing page complete' },
-    { title: 'Google Business Profile setup complete' },
-    { title: 'Branding refresh complete' },
+    {
+      title: '1 page website or landing page delivered',
+      description: 'Publish the agreed page with brand-consistent structure and mobile readiness.',
+    },
+    {
+      title: 'Google My Business setup complete (Basic)',
+      description: 'Create or claim the profile with core business details and contact data.',
+    },
+    {
+      title: 'Basic branding refresh complete',
+      description: 'Apply logo touch-up and consistent visual style across deliverables.',
+    },
+    {
+      title: 'WhatsApp enquiry button integrated',
+      description: 'Ensure click-to-chat works correctly across mobile and desktop.',
+    },
+    {
+      title: 'Flyer or promo graphic delivered',
+      description: 'Provide final client-ready artwork in approved format.',
+    },
   ],
   'local-growth-engine': [
-    { title: 'Website complete' },
-    { title: 'Google Business Profile optimisation complete' },
-    { title: 'Local SEO setup complete' },
-    { title: 'Facebook setup or refresh complete' },
+    {
+      title: '4-5 page website delivered',
+      description: 'Launch all planned pages with conversion-focused structure.',
+    },
+    {
+      title: 'Full Google My Business optimisation complete',
+      description: 'Optimise profile content, categories, imagery, and operating details.',
+    },
+    {
+      title: 'Local SEO setup complete',
+      description: 'Implement local SEO fundamentals for visibility in nearby searches.',
+    },
+    {
+      title: 'Facebook page setup or refresh complete',
+      description: 'Configure page branding, business details, and content readiness.',
+    },
+    {
+      title: 'Business photography assets optimised',
+      description: 'Prepare and optimise selected product or business images for web/social use.',
+    },
+    {
+      title: 'Contact forms and WhatsApp integration complete',
+      description: 'Validate enquiry flows, routing, and response pathways.',
+    },
+    {
+      title: 'Professional business email activated',
+      description: 'Configure and test yourname@yourbusiness.co.za account access and sending.',
+    },
   ],
   'business-brand-expansion': [
-    { title: 'Website complete' },
-    { title: 'Google Business Profile optimisation complete' },
-    { title: 'Local SEO setup complete' },
-    { title: 'Facebook setup or refresh complete' },
-    { title: 'Ads campaign setup complete' },
-    { title: 'Ads running and optimised' },
-    { title: 'Reporting delivered' },
+    {
+      title: '4-5 page website delivered',
+      description: 'Launch all planned pages with conversion-focused structure.',
+    },
+    {
+      title: 'Full Google My Business optimisation complete',
+      description: 'Optimise profile content, categories, imagery, and operating details.',
+    },
+    {
+      title: 'Local SEO setup complete',
+      description: 'Implement local SEO fundamentals for visibility in nearby searches.',
+    },
+    {
+      title: 'Facebook page setup or refresh complete',
+      description: 'Configure page branding, business details, and content readiness.',
+    },
+    {
+      title: 'Business photography assets optimised',
+      description: 'Prepare and optimise selected product or business images for web/social use.',
+    },
+    {
+      title: 'Contact forms and WhatsApp integration complete',
+      description: 'Validate enquiry flows, routing, and response pathways.',
+    },
+    {
+      title: 'Professional business email activated',
+      description: 'Configure and test yourname@yourbusiness.co.za account access and sending.',
+    },
+    {
+      title: 'Paid Facebook advertising management launched',
+      description: 'Set up ads manager structure and campaign control for ongoing management.',
+    },
+    {
+      title: 'R1,500 ad spend allocation configured',
+      description: 'Apply the included spend budget to approved campaign setup.',
+    },
+    {
+      title: 'Campaign targeting and optimisation active',
+      description: 'Validate targeting, creative rotation, and performance tuning.',
+    },
+    {
+      title: 'Conversion tracking and performance summary delivered',
+      description: 'Capture results and provide client-facing performance insights.',
+    },
   ],
 };
 
