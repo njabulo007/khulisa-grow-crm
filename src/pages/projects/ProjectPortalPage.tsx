@@ -169,9 +169,9 @@ export function ProjectPortalPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-amber-50/30 via-white to-slate-100 px-4 py-8">
+    <div className="min-h-screen bg-gradient-to-b from-amber-50/30 via-white to-slate-100 px-4 py-8 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900">
       <div className="mx-auto w-full max-w-6xl space-y-6">
-        <Card className="overflow-hidden border-slate-200 shadow-sm">
+        <Card className="overflow-hidden border-border shadow-sm">
           <CardHeader className="space-y-4 border-t-4 border-amber-400 bg-slate-950 text-slate-50">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-start gap-3">
@@ -217,20 +217,20 @@ export function ProjectPortalPage() {
 
         <div className="grid gap-6 xl:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader className="space-y-3">
-                <CardTitle className="flex items-center gap-2 text-slate-900">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <TrendingUp className="h-5 w-5 text-emerald-600" />
                   Delivery Progress
                 </CardTitle>
                 <div className="space-y-2">
-                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-emerald-500 to-amber-400 transition-all"
                       style={{ width: `${milestoneSummary.progress}%` }}
                     />
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     {milestoneSummary.progress}% complete across all checklist items
                   </p>
                 </div>
@@ -240,23 +240,23 @@ export function ProjectPortalPage() {
                   <p className="text-sm text-muted-foreground">No milestones available yet.</p>
                 ) : (
                   data.project.milestones.map((milestone) => (
-                    <div key={milestone.id} className="flex items-start gap-3 rounded-lg border border-slate-200 p-3">
+                    <div key={milestone.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
                       <div className="pt-0.5">
                         {milestone.isCompleted ? (
                           <CheckCircle2 className="h-4 w-4 text-success" />
                         ) : (
-                          <Circle className="h-4 w-4 text-slate-400" />
+                          <Circle className="h-4 w-4 text-muted-foreground" />
                         )}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className={`text-sm font-medium ${milestone.isCompleted ? 'text-slate-500 line-through' : 'text-slate-900'}`}>
+                        <p className={`text-sm font-medium ${milestone.isCompleted ? 'text-muted-foreground line-through' : 'text-foreground'}`}>
                           {milestone.title}
                         </p>
                         {milestone.description && (
-                          <p className="text-xs text-slate-500">{milestone.description}</p>
+                          <p className="text-xs text-muted-foreground">{milestone.description}</p>
                         )}
                         {milestone.completedAt && (
-                          <p className="text-xs text-slate-500">
+                          <p className="text-xs text-muted-foreground">
                             Completed {formatDate(milestone.completedAt)}
                           </p>
                         )}
@@ -267,22 +267,22 @@ export function ProjectPortalPage() {
               </CardContent>
             </Card>
 
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-slate-900">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <ListTodo className="h-5 w-5 text-amber-600" />
                   Next Milestones
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {openMilestones.length === 0 ? (
-                  <p className="text-sm text-slate-500">All checklist items are complete.</p>
+                  <p className="text-sm text-muted-foreground">All checklist items are complete.</p>
                 ) : (
                   openMilestones.slice(0, 6).map((milestone) => (
-                    <div key={milestone.id} className="rounded-lg border border-slate-200 p-3">
-                      <p className="text-sm font-medium text-slate-900">{milestone.title}</p>
+                    <div key={milestone.id} className="rounded-lg border border-border p-3">
+                      <p className="text-sm font-medium text-foreground">{milestone.title}</p>
                       {milestone.description && (
-                        <p className="mt-1 text-xs text-slate-500">{milestone.description}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">{milestone.description}</p>
                       )}
                     </div>
                   ))
@@ -291,16 +291,16 @@ export function ProjectPortalPage() {
             </Card>
 
             {data.project.notes && (
-              <Card className="border-slate-200 shadow-sm">
+              <Card className="border-border shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-slate-900">Project Brief</CardTitle>
+                  <CardTitle className="text-foreground">Project Brief</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="whitespace-pre-wrap text-sm text-slate-600">{data.project.notes}</p>
+                  <p className="whitespace-pre-wrap text-sm text-muted-foreground">{data.project.notes}</p>
                   {packageDetails?.outcome && (
-                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
-                      <p className="text-xs uppercase tracking-wide text-emerald-700">Expected Outcome</p>
-                      <p className="text-sm font-medium text-emerald-900">{packageDetails.outcome}</p>
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-700/60 dark:bg-emerald-950/30">
+                      <p className="text-xs uppercase tracking-wide text-emerald-700 dark:text-emerald-300">Expected Outcome</p>
+                      <p className="text-sm font-medium text-emerald-900 dark:text-emerald-100">{packageDetails.outcome}</p>
                     </div>
                   )}
                 </CardContent>
@@ -309,9 +309,9 @@ export function ProjectPortalPage() {
           </div>
 
           <div className="space-y-6">
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-slate-900">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <Target className="h-5 w-5 text-blue-600" />
                   Package Scope
                 </CardTitle>
@@ -321,29 +321,29 @@ export function ProjectPortalPage() {
                   <>
                     <div className="space-y-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-900">{packageDetails.name}</p>
+                        <p className="text-sm font-semibold text-foreground">{packageDetails.name}</p>
                         {packageDetails.isMostPopular && (
-                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800">
+                          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-500/20 dark:text-amber-200">
                             Most Popular
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-slate-500">{packageDetails.tagline}</p>
+                      <p className="text-xs text-muted-foreground">{packageDetails.tagline}</p>
                     </div>
                     <div className="flex items-end gap-2">
                       {typeof packageDetails.listPrice === 'number' && packageDetails.listPrice > packageDetails.price && (
-                        <p className="text-sm text-slate-400 line-through">{formatCurrency(packageDetails.listPrice)}</p>
+                        <p className="text-sm text-muted-foreground line-through">{formatCurrency(packageDetails.listPrice)}</p>
                       )}
-                      <p className="text-xl font-bold text-slate-900">{formatCurrency(packageDetails.price)}</p>
+                      <p className="text-xl font-bold text-foreground">{formatCurrency(packageDetails.price)}</p>
                     </div>
                     {packageDetails.featureLeadIn && (
-                      <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                         {packageDetails.featureLeadIn}
                       </p>
                     )}
                     <div className="space-y-2">
                       {packageDetails.combinedFeatures.map((feature) => (
-                        <div key={feature} className="flex items-start gap-2 text-sm text-slate-700">
+                        <div key={feature} className="flex items-start gap-2 text-sm text-foreground">
                           <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
                           <span>{feature}</span>
                         </div>
@@ -351,41 +351,41 @@ export function ProjectPortalPage() {
                     </div>
                   </>
                 ) : (
-                  <p className="text-sm text-slate-500">Package details are not available for this project.</p>
+                  <p className="text-sm text-muted-foreground">Package details are not available for this project.</p>
                 )}
               </CardContent>
             </Card>
 
-            <Card className="border-slate-200 shadow-sm">
+            <Card className="border-border shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-slate-900">
+                <CardTitle className="flex items-center gap-2 text-foreground">
                   <Clock3 className="h-5 w-5 text-violet-600" />
                   Timeline
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <div className="flex items-center gap-2 text-sm text-slate-700">
-                  <FolderKanban className="h-4 w-4 text-slate-500" />
+                <div className="flex items-center gap-2 text-sm text-foreground">
+                  <FolderKanban className="h-4 w-4 text-muted-foreground" />
                   <span>{data.project.packageName || 'Package not set'}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-slate-700">
-                  <Calendar className="h-4 w-4 text-slate-500" />
+                <div className="flex items-center gap-2 text-sm text-foreground">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>Start: {formatDate(data.project.startDate)}</span>
                 </div>
-                <div className="flex items-center gap-2 text-sm text-slate-700">
-                  <Calendar className="h-4 w-4 text-slate-500" />
+                <div className="flex items-center gap-2 text-sm text-foreground">
+                  <Calendar className="h-4 w-4 text-muted-foreground" />
                   <span>Due: {formatDate(data.project.dueDate)}</span>
                 </div>
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-muted-foreground">
                   Last updated: {formatDateTime(data.project.updatedAt)}
                 </div>
               </CardContent>
             </Card>
 
             {data.project.driveLink && (
-              <Card className="border-slate-200 shadow-sm">
+              <Card className="border-border shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-slate-900">Project Files</CardTitle>
+                  <CardTitle className="text-foreground">Project Files</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <Button asChild className="w-full">
