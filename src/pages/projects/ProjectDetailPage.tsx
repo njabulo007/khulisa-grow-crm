@@ -34,10 +34,9 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { getPackageNameById } from '@/config/packages';
+import { getPackageById, getPackageCombinedFeatures, getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import {
-  getAutoProjectStatusFromMilestones,
   normalizeProjectMilestone,
 } from '@/lib/projectMilestones';
 import { authService, clientService, invoiceService, projectService } from '@/services';
@@ -78,6 +77,76 @@ const getComputedShareStatus = (share: ProjectShareRecord): ProjectShareStatus =
   if (share.status === 'expired') return 'expired';
   if (share.expiresAt && new Date(share.expiresAt).getTime() <= Date.now()) return 'expired';
   return 'active';
+};
+
+const normalizeChecklistText = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
+interface OwnerScopedMilestone {
+  id: string;
+  title: string;
+  description?: string;
+  isCompleted: boolean;
+  completedAt?: string;
+  sourceMilestoneId: string | null;
+}
+
+const buildScopedMilestones = (
+  milestones: ReturnType<typeof normalizeProjectMilestone>[],
+  scopeFeatures: string[],
+): OwnerScopedMilestone[] => {
+  const normalizedMilestones = milestones.map((milestone, index) => ({
+    id: milestone.id || `m-${index + 1}`,
+    title: milestone.title || milestone.name || `Milestone ${index + 1}`,
+    description: milestone.description,
+    isCompleted: milestone.isCompleted === true,
+    completedAt: milestone.completedAt,
+    key: normalizeChecklistText(milestone.title || milestone.name || ''),
+  }));
+
+  if (!scopeFeatures.length) {
+    return normalizedMilestones.map((milestone) => ({
+      id: milestone.id,
+      title: milestone.title,
+      description: milestone.description,
+      isCompleted: milestone.isCompleted,
+      completedAt: milestone.completedAt,
+      sourceMilestoneId: milestone.id,
+    }));
+  }
+
+  return scopeFeatures.map((feature, index) => {
+    const featureKey = normalizeChecklistText(feature);
+    const matchedMilestone = normalizedMilestones.find((milestone) => {
+      if (!featureKey || !milestone.key) return false;
+      return (
+        milestone.key === featureKey ||
+        milestone.key.includes(featureKey) ||
+        featureKey.includes(milestone.key)
+      );
+    });
+
+    return {
+      id: matchedMilestone?.id || `scope-${index + 1}`,
+      title: feature,
+      description: matchedMilestone?.description,
+      isCompleted: matchedMilestone?.isCompleted === true,
+      completedAt: matchedMilestone?.completedAt,
+      sourceMilestoneId: matchedMilestone?.id || null,
+    };
+  });
+};
+
+const getAutoProjectStatusFromScopedMilestones = (
+  milestones: OwnerScopedMilestone[],
+  fallbackStatus: ProjectStatus,
+): ProjectStatus => {
+  if (fallbackStatus === 'on-hold') return 'on-hold';
+  if (milestones.length === 0) return fallbackStatus;
+
+  const completedCount = milestones.filter((milestone) => milestone.isCompleted).length;
+  if (completedCount === 0) return 'not-started';
+  if (completedCount === milestones.length) return 'completed';
+  return 'in-progress';
 };
 
 type UploadState = 'uploading' | 'done' | 'error';
@@ -176,6 +245,15 @@ export function ProjectDetailPage() {
 
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
   const agent = useMemo(() => (project ? authService.getById(project.assignedTo) : null), [project]);
+  const packageDetails = useMemo(() => {
+    if (!project) return null;
+    const pkg = getPackageById(project.packageId);
+    if (!pkg) return null;
+    return {
+      ...pkg,
+      combinedFeatures: getPackageCombinedFeatures(pkg.id),
+    };
+  }, [project]);
   const portalShareHistory = useMemo(() => {
     return [...portalShares].sort((a, b) => {
       const aMs = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -211,8 +289,11 @@ export function ProjectDetailPage() {
   }
 
   const milestones = project.milestones.map((milestone) => normalizeProjectMilestone(milestone));
-  const completedMilestones = milestones.filter((milestone) => milestone.isCompleted).length;
-  const progress = milestones.length > 0 ? Math.round((completedMilestones / milestones.length) * 100) : 0;
+  const scopeFeatures = packageDetails?.combinedFeatures || [];
+  const ownerScopedMilestones = buildScopedMilestones(milestones, scopeFeatures);
+  const completedMilestones = ownerScopedMilestones.filter((milestone) => milestone.isCompleted).length;
+  const progress =
+    ownerScopedMilestones.length > 0 ? Math.round((completedMilestones / ownerScopedMilestones.length) * 100) : 0;
   const totalInvoiced = invoices.reduce((sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total, 0);
   const totalPaid = invoices.reduce((sum, invoice) => sum + invoice.amountPaid, 0);
 
@@ -241,25 +322,41 @@ export function ProjectDetailPage() {
     }
   };
 
-  const handleMilestoneToggle = async (milestoneId: string, isCompleted: boolean) => {
+  const handleMilestoneToggle = async (milestone: OwnerScopedMilestone, isCompleted: boolean) => {
     if (!isOwner) {
       toast.error('Only owners can update milestones.');
       return;
     }
 
-    const nextMilestones = milestones.map((milestone) => {
-      if (milestone.id !== milestoneId) return milestone;
+    const nowIso = new Date().toISOString();
+    const nextMilestones = milestones.map((entry) => {
+      if (milestone.sourceMilestoneId && entry.id !== milestone.sourceMilestoneId) return entry;
+      if (!milestone.sourceMilestoneId) return entry;
       return {
-        ...milestone,
+        ...entry,
+        title: milestone.title,
+        name: milestone.title,
+        description: milestone.description ?? entry.description,
         isCompleted,
         completed: isCompleted,
-        completedAt: isCompleted ? new Date().toISOString() : undefined,
+        completedAt: isCompleted ? nowIso : undefined,
       };
     });
 
-    // Keep status automation intentionally simple:
-    // none completed -> Not Started, some completed -> In Progress, all completed -> Completed.
-    const nextStatus = getAutoProjectStatusFromMilestones(nextMilestones, project.status);
+    if (!milestone.sourceMilestoneId) {
+      nextMilestones.push({
+        id: `ms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        title: milestone.title,
+        name: milestone.title,
+        description: milestone.description,
+        isCompleted,
+        completed: isCompleted,
+        completedAt: isCompleted ? nowIso : undefined,
+      });
+    }
+
+    const nextScopedMilestones = buildScopedMilestones(nextMilestones, scopeFeatures);
+    const nextStatus = getAutoProjectStatusFromScopedMilestones(nextScopedMilestones, project.status);
 
     setIsSavingMilestones(true);
     try {
@@ -605,10 +702,10 @@ export function ProjectDetailPage() {
               {!isOwner && (
                 <p className="text-xs text-muted-foreground">Only owners can mark milestones as completed.</p>
               )}
-              {milestones.length === 0 ? (
+              {ownerScopedMilestones.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No milestones added yet.</p>
               ) : (
-                milestones.map((milestone) => (
+                ownerScopedMilestones.map((milestone) => (
                   <div key={milestone.id} className="flex items-start gap-3 rounded-lg border p-3">
                     <div className="pt-0.5">
                       {isOwner ? (
@@ -616,7 +713,7 @@ export function ProjectDetailPage() {
                           checked={milestone.isCompleted}
                           disabled={isSavingMilestones}
                           onCheckedChange={(checked) => {
-                            void handleMilestoneToggle(milestone.id, checked === true);
+                            void handleMilestoneToggle(milestone, checked === true);
                           }}
                         />
                       ) : milestone.isCompleted ? (
@@ -627,7 +724,7 @@ export function ProjectDetailPage() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className={`text-sm font-medium ${milestone.isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {milestone.title || milestone.name}
+                        {milestone.title}
                       </p>
                       {milestone.description && (
                         <p className="text-xs text-muted-foreground">{milestone.description}</p>
@@ -684,7 +781,7 @@ export function ProjectDetailPage() {
               <div>
                 <p className="text-sm text-muted-foreground">Milestones Completed</p>
                 <p className="text-2xl font-bold text-accent">
-                  {completedMilestones}/{milestones.length}
+                  {completedMilestones}/{ownerScopedMilestones.length}
                 </p>
               </div>
               <div>
@@ -820,17 +917,20 @@ export function ProjectDetailPage() {
                                 <div key={item.id} className="rounded-md border p-2">
                                   <div className="flex items-center justify-between gap-2">
                                     <p className="truncate text-xs font-medium text-foreground">{item.name}</p>
-                                    <span
-                                      className={`text-[11px] font-semibold ${
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] text-muted-foreground">{Math.round(item.progress)}%</span>
+                                      <span
+                                        className={`text-[11px] font-semibold ${
                                         item.state === 'done'
                                           ? 'text-success'
                                           : item.state === 'error'
                                             ? 'text-destructive'
                                             : 'text-amber-600'
-                                      }`}
-                                    >
-                                      {item.message}
-                                    </span>
+                                        }`}
+                                      >
+                                        {item.message}
+                                      </span>
+                                    </div>
                                   </div>
                                   <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-muted">
                                     <div

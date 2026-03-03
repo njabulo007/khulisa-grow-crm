@@ -1,6 +1,6 @@
 import { auth } from '@/lib/firebase';
 import { storage } from '@/lib/firebase';
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 
 export type ProjectShareStatus = 'active' | 'revoked' | 'expired';
 
@@ -73,12 +73,8 @@ const API_REQUEST_TIMEOUT_MS = 45_000;
 const MEDIA_ADD_TIMEOUT_MS = 120_000;
 const MEDIA_GET_URL_TIMEOUT_MS = 45_000;
 const MEDIA_UPLOAD_SLOW_THRESHOLD_MS = 25_000;
-const MEDIA_UPLOAD_RESUME_AFTER_MS = 40_000;
 const MEDIA_UPLOAD_HARD_TIMEOUT_MS = 3 * 60_000;
-const MEDIA_UPLOAD_MAX_RESUME_ATTEMPTS = 2;
 const MEDIA_UPLOAD_MAX_ATTEMPTS = 2;
-const IMAGE_OPTIMIZE_MIN_BYTES = 750 * 1024;
-const IMAGE_OPTIMIZE_MAX_DIMENSION = 1920;
 
 const getApiUrl = (path: string): string => {
   if (API_BASE) {
@@ -145,69 +141,71 @@ const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, message: s
   });
 };
 
-const loadImageElement = (file: File): Promise<HTMLImageElement> =>
-  new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      resolve(img);
+const runResumableUpload = async (
+  uploadTask: ReturnType<typeof uploadBytesResumable>,
+  options?: AddMediaOptions
+): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+    let slowNetworkTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const clearTimers = () => {
+      if (hardTimeoutTimer) {
+        clearTimeout(hardTimeoutTimer);
+        hardTimeoutTimer = null;
+      }
+      if (slowNetworkTimer) {
+        clearTimeout(slowNetworkTimer);
+        slowNetworkTimer = null;
+      }
     };
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Image could not be processed.'));
+
+    const armSlowNetworkTimer = () => {
+      if (slowNetworkTimer) {
+        clearTimeout(slowNetworkTimer);
+      }
+      slowNetworkTimer = setTimeout(() => {
+        if (settled) return;
+        options?.onStatusChange?.('slow-network');
+      }, MEDIA_UPLOAD_SLOW_THRESHOLD_MS);
     };
-    img.src = objectUrl;
+
+    hardTimeoutTimer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      uploadTask.cancel();
+      reject(new Error('Upload timed out. Please retry.'));
+    }, MEDIA_UPLOAD_HARD_TIMEOUT_MS);
+
+    armSlowNetworkTimer();
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        armSlowNetworkTimer();
+        if (typeof options?.onProgress === 'function') {
+          const progress =
+            snapshot.totalBytes > 0
+              ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
+              : 0;
+          options.onProgress(Math.min(95, Math.max(1, progress)));
+        }
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        reject(error);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimers();
+        options?.onProgress?.(96);
+        resolve();
+      }
+    );
   });
-
-const canvasToBlob = (
-  canvas: HTMLCanvasElement,
-  type: string,
-  quality: number
-): Promise<Blob | null> =>
-  new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), type, quality);
-  });
-
-const optimizeImageIfNeeded = async (file: File): Promise<File> => {
-  const mime = (file.type || '').toLowerCase();
-  const isOptimizableImage = mime === 'image/jpeg' || mime === 'image/jpg' || mime === 'image/webp';
-  if (!isOptimizableImage || file.size < IMAGE_OPTIMIZE_MIN_BYTES || typeof window === 'undefined') {
-    return file;
-  }
-
-  try {
-    const image = await withTimeout(loadImageElement(file), 8_000, 'Image optimization timed out.');
-    const largestSide = Math.max(image.naturalWidth, image.naturalHeight);
-    if (largestSide <= IMAGE_OPTIMIZE_MAX_DIMENSION) {
-      return file;
-    }
-
-    const scale = IMAGE_OPTIMIZE_MAX_DIMENSION / largestSide;
-    const width = Math.max(1, Math.round(image.naturalWidth * scale));
-    const height = Math.max(1, Math.round(image.naturalHeight * scale));
-    const canvas = document.createElement('canvas');
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext('2d');
-    if (!context) {
-      return file;
-    }
-
-    context.drawImage(image, 0, 0, width, height);
-    const outputType = mime === 'image/webp' ? 'image/webp' : 'image/jpeg';
-    const blob = await canvasToBlob(canvas, outputType, 0.8);
-    if (!blob || blob.size >= file.size * 0.92) {
-      return file;
-    }
-
-    return new File([blob], file.name, {
-      type: outputType,
-      lastModified: Date.now(),
-    });
-  } catch {
-    return file;
-  }
 };
 
 const requestJson = async <T>(
@@ -273,6 +271,25 @@ const asErrorMessage = (error: unknown): string => {
     const message = 'message' in error ? String(error.message || '') : '';
     const normalizedCode = code.trim().toLowerCase();
     const normalizedMessage = message.trim().toLowerCase();
+
+    if (normalizedCode.startsWith('storage/')) {
+      if (normalizedCode === 'storage/unauthorized') {
+        return 'Storage permission denied. Check Firebase Storage rules for signed-in owners.';
+      }
+      if (normalizedCode === 'storage/canceled') {
+        return 'Upload was canceled.';
+      }
+      if (normalizedCode === 'storage/retry-limit-exceeded') {
+        return 'Upload retry limit exceeded. Check network and retry.';
+      }
+      if (normalizedCode === 'storage/quota-exceeded') {
+        return 'Storage quota exceeded. Upgrade Firebase plan or clear space.';
+      }
+      if (normalizedCode === 'storage/unknown') {
+        return message || 'Storage upload failed unexpectedly.';
+      }
+      return message || 'Storage upload failed.';
+    }
 
     if (normalizedCode === 'functions/permission-denied') {
       return 'You do not have permission for this action.';
@@ -349,137 +366,60 @@ export const projectShareService = {
     options?: AddMediaOptions
   ): Promise<ProjectShareMediaRecord> {
     options?.onStatusChange?.('preparing');
-    const uploadFile = await optimizeImageIfNeeded(file);
-    const objectRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
+    const uploadFile = file;
+    let uploadedRef: ReturnType<typeof ref> | null = null;
     try {
       options?.onStatusChange?.('uploading');
-      let uploadCompleted = false;
-      let uploadError: unknown = null;
-
       for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
         if (attempt > 1) {
           options?.onStatusChange?.('retrying');
           options?.onProgress?.(Math.max(5, Math.min(90, 5 * attempt)));
         }
 
+        let attemptRef: ReturnType<typeof ref> | null = null;
         try {
-          const uploadTask = uploadBytesResumable(objectRef, uploadFile, {
+          attemptRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
+          const uploadTask = uploadBytesResumable(attemptRef, uploadFile, {
             contentType: uploadFile.type || 'application/octet-stream',
           });
-          await new Promise<void>((resolve, reject) => {
-            let settled = false;
-            let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
-            let slowNetworkTimer: ReturnType<typeof setTimeout> | null = null;
-            let resumeTimer: ReturnType<typeof setTimeout> | null = null;
-            let resumeAttempts = 0;
-
-            const clearTimers = () => {
-              if (hardTimeoutTimer) {
-                clearTimeout(hardTimeoutTimer);
-                hardTimeoutTimer = null;
-              }
-              if (slowNetworkTimer) {
-                clearTimeout(slowNetworkTimer);
-                slowNetworkTimer = null;
-              }
-              if (resumeTimer) {
-                clearTimeout(resumeTimer);
-                resumeTimer = null;
-              }
-            };
-
-            const armSlowNetworkTimer = () => {
-              if (slowNetworkTimer) {
-                clearTimeout(slowNetworkTimer);
-              }
-              slowNetworkTimer = setTimeout(() => {
-                if (settled) return;
-                options?.onStatusChange?.('slow-network');
-              }, MEDIA_UPLOAD_SLOW_THRESHOLD_MS);
-            };
-
-            const armResumeTimer = () => {
-              if (resumeTimer) {
-                clearTimeout(resumeTimer);
-              }
-              resumeTimer = setTimeout(() => {
-                if (settled) return;
-                if (resumeAttempts >= MEDIA_UPLOAD_MAX_RESUME_ATTEMPTS) return;
-                resumeAttempts += 1;
-                options?.onStatusChange?.('slow-network');
-                try {
-                  uploadTask.pause();
-                  setTimeout(() => {
-                    try {
-                      uploadTask.resume();
-                    } catch {
-                      // Ignore and let timeout/retry handle it.
-                    }
-                  }, 300);
-                } catch {
-                  // Ignore and let timeout/retry handle it.
-                }
-                armSlowNetworkTimer();
-                armResumeTimer();
-              }, MEDIA_UPLOAD_RESUME_AFTER_MS);
-            };
-
-            hardTimeoutTimer = setTimeout(() => {
-              if (settled) return;
-              settled = true;
-              uploadTask.cancel();
-              reject(new Error('Upload timed out. Please retry.'));
-            }, MEDIA_UPLOAD_HARD_TIMEOUT_MS);
-
-            armSlowNetworkTimer();
-            armResumeTimer();
-
-            uploadTask.on(
-              'state_changed',
-              (snapshot) => {
-                armSlowNetworkTimer();
-                armResumeTimer();
-                if (typeof options?.onProgress === 'function') {
-                  const progress =
-                    snapshot.totalBytes > 0
-                      ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
-                      : 0;
-                  options.onProgress(Math.min(95, Math.max(1, progress)));
-                }
-              },
-              (error) => {
-                if (settled) return;
-                settled = true;
-                clearTimers();
-                reject(error);
-              },
-              () => {
-                if (settled) return;
-                settled = true;
-                clearTimers();
-                options?.onProgress?.(96);
-                resolve();
-              }
-            );
-          });
-          uploadCompleted = true;
-          uploadError = null;
+          await runResumableUpload(uploadTask, options);
+          uploadedRef = attemptRef;
           break;
         } catch (error) {
-          uploadError = error;
+          // Clean up any partial object from a failed attempt.
+          try {
+            if (attemptRef) {
+              await deleteObject(attemptRef);
+            }
+          } catch {
+            // ignore
+          }
           if (attempt >= MEDIA_UPLOAD_MAX_ATTEMPTS) {
-            throw error;
+            // After resumable retries fail, fallback to direct upload.
+            options?.onStatusChange?.('retrying');
+            options?.onProgress?.(10);
+            const fallbackRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
+            await withTimeout(
+              uploadBytes(fallbackRef, uploadFile, {
+                contentType: uploadFile.type || 'application/octet-stream',
+              }),
+              MEDIA_UPLOAD_HARD_TIMEOUT_MS,
+              'Upload timed out. Please retry.'
+            );
+            options?.onProgress?.(96);
+            uploadedRef = fallbackRef;
+            break;
           }
         }
       }
 
-      if (!uploadCompleted) {
-        throw uploadError instanceof Error ? uploadError : new Error('Upload failed. Please retry.');
+      if (!uploadedRef) {
+        throw new Error('Upload failed. Please retry.');
       }
 
       options?.onStatusChange?.('finalizing');
       const url = await withTimeout(
-        getDownloadURL(objectRef),
+        getDownloadURL(uploadedRef),
         MEDIA_GET_URL_TIMEOUT_MS,
         'Upload completed but URL generation timed out. Please retry.'
       );
@@ -490,7 +430,7 @@ export const projectShareService = {
           projectId,
           fileName: uploadFile.name,
           url,
-          storagePath: objectRef.fullPath,
+          storagePath: uploadedRef.fullPath,
           mimeType: uploadFile.type || null,
           sizeBytes: Number.isFinite(uploadFile.size) ? uploadFile.size : null,
         },
@@ -501,7 +441,9 @@ export const projectShareService = {
       return response.media;
     } catch (error) {
       try {
-        await deleteObject(objectRef);
+        if (uploadedRef) {
+          await deleteObject(uploadedRef);
+        }
       } catch {
         // Best-effort rollback of orphaned uploads.
       }
