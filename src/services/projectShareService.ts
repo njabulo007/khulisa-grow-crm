@@ -1,6 +1,6 @@
 import { auth } from '@/lib/firebase';
 import { storage } from '@/lib/firebase';
-import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 
 export type ProjectShareStatus = 'active' | 'revoked' | 'expired';
 
@@ -94,6 +94,10 @@ const createStoragePath = (projectId: string, shareId: string, fileName: string)
   const randomPart = Math.random().toString(36).slice(2, 10);
   return `project-portals/${projectId}/${shareId}/${Date.now()}-${randomPart}-${safeFileName}`;
 };
+
+interface AddMediaOptions {
+  onProgress?: (percent: number) => void;
+}
 
 const getAuthHeader = async (): Promise<string> => {
   if (!auth?.currentUser) {
@@ -216,12 +220,37 @@ export const projectShareService = {
     }
   },
 
-  async addMedia(projectId: string, shareId: string, file: File): Promise<ProjectShareMediaRecord> {
+  async addMedia(
+    projectId: string,
+    shareId: string,
+    file: File,
+    options?: AddMediaOptions
+  ): Promise<ProjectShareMediaRecord> {
     const objectRef = ref(storage, createStoragePath(projectId, shareId, file.name));
     try {
-      await uploadBytes(objectRef, file, {
+      const uploadTask = uploadBytesResumable(objectRef, file, {
         contentType: file.type || 'application/octet-stream',
       });
+      await new Promise<void>((resolve, reject) => {
+        uploadTask.on(
+          'state_changed',
+          (snapshot) => {
+            if (typeof options?.onProgress === 'function') {
+              const progress =
+                snapshot.totalBytes > 0
+                  ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
+                  : 0;
+              options.onProgress(progress);
+            }
+          },
+          (error) => reject(error),
+          () => {
+            options?.onProgress?.(100);
+            resolve();
+          }
+        );
+      });
+
       const url = await getDownloadURL(objectRef);
       const response = await requestJson<{ media: ProjectShareMediaRecord }>(
         '/api/project-shares/media-add',

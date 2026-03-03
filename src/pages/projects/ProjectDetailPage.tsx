@@ -8,6 +8,7 @@ import {
   Copy,
   Circle,
   FolderKanban,
+  Loader2,
   Link as LinkIcon,
   Trash2,
   User,
@@ -77,6 +78,16 @@ const getComputedShareStatus = (share: ProjectShareRecord): ProjectShareStatus =
   return 'active';
 };
 
+type UploadState = 'uploading' | 'done' | 'error';
+
+interface UploadItem {
+  id: string;
+  name: string;
+  progress: number;
+  state: UploadState;
+  message: string;
+}
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -97,6 +108,7 @@ export function ProjectDetailPage() {
   const [isCreatingShare, setIsCreatingShare] = useState(false);
   const [isRevokingShareId, setIsRevokingShareId] = useState<string | null>(null);
   const [isUploadingPortalMedia, setIsUploadingPortalMedia] = useState(false);
+  const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [latestShareLink, setLatestShareLink] = useState<{ shareId: string; url: string } | null>(null);
 
   useEffect(() => {
@@ -375,19 +387,57 @@ export function ProjectDetailPage() {
     }
 
     setIsUploadingPortalMedia(true);
+    const runId = Date.now();
+    const queue = files.map((file, index) => ({
+      id: `${runId}-${index}`,
+      name: file.name,
+      progress: 0,
+      state: 'uploading' as UploadState,
+      message: 'Uploading...',
+    }));
+    setUploadItems((prev) => [...queue, ...prev].slice(0, 20));
+
     let uploadedCount = 0;
+    let failedCount = 0;
     try {
-      for (const file of files) {
-        await projectShareService.addMedia(project.id, activePortalShare.id, file);
-        uploadedCount += 1;
+      for (let index = 0; index < files.length; index += 1) {
+        const file = files[index];
+        const uploadId = `${runId}-${index}`;
+        try {
+          await projectShareService.addMedia(project.id, activePortalShare.id, file, {
+            onProgress: (progress) => {
+              setUploadItems((prev) =>
+                prev.map((item) =>
+                  item.id === uploadId ? { ...item, progress, state: 'uploading', message: 'Uploading...' } : item
+                )
+              );
+            },
+          });
+          uploadedCount += 1;
+          setUploadItems((prev) =>
+            prev.map((item) =>
+              item.id === uploadId ? { ...item, progress: 100, state: 'done', message: 'Uploaded' } : item
+            )
+          );
+        } catch (error) {
+          failedCount += 1;
+          const message = error instanceof Error ? error.message : 'Upload failed.';
+          setUploadItems((prev) =>
+            prev.map((item) =>
+              item.id === uploadId ? { ...item, state: 'error', message, progress: Math.min(item.progress, 95) } : item
+            )
+          );
+        }
       }
+
       await loadPortalShares(project.id);
-      toast.success(
-        uploadedCount === 1 ? '1 media file uploaded to the portal.' : `${uploadedCount} media files uploaded to the portal.`,
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to upload portal media.';
-      toast.error(message);
+      if (uploadedCount > 0 && failedCount === 0) {
+        toast.success(uploadedCount === 1 ? '1 media file uploaded to the portal.' : `${uploadedCount} media files uploaded.`);
+      } else if (uploadedCount > 0 && failedCount > 0) {
+        toast.error(`${uploadedCount} uploaded, ${failedCount} failed. See upload status below.`);
+      } else {
+        toast.error('Upload failed. See upload status below.');
+      }
     } finally {
       setIsUploadingPortalMedia(false);
     }
@@ -661,6 +711,53 @@ export function ProjectDetailPage() {
                             disabled={isUploadingPortalMedia || isRevokingShareId === activePortalShare.id}
                             accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt"
                           />
+                          <div className="rounded-md border bg-muted/30 p-2 text-xs">
+                            <p className="font-medium text-foreground">
+                              {isUploadingPortalMedia ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  Upload in progress...
+                                </span>
+                              ) : (
+                                'Upload ready'
+                              )}
+                            </p>
+                            <p className="text-muted-foreground">Select files above. Each file shows uploading, done, or failed.</p>
+                          </div>
+                          {uploadItems.length > 0 && (
+                            <div className="space-y-2">
+                              {uploadItems.map((item) => (
+                                <div key={item.id} className="rounded-md border p-2">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="truncate text-xs font-medium text-foreground">{item.name}</p>
+                                    <span
+                                      className={`text-[11px] font-semibold ${
+                                        item.state === 'done'
+                                          ? 'text-success'
+                                          : item.state === 'error'
+                                            ? 'text-destructive'
+                                            : 'text-amber-600'
+                                      }`}
+                                    >
+                                      {item.message}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded bg-muted">
+                                    <div
+                                      className={`h-full transition-all ${
+                                        item.state === 'done'
+                                          ? 'bg-success'
+                                          : item.state === 'error'
+                                            ? 'bg-destructive'
+                                            : 'bg-amber-500'
+                                      }`}
+                                      style={{ width: `${Math.max(2, Math.min(100, item.progress))}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           <p className="text-xs text-muted-foreground">
                             Uploaded media appears in the client portal and is deleted automatically when this portal
                             link is revoked.

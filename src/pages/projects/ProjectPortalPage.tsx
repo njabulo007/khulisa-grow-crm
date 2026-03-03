@@ -57,6 +57,8 @@ const isImageMedia = (mimeType: string | null, url: string): boolean => {
   return /\.(png|jpe?g|webp|gif|svg|bmp|avif)$/i.test(url);
 };
 
+const normalizeChecklistText = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+
 const dueMessage = (dueRaw: string | null, completion: number): string => {
   if (!dueRaw) {
     return completion >= 100
@@ -126,24 +128,6 @@ export function ProjectPortalPage() {
     };
   }, [token]);
 
-  const milestoneSummary = useMemo(() => {
-    if (!data) return { total: 0, completed: 0, open: 0, progress: 0 };
-    const total = data.project.milestones.length;
-    const completed = data.project.milestones.filter((milestone) => milestone.isCompleted).length;
-    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const open = Math.max(total - completed, 0);
-    return { total, completed, open, progress };
-  }, [data]);
-
-  const openMilestones = useMemo(() => {
-    if (!data) return [];
-    return data.project.milestones.filter((milestone) => !milestone.isCompleted);
-  }, [data]);
-  const portalMedia = useMemo(() => {
-    if (!data) return [];
-    return Array.isArray(data.share.media) ? data.share.media : [];
-  }, [data]);
-
   const packageDetails = useMemo(() => {
     if (!data) return null;
     const pkg = getPackageById(data.project.packageId);
@@ -153,6 +137,66 @@ export function ProjectPortalPage() {
       ...pkg,
       combinedFeatures,
     };
+  }, [data]);
+
+  const scopedChecklist = useMemo(() => {
+    if (!data) return [];
+
+    const projectMilestones = Array.isArray(data.project.milestones) ? data.project.milestones : [];
+    const normalizedMilestones = projectMilestones.map((milestone, index) => ({
+      id: milestone.id || `m-${index + 1}`,
+      title: milestone.title || `Milestone ${index + 1}`,
+      description: milestone.description || null,
+      isCompleted: milestone.isCompleted === true,
+      completedAt: milestone.completedAt || null,
+      key: normalizeChecklistText(milestone.title || ''),
+    }));
+
+    const scopeFeatures = packageDetails?.combinedFeatures || [];
+    if (!scopeFeatures.length) {
+      return normalizedMilestones.map((milestone) => ({
+        id: milestone.id,
+        title: milestone.title,
+        description: milestone.description,
+        isCompleted: milestone.isCompleted,
+        completedAt: milestone.completedAt,
+      }));
+    }
+
+    return scopeFeatures.map((feature, index) => {
+      const featureKey = normalizeChecklistText(feature);
+      const matchedMilestone = normalizedMilestones.find((milestone) => {
+        if (!featureKey || !milestone.key) return false;
+        return (
+          milestone.key === featureKey ||
+          milestone.key.includes(featureKey) ||
+          featureKey.includes(milestone.key)
+        );
+      });
+
+      return {
+        id: matchedMilestone?.id || `scope-${index + 1}`,
+        title: feature,
+        description: matchedMilestone?.description || null,
+        isCompleted: matchedMilestone?.isCompleted === true,
+        completedAt: matchedMilestone?.completedAt || null,
+      };
+    });
+  }, [data, packageDetails]);
+
+  const milestoneSummary = useMemo(() => {
+    const total = scopedChecklist.length;
+    const completed = scopedChecklist.filter((milestone) => milestone.isCompleted).length;
+    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const open = Math.max(total - completed, 0);
+    return { total, completed, open, progress };
+  }, [scopedChecklist]);
+
+  const openMilestones = useMemo(() => scopedChecklist.filter((milestone) => !milestone.isCompleted), [scopedChecklist]);
+
+  const portalMedia = useMemo(() => {
+    if (!data) return [];
+    return Array.isArray(data.share.media) ? data.share.media : [];
   }, [data]);
 
   const projectPulse = useMemo(() => {
@@ -254,10 +298,10 @@ export function ProjectPortalPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {data.project.milestones.length === 0 ? (
+                {scopedChecklist.length === 0 ? (
                   <p className="text-sm text-muted-foreground">No milestones available yet.</p>
                 ) : (
-                  data.project.milestones.map((milestone) => (
+                  scopedChecklist.map((milestone) => (
                     <div key={milestone.id} className="flex items-start gap-3 rounded-lg border border-border p-3">
                       <div className="pt-0.5">
                         {milestone.isCompleted ? (
