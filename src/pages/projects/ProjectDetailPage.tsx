@@ -461,6 +461,13 @@ export function ProjectDetailPage() {
                   });
                   return;
                 }
+                if (status === 'slow-network') {
+                  updateUploadItem(uploadId, {
+                    state: 'uploading',
+                    message: 'Slow network... still uploading',
+                  });
+                  return;
+                }
                 updateUploadItem(uploadId, {
                   state: 'uploading',
                   message: 'Uploading...',
