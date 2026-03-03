@@ -787,8 +787,8 @@ export function ProjectDetailPage() {
                                 'Upload ready'
                               )}
                             </p>
-                            <p className="text-muted-foreground">Select files above. Each file shows uploading, done, or failed.</p>
-                            <p className="text-muted-foreground">Up to 3 files upload in parallel. Max size: 25MB per file.</p>
+                            <p className="text-muted-foreground">Select files above.</p>
+                            <p className="text-muted-foreground">Max size: 25MB per file.</p>
                           </div>
                           {uploadItems.length > 0 && (
                             <div className="space-y-2">
