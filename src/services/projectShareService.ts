@@ -69,6 +69,10 @@ export interface PublicProjectPortalData {
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
+const MEDIA_ADD_TIMEOUT_MS = 30_000;
+const MEDIA_UPLOAD_STALL_TIMEOUT_MS = 30_000;
+const IMAGE_OPTIMIZE_MIN_BYTES = 750 * 1024;
+const IMAGE_OPTIMIZE_MAX_DIMENSION = 1920;
 
 const getApiUrl = (path: string): string => {
   if (API_BASE) {
@@ -97,6 +101,11 @@ const createStoragePath = (projectId: string, shareId: string, fileName: string)
 
 interface AddMediaOptions {
   onProgress?: (percent: number) => void;
+  onStatusChange?: (status: 'preparing' | 'uploading' | 'finalizing') => void;
+}
+
+interface RequestOptions {
+  timeoutMs?: number;
 }
 
 const getAuthHeader = async (): Promise<string> => {
@@ -110,10 +119,76 @@ const getAuthHeader = async (): Promise<string> => {
   return `Bearer ${token}`;
 };
 
+const loadImageElement = (file: File): Promise<HTMLImageElement> =>
+  new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(img);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Image could not be processed.'));
+    };
+    img.src = objectUrl;
+  });
+
+const canvasToBlob = (
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number
+): Promise<Blob | null> =>
+  new Promise((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+
+const optimizeImageIfNeeded = async (file: File): Promise<File> => {
+  const mime = (file.type || '').toLowerCase();
+  const isOptimizableImage = mime === 'image/jpeg' || mime === 'image/jpg' || mime === 'image/webp';
+  if (!isOptimizableImage || file.size < IMAGE_OPTIMIZE_MIN_BYTES || typeof window === 'undefined') {
+    return file;
+  }
+
+  try {
+    const image = await loadImageElement(file);
+    const largestSide = Math.max(image.naturalWidth, image.naturalHeight);
+    if (largestSide <= IMAGE_OPTIMIZE_MAX_DIMENSION) {
+      return file;
+    }
+
+    const scale = IMAGE_OPTIMIZE_MAX_DIMENSION / largestSide;
+    const width = Math.max(1, Math.round(image.naturalWidth * scale));
+    const height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) {
+      return file;
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+    const outputType = mime === 'image/webp' ? 'image/webp' : 'image/jpeg';
+    const blob = await canvasToBlob(canvas, outputType, 0.8);
+    if (!blob || blob.size >= file.size * 0.92) {
+      return file;
+    }
+
+    return new File([blob], file.name, {
+      type: outputType,
+      lastModified: Date.now(),
+    });
+  } catch {
+    return file;
+  }
+};
+
 const requestJson = async <T>(
   path: string,
   payload: Record<string, unknown>,
-  includeAuth: boolean
+  includeAuth: boolean,
+  requestOptions?: RequestOptions
 ): Promise<T> => {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -122,11 +197,32 @@ const requestJson = async <T>(
     headers.Authorization = await getAuthHeader();
   }
 
-  const response = await fetch(getApiUrl(path), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(payload),
-  });
+  const timeoutMs = requestOptions?.timeoutMs ?? 0;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  if (controller && timeoutMs > 0) {
+    timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(getApiUrl(path), {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new Error('The request timed out. Please retry.');
+    }
+    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
 
   let data: unknown = null;
   try {
@@ -226,45 +322,79 @@ export const projectShareService = {
     file: File,
     options?: AddMediaOptions
   ): Promise<ProjectShareMediaRecord> {
-    const objectRef = ref(storage, createStoragePath(projectId, shareId, file.name));
+    options?.onStatusChange?.('preparing');
+    const uploadFile = await optimizeImageIfNeeded(file);
+    const objectRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
     try {
-      const uploadTask = uploadBytesResumable(objectRef, file, {
-        contentType: file.type || 'application/octet-stream',
+      options?.onStatusChange?.('uploading');
+      const uploadTask = uploadBytesResumable(objectRef, uploadFile, {
+        contentType: uploadFile.type || 'application/octet-stream',
       });
       await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let stallTimer: ReturnType<typeof setTimeout> | null = null;
+        const clearStallTimer = () => {
+          if (stallTimer) {
+            clearTimeout(stallTimer);
+            stallTimer = null;
+          }
+        };
+        const resetStallTimer = () => {
+          clearStallTimer();
+          stallTimer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            uploadTask.cancel();
+            reject(new Error('Upload stalled. Please retry or use a smaller image.'));
+          }, MEDIA_UPLOAD_STALL_TIMEOUT_MS);
+        };
+
+        resetStallTimer();
         uploadTask.on(
           'state_changed',
           (snapshot) => {
+            resetStallTimer();
             if (typeof options?.onProgress === 'function') {
               const progress =
                 snapshot.totalBytes > 0
                   ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
                   : 0;
-              options.onProgress(progress);
+              options.onProgress(Math.min(95, Math.max(1, progress)));
             }
           },
-          (error) => reject(error),
+          (error) => {
+            if (settled) return;
+            settled = true;
+            clearStallTimer();
+            reject(error);
+          },
           () => {
-            options?.onProgress?.(100);
+            if (settled) return;
+            settled = true;
+            clearStallTimer();
+            options?.onProgress?.(96);
             resolve();
           }
         );
       });
 
+      options?.onStatusChange?.('finalizing');
       const url = await getDownloadURL(objectRef);
       const response = await requestJson<{ media: ProjectShareMediaRecord }>(
         '/api/project-shares/media-add',
         {
           shareId,
           projectId,
-          fileName: file.name,
+          fileName: uploadFile.name,
           url,
           storagePath: objectRef.fullPath,
-          mimeType: file.type || null,
-          sizeBytes: Number.isFinite(file.size) ? file.size : null,
+          mimeType: uploadFile.type || null,
+          sizeBytes: Number.isFinite(uploadFile.size) ? uploadFile.size : null,
         },
-        true
+        true,
+        { timeoutMs: MEDIA_ADD_TIMEOUT_MS }
       );
+      options?.onProgress?.(100);
       return response.media;
     } catch (error) {
       try {

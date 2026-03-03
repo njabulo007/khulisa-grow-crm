@@ -52,6 +52,8 @@ import { Client, Invoice, Project, ProjectStatus, PROJECT_STATUSES } from '@/typ
 import { toast } from 'sonner';
 
 const OWNER_EDITABLE_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
+const MAX_PARALLEL_PORTAL_UPLOADS = 3;
+const MAX_PORTAL_MEDIA_FILE_BYTES = 25 * 1024 * 1024;
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -386,51 +388,114 @@ export function ProjectDetailPage() {
       return;
     }
 
-    setIsUploadingPortalMedia(true);
     const runId = Date.now();
-    const queue = files.map((file, index) => ({
-      id: `${runId}-${index}`,
-      name: file.name,
-      progress: 0,
-      state: 'uploading' as UploadState,
-      message: 'Uploading...',
-    }));
-    setUploadItems((prev) => [...queue, ...prev].slice(0, 20));
+    const acceptedFiles: Array<{ id: string; file: File }> = [];
+    const rejectedQueue: UploadItem[] = [];
 
-    let uploadedCount = 0;
-    let failedCount = 0;
-    try {
-      for (let index = 0; index < files.length; index += 1) {
-        const file = files[index];
-        const uploadId = `${runId}-${index}`;
-        try {
-          await projectShareService.addMedia(project.id, activePortalShare.id, file, {
-            onProgress: (progress) => {
-              setUploadItems((prev) =>
-                prev.map((item) =>
-                  item.id === uploadId ? { ...item, progress, state: 'uploading', message: 'Uploading...' } : item
-                )
-              );
-            },
-          });
-          uploadedCount += 1;
-          setUploadItems((prev) =>
-            prev.map((item) =>
-              item.id === uploadId ? { ...item, progress: 100, state: 'done', message: 'Uploaded' } : item
-            )
-          );
-        } catch (error) {
-          failedCount += 1;
-          const message = error instanceof Error ? error.message : 'Upload failed.';
-          setUploadItems((prev) =>
-            prev.map((item) =>
-              item.id === uploadId ? { ...item, state: 'error', message, progress: Math.min(item.progress, 95) } : item
-            )
-          );
-        }
+    files.forEach((file, index) => {
+      const uploadId = `${runId}-${index}`;
+      if (file.size > MAX_PORTAL_MEDIA_FILE_BYTES) {
+        rejectedQueue.push({
+          id: uploadId,
+          name: file.name,
+          progress: 0,
+          state: 'error',
+          message: 'Too large (max 25MB)',
+        });
+        return;
       }
+      acceptedFiles.push({ id: uploadId, file });
+    });
 
+    const queue = acceptedFiles.map(({ id, file }) => ({
+      id,
+      name: file.name,
+      progress: 2,
+      state: 'uploading' as UploadState,
+      message: 'Queued...',
+    }));
+    setUploadItems((prev) => [...queue, ...rejectedQueue, ...prev].slice(0, 30));
+
+    if (acceptedFiles.length === 0) {
+      toast.error('No files were uploaded. Max file size is 25MB.');
+      return;
+    }
+
+    setIsUploadingPortalMedia(true);
+    let uploadedCount = 0;
+    let failedCount = rejectedQueue.length;
+
+    const updateUploadItem = (uploadId: string, patch: Partial<UploadItem>) => {
+      setUploadItems((prev) => prev.map((item) => (item.id === uploadId ? { ...item, ...patch } : item)));
+    };
+
+    try {
+      let cursor = 0;
+      const workerCount = Math.min(MAX_PARALLEL_PORTAL_UPLOADS, acceptedFiles.length);
+
+      const runWorker = async () => {
+        while (true) {
+          const nextIndex = cursor;
+          cursor += 1;
+          if (nextIndex >= acceptedFiles.length) {
+            return;
+          }
+
+          const { id: uploadId, file } = acceptedFiles[nextIndex];
+          try {
+            await projectShareService.addMedia(project.id, activePortalShare.id, file, {
+              onStatusChange: (status) => {
+                if (status === 'preparing') {
+                  updateUploadItem(uploadId, {
+                    state: 'uploading',
+                    message: 'Optimizing...',
+                    progress: 3,
+                  });
+                  return;
+                }
+                if (status === 'finalizing') {
+                  updateUploadItem(uploadId, {
+                    state: 'uploading',
+                    message: 'Finalizing...',
+                    progress: 97,
+                  });
+                  return;
+                }
+                updateUploadItem(uploadId, {
+                  state: 'uploading',
+                  message: 'Uploading...',
+                });
+              },
+              onProgress: (progress) => {
+                updateUploadItem(uploadId, {
+                  state: 'uploading',
+                  message: 'Uploading...',
+                  progress,
+                });
+              },
+            });
+
+            uploadedCount += 1;
+            updateUploadItem(uploadId, {
+              progress: 100,
+              state: 'done',
+              message: 'Uploaded',
+            });
+          } catch (error) {
+            failedCount += 1;
+            const message = error instanceof Error ? error.message : 'Upload failed.';
+            updateUploadItem(uploadId, {
+              state: 'error',
+              message,
+              progress: 0,
+            });
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
       await loadPortalShares(project.id);
+
       if (uploadedCount > 0 && failedCount === 0) {
         toast.success(uploadedCount === 1 ? '1 media file uploaded to the portal.' : `${uploadedCount} media files uploaded.`);
       } else if (uploadedCount > 0 && failedCount > 0) {
@@ -723,6 +788,7 @@ export function ProjectDetailPage() {
                               )}
                             </p>
                             <p className="text-muted-foreground">Select files above. Each file shows uploading, done, or failed.</p>
+                            <p className="text-muted-foreground">Up to 3 files upload in parallel. Max size: 25MB per file.</p>
                           </div>
                           {uploadItems.length > 0 && (
                             <div className="space-y-2">
