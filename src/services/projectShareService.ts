@@ -69,9 +69,14 @@ export interface PublicProjectPortalData {
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
+const API_REQUEST_TIMEOUT_MS = 45_000;
 const MEDIA_ADD_TIMEOUT_MS = 120_000;
+const MEDIA_GET_URL_TIMEOUT_MS = 45_000;
 const MEDIA_UPLOAD_SLOW_THRESHOLD_MS = 25_000;
-const MEDIA_UPLOAD_HARD_TIMEOUT_MS = 10 * 60_000;
+const MEDIA_UPLOAD_RESUME_AFTER_MS = 40_000;
+const MEDIA_UPLOAD_HARD_TIMEOUT_MS = 3 * 60_000;
+const MEDIA_UPLOAD_MAX_RESUME_ATTEMPTS = 2;
+const MEDIA_UPLOAD_MAX_ATTEMPTS = 2;
 const IMAGE_OPTIMIZE_MIN_BYTES = 750 * 1024;
 const IMAGE_OPTIMIZE_MAX_DIMENSION = 1920;
 
@@ -102,7 +107,7 @@ const createStoragePath = (projectId: string, shareId: string, fileName: string)
 
 interface AddMediaOptions {
   onProgress?: (percent: number) => void;
-  onStatusChange?: (status: 'preparing' | 'uploading' | 'finalizing' | 'slow-network') => void;
+  onStatusChange?: (status: 'preparing' | 'uploading' | 'finalizing' | 'slow-network' | 'retrying') => void;
 }
 
 interface RequestOptions {
@@ -113,11 +118,31 @@ const getAuthHeader = async (): Promise<string> => {
   if (!auth?.currentUser) {
     throw new Error('Please sign in again and retry.');
   }
-  const token = await auth.currentUser.getIdToken();
+  const token = await Promise.race([
+    auth.currentUser.getIdToken(),
+    new Promise<string>((_, reject) => {
+      setTimeout(() => reject(new Error('Session refresh timed out. Please sign in again.')), 15_000);
+    }),
+  ]);
   if (!token) {
     throw new Error('Please sign in again and retry.');
   }
   return `Bearer ${token}`;
+};
+
+const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
+  return await new Promise<T>((resolve, reject) => {
+    const timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch((error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      });
+  });
 };
 
 const loadImageElement = (file: File): Promise<HTMLImageElement> =>
@@ -152,7 +177,7 @@ const optimizeImageIfNeeded = async (file: File): Promise<File> => {
   }
 
   try {
-    const image = await loadImageElement(file);
+    const image = await withTimeout(loadImageElement(file), 8_000, 'Image optimization timed out.');
     const largestSide = Math.max(image.naturalWidth, image.naturalHeight);
     if (largestSide <= IMAGE_OPTIMIZE_MAX_DIMENSION) {
       return file;
@@ -198,7 +223,7 @@ const requestJson = async <T>(
     headers.Authorization = await getAuthHeader();
   }
 
-  const timeoutMs = requestOptions?.timeoutMs ?? 0;
+  const timeoutMs = requestOptions?.timeoutMs ?? API_REQUEST_TIMEOUT_MS;
   const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
@@ -328,73 +353,136 @@ export const projectShareService = {
     const objectRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
     try {
       options?.onStatusChange?.('uploading');
-      const uploadTask = uploadBytesResumable(objectRef, uploadFile, {
-        contentType: uploadFile.type || 'application/octet-stream',
-      });
-      await new Promise<void>((resolve, reject) => {
-        let settled = false;
-        let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
-        let slowNetworkTimer: ReturnType<typeof setTimeout> | null = null;
+      let uploadCompleted = false;
+      let uploadError: unknown = null;
 
-        const clearTimers = () => {
-          if (hardTimeoutTimer) {
-            clearTimeout(hardTimeoutTimer);
-            hardTimeoutTimer = null;
-          }
-          if (slowNetworkTimer) {
-            clearTimeout(slowNetworkTimer);
-            slowNetworkTimer = null;
-          }
-        };
+      for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
+        if (attempt > 1) {
+          options?.onStatusChange?.('retrying');
+          options?.onProgress?.(Math.max(5, Math.min(90, 5 * attempt)));
+        }
 
-        const armSlowNetworkTimer = () => {
-          if (slowNetworkTimer) {
-            clearTimeout(slowNetworkTimer);
-          }
-          slowNetworkTimer = setTimeout(() => {
-            if (settled) return;
-            options?.onStatusChange?.('slow-network');
-          }, MEDIA_UPLOAD_SLOW_THRESHOLD_MS);
-        };
+        try {
+          const uploadTask = uploadBytesResumable(objectRef, uploadFile, {
+            contentType: uploadFile.type || 'application/octet-stream',
+          });
+          await new Promise<void>((resolve, reject) => {
+            let settled = false;
+            let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+            let slowNetworkTimer: ReturnType<typeof setTimeout> | null = null;
+            let resumeTimer: ReturnType<typeof setTimeout> | null = null;
+            let resumeAttempts = 0;
 
-        hardTimeoutTimer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          uploadTask.cancel();
-          reject(new Error('Upload timed out. Please retry.'));
-        }, MEDIA_UPLOAD_HARD_TIMEOUT_MS);
+            const clearTimers = () => {
+              if (hardTimeoutTimer) {
+                clearTimeout(hardTimeoutTimer);
+                hardTimeoutTimer = null;
+              }
+              if (slowNetworkTimer) {
+                clearTimeout(slowNetworkTimer);
+                slowNetworkTimer = null;
+              }
+              if (resumeTimer) {
+                clearTimeout(resumeTimer);
+                resumeTimer = null;
+              }
+            };
 
-        armSlowNetworkTimer();
-        uploadTask.on(
-          'state_changed',
-          (snapshot) => {
+            const armSlowNetworkTimer = () => {
+              if (slowNetworkTimer) {
+                clearTimeout(slowNetworkTimer);
+              }
+              slowNetworkTimer = setTimeout(() => {
+                if (settled) return;
+                options?.onStatusChange?.('slow-network');
+              }, MEDIA_UPLOAD_SLOW_THRESHOLD_MS);
+            };
+
+            const armResumeTimer = () => {
+              if (resumeTimer) {
+                clearTimeout(resumeTimer);
+              }
+              resumeTimer = setTimeout(() => {
+                if (settled) return;
+                if (resumeAttempts >= MEDIA_UPLOAD_MAX_RESUME_ATTEMPTS) return;
+                resumeAttempts += 1;
+                options?.onStatusChange?.('slow-network');
+                try {
+                  uploadTask.pause();
+                  setTimeout(() => {
+                    try {
+                      uploadTask.resume();
+                    } catch {
+                      // Ignore and let timeout/retry handle it.
+                    }
+                  }, 300);
+                } catch {
+                  // Ignore and let timeout/retry handle it.
+                }
+                armSlowNetworkTimer();
+                armResumeTimer();
+              }, MEDIA_UPLOAD_RESUME_AFTER_MS);
+            };
+
+            hardTimeoutTimer = setTimeout(() => {
+              if (settled) return;
+              settled = true;
+              uploadTask.cancel();
+              reject(new Error('Upload timed out. Please retry.'));
+            }, MEDIA_UPLOAD_HARD_TIMEOUT_MS);
+
             armSlowNetworkTimer();
-            if (typeof options?.onProgress === 'function') {
-              const progress =
-                snapshot.totalBytes > 0
-                  ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
-                  : 0;
-              options.onProgress(Math.min(95, Math.max(1, progress)));
-            }
-          },
-          (error) => {
-            if (settled) return;
-            settled = true;
-            clearTimers();
-            reject(error);
-          },
-          () => {
-            if (settled) return;
-            settled = true;
-            clearTimers();
-            options?.onProgress?.(96);
-            resolve();
+            armResumeTimer();
+
+            uploadTask.on(
+              'state_changed',
+              (snapshot) => {
+                armSlowNetworkTimer();
+                armResumeTimer();
+                if (typeof options?.onProgress === 'function') {
+                  const progress =
+                    snapshot.totalBytes > 0
+                      ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
+                      : 0;
+                  options.onProgress(Math.min(95, Math.max(1, progress)));
+                }
+              },
+              (error) => {
+                if (settled) return;
+                settled = true;
+                clearTimers();
+                reject(error);
+              },
+              () => {
+                if (settled) return;
+                settled = true;
+                clearTimers();
+                options?.onProgress?.(96);
+                resolve();
+              }
+            );
+          });
+          uploadCompleted = true;
+          uploadError = null;
+          break;
+        } catch (error) {
+          uploadError = error;
+          if (attempt >= MEDIA_UPLOAD_MAX_ATTEMPTS) {
+            throw error;
           }
-        );
-      });
+        }
+      }
+
+      if (!uploadCompleted) {
+        throw uploadError instanceof Error ? uploadError : new Error('Upload failed. Please retry.');
+      }
 
       options?.onStatusChange?.('finalizing');
-      const url = await getDownloadURL(objectRef);
+      const url = await withTimeout(
+        getDownloadURL(objectRef),
+        MEDIA_GET_URL_TIMEOUT_MS,
+        'Upload completed but URL generation timed out. Please retry.'
+      );
       const response = await requestJson<{ media: ProjectShareMediaRecord }>(
         '/api/project-shares/media-add',
         {

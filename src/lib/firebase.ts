@@ -54,6 +54,9 @@ if (isFirebaseConfigured) {
   firebaseAuth = getAuth(firebaseApp);
   firestoreDb = initializeDbWithIndexedDbCache(firebaseApp);
   storageBucket = getStorage(firebaseApp);
+  // Keep storage retries bounded so uploads fail/recover faster on weak networks.
+  storageBucket.maxUploadRetryTime = 2 * 60 * 1000;
+  storageBucket.maxOperationRetryTime = 60 * 1000;
   firebaseFunctions = getFunctions(firebaseApp);
 }
 

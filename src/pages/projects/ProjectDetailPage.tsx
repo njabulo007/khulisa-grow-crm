@@ -468,6 +468,13 @@ export function ProjectDetailPage() {
                   });
                   return;
                 }
+                if (status === 'retrying') {
+                  updateUploadItem(uploadId, {
+                    state: 'uploading',
+                    message: 'Retrying upload...',
+                  });
+                  return;
+                }
                 updateUploadItem(uploadId, {
                   state: 'uploading',
                   message: 'Uploading...',
@@ -501,7 +508,17 @@ export function ProjectDetailPage() {
       };
 
       await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
-      await loadPortalShares(project.id);
+
+      if (uploadedCount > 0) {
+        void Promise.race([
+          loadPortalShares(project.id),
+          new Promise<void>((resolve) => {
+            setTimeout(resolve, 12_000);
+          }),
+        ]).catch(() => {
+          // Best-effort refresh only; upload completion should not block on this.
+        });
+      }
 
       if (uploadedCount > 0 && failedCount === 0) {
         toast.success(uploadedCount === 1 ? '1 media file uploaded to the portal.' : `${uploadedCount} media files uploaded.`);
@@ -795,7 +812,7 @@ export function ProjectDetailPage() {
                               )}
                             </p>
                             <p className="text-muted-foreground">Select files above.</p>
-                            <p className="text-muted-foreground">Max size: 25MB per file.</p>
+                            <p className="text-muted-foreground">Max size: 25MB per file. Slow uploads auto-retry once.</p>
                           </div>
                           {uploadItems.length > 0 && (
                             <div className="space-y-2">
