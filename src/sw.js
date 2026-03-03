@@ -8,7 +8,11 @@ precacheAndRoute(self.__WB_MANIFEST);
 cleanupOutdatedCaches();
 clientsClaim();
 
-// Wait for explicit user consent via update prompt before activating a waiting worker.
+self.addEventListener("install", () => {
+  void self.skipWaiting();
+});
+
+// Keep explicit message handling for compatibility with updateSW(true).
 self.addEventListener("message", (event) => {
   if (event?.data?.type === "SKIP_WAITING") {
     void self.skipWaiting();
