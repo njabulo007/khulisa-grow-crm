@@ -96,6 +96,7 @@ export function ProjectDetailPage() {
   const [isLoadingShares, setIsLoadingShares] = useState(false);
   const [isCreatingShare, setIsCreatingShare] = useState(false);
   const [isRevokingShareId, setIsRevokingShareId] = useState<string | null>(null);
+  const [isUploadingPortalMedia, setIsUploadingPortalMedia] = useState(false);
   const [latestShareLink, setLatestShareLink] = useState<{ shareId: string; url: string } | null>(null);
 
   useEffect(() => {
@@ -171,6 +172,7 @@ export function ProjectDetailPage() {
   const activePortalShare = useMemo(() => {
     return portalShareHistory.find((share) => getComputedShareStatus(share) === 'active') || null;
   }, [portalShareHistory]);
+  const activePortalMedia = activePortalShare?.media || [];
 
   if (!project) {
     return (
@@ -351,6 +353,43 @@ export function ProjectDetailPage() {
       toast.success('Portal link copied.');
     } catch {
       toast.error('Could not copy link automatically. Please copy it manually from the field.');
+    }
+  };
+
+  const handlePortalMediaUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    if (!isOwner) {
+      toast.error('Only owners can upload portal media.');
+      return;
+    }
+
+    if (!activePortalShare) {
+      toast.error('Generate an active portal link before uploading media.');
+      event.target.value = '';
+      return;
+    }
+
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    event.target.value = '';
+    if (files.length === 0) {
+      return;
+    }
+
+    setIsUploadingPortalMedia(true);
+    let uploadedCount = 0;
+    try {
+      for (const file of files) {
+        await projectShareService.addMedia(project.id, activePortalShare.id, file);
+        uploadedCount += 1;
+      }
+      await loadPortalShares(project.id);
+      toast.success(
+        uploadedCount === 1 ? '1 media file uploaded to the portal.' : `${uploadedCount} media files uploaded to the portal.`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to upload portal media.';
+      toast.error(message);
+    } finally {
+      setIsUploadingPortalMedia(false);
     }
   };
 
@@ -611,6 +650,47 @@ export function ProjectDetailPage() {
 
                 {!isLoadingShares && !portalSharesError && (
                   <div className="space-y-2">
+                    <div className="rounded-lg border p-3 space-y-3">
+                      <p className="text-sm font-medium">Portal Media</p>
+                      {activePortalShare ? (
+                        <>
+                          <Input
+                            type="file"
+                            multiple
+                            onChange={(event) => void handlePortalMediaUpload(event)}
+                            disabled={isUploadingPortalMedia || isRevokingShareId === activePortalShare.id}
+                            accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Uploaded media appears in the client portal and is deleted automatically when this portal
+                            link is revoked.
+                          </p>
+                          {activePortalMedia.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">No media uploaded yet.</p>
+                          ) : (
+                            <div className="space-y-2">
+                              {activePortalMedia.map((media) => (
+                                <a
+                                  key={media.id}
+                                  href={media.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="flex items-center justify-between gap-3 rounded-md border px-2 py-1.5 text-xs hover:bg-muted/50"
+                                >
+                                  <span className="truncate font-medium">{media.name}</span>
+                                  <span className="shrink-0 text-muted-foreground">{formatDateTime(media.createdAt)}</span>
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          Generate an active client portal link before uploading project media.
+                        </p>
+                      )}
+                    </div>
+
                     <p className="text-sm font-medium">Share History</p>
                     {portalShareHistory.length === 0 ? (
                       <p className="text-sm text-muted-foreground">No portal links generated yet.</p>
@@ -640,6 +720,9 @@ export function ProjectDetailPage() {
                               <p className="text-xs text-muted-foreground">Created: {formatDateTime(share.createdAt)}</p>
                               <p className="text-xs text-muted-foreground">Expires: {formatDateTime(share.expiresAt)}</p>
                               <p className="text-xs text-muted-foreground">Last viewed: {formatDateTime(share.lastViewedAt)}</p>
+                              <p className="text-xs text-muted-foreground">
+                                Media items: {Array.isArray(share.media) ? share.media.length : 0}
+                              </p>
                               {share.revokedAt && (
                                 <p className="text-xs text-muted-foreground">Revoked: {formatDateTime(share.revokedAt)}</p>
                               )}

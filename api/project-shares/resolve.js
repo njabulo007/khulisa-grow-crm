@@ -11,6 +11,7 @@ import {
   sanitizeMilestones,
   tokenHash,
 } from '../_lib/projectShareCore.js';
+import { normalizePortalMedia } from '../_lib/projectShareMedia.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -89,6 +90,7 @@ export default async function handler(req, res) {
         id: shareDoc.id,
         expiresAt: parseOptionalIsoDate(share.expiresAt),
         status: 'active',
+        media: normalizePortalMedia(share.media),
       },
       client: {
         id: clientSnapshot.id,

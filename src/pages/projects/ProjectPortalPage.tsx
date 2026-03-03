@@ -7,6 +7,7 @@ import {
   Clock3,
   ExternalLink,
   FolderKanban,
+  ImageIcon,
   ListTodo,
   Target,
   TrendingUp,
@@ -41,6 +42,19 @@ const formatCurrency = (amount: number | null | undefined): string => {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
+};
+
+const formatSize = (sizeBytes: number | null): string => {
+  if (typeof sizeBytes !== 'number' || Number.isNaN(sizeBytes) || sizeBytes < 0) return '';
+  if (sizeBytes < 1024) return `${sizeBytes} B`;
+  if (sizeBytes < 1024 * 1024) return `${Math.round(sizeBytes / 1024)} KB`;
+  return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
+const isImageMedia = (mimeType: string | null, url: string): boolean => {
+  const mime = (mimeType || '').toLowerCase();
+  if (mime.startsWith('image/')) return true;
+  return /\.(png|jpe?g|webp|gif|svg|bmp|avif)$/i.test(url);
 };
 
 const dueMessage = (dueRaw: string | null, completion: number): string => {
@@ -124,6 +138,10 @@ export function ProjectPortalPage() {
   const openMilestones = useMemo(() => {
     if (!data) return [];
     return data.project.milestones.filter((milestone) => !milestone.isCompleted);
+  }, [data]);
+  const portalMedia = useMemo(() => {
+    if (!data) return [];
+    return Array.isArray(data.share.media) ? data.share.media : [];
   }, [data]);
 
   const packageDetails = useMemo(() => {
@@ -306,6 +324,49 @@ export function ProjectPortalPage() {
                 </CardContent>
               </Card>
             )}
+
+            <Card className="border-border shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-foreground">
+                  <ImageIcon className="h-5 w-5 text-blue-600" />
+                  Project Media
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {portalMedia.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No media has been shared for this portal yet.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {portalMedia.map((media) => (
+                      <a
+                        key={media.id}
+                        href={media.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="overflow-hidden rounded-lg border border-border transition hover:border-primary/50 hover:shadow-sm"
+                      >
+                        <div className="aspect-video bg-muted">
+                          {isImageMedia(media.mimeType, media.url) ? (
+                            <img src={media.url} alt={media.name} className="h-full w-full object-cover" loading="lazy" />
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                              {media.mimeType ? media.mimeType.split('/')[0] : 'File'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="space-y-1 p-3">
+                          <p className="truncate text-sm font-medium text-foreground">{media.name}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Added {formatDateTime(media.createdAt)}
+                            {formatSize(media.sizeBytes) ? ` | ${formatSize(media.sizeBytes)}` : ''}
+                          </p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           <div className="space-y-6">

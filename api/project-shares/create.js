@@ -10,6 +10,7 @@ import {
   parseOptionalIsoDate,
   tokenHash,
 } from '../_lib/projectShareCore.js';
+import { revokeShareAndDeleteMedia } from '../_lib/projectShareMedia.js';
 import { requireOwner } from '../_lib/requireOwner.js';
 
 export default async function handler(req, res) {
@@ -60,22 +61,16 @@ export default async function handler(req, res) {
       .get();
 
     if (!existingShares.empty) {
-      const batch = adminDb.batch();
-      let writes = 0;
-      existingShares.docs.forEach((docSnapshot) => {
+      for (const docSnapshot of existingShares.docs) {
         const data = docSnapshot.data() || {};
         if (data.status === 'active' && !data.revokedAt) {
-          batch.update(docSnapshot.ref, {
-            status: 'revoked',
-            revokedAt: now,
+          await revokeShareAndDeleteMedia({
+            shareRef: docSnapshot.ref,
+            shareData: data,
             revokedBy: uid,
-            updatedAt: now,
+            now,
           });
-          writes += 1;
         }
-      });
-      if (writes > 0) {
-        await batch.commit();
       }
     }
 
@@ -93,6 +88,7 @@ export default async function handler(req, res) {
       createdAt: now,
       updatedAt: now,
       lastViewedAt: null,
+      media: [],
     });
 
     return json(res, 200, {

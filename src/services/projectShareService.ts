@@ -1,6 +1,18 @@
 import { auth } from '@/lib/firebase';
+import { storage } from '@/lib/firebase';
+import { deleteObject, getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
 export type ProjectShareStatus = 'active' | 'revoked' | 'expired';
+
+export interface ProjectShareMediaRecord {
+  id: string;
+  name: string;
+  url: string;
+  storagePath: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  createdAt: string | null;
+}
 
 export interface ProjectShareRecord {
   id: string;
@@ -11,6 +23,7 @@ export interface ProjectShareRecord {
   revokedAt: string | null;
   createdAt: string | null;
   lastViewedAt: string | null;
+  media: ProjectShareMediaRecord[];
 }
 
 export interface ProjectShareCreateResult {
@@ -28,6 +41,7 @@ export interface PublicProjectPortalData {
     id: string;
     expiresAt: string | null;
     status: ProjectShareStatus;
+    media: ProjectShareMediaRecord[];
   };
   client: {
     id: string;
@@ -61,6 +75,24 @@ const getApiUrl = (path: string): string => {
     return `${API_BASE.replace(/\/$/, '')}${path}`;
   }
   return path;
+};
+
+const sanitizeFileName = (rawName: string): string => {
+  const cleaned = rawName
+    .trim()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9._-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  if (!cleaned) return 'project-file';
+  return cleaned.slice(0, 120);
+};
+
+const createStoragePath = (projectId: string, shareId: string, fileName: string): string => {
+  const safeFileName = sanitizeFileName(fileName);
+  const randomPart = Math.random().toString(36).slice(2, 10);
+  return `project-portals/${projectId}/${shareId}/${Date.now()}-${randomPart}-${safeFileName}`;
 };
 
 const getAuthHeader = async (): Promise<string> => {
@@ -180,6 +212,37 @@ export const projectShareService = {
     try {
       await requestJson<{ ok: boolean }>('/api/project-shares/revoke', { shareId }, true);
     } catch (error) {
+      throw new Error(asErrorMessage(error));
+    }
+  },
+
+  async addMedia(projectId: string, shareId: string, file: File): Promise<ProjectShareMediaRecord> {
+    const objectRef = ref(storage, createStoragePath(projectId, shareId, file.name));
+    try {
+      await uploadBytes(objectRef, file, {
+        contentType: file.type || 'application/octet-stream',
+      });
+      const url = await getDownloadURL(objectRef);
+      const response = await requestJson<{ media: ProjectShareMediaRecord }>(
+        '/api/project-shares/media-add',
+        {
+          shareId,
+          projectId,
+          fileName: file.name,
+          url,
+          storagePath: objectRef.fullPath,
+          mimeType: file.type || null,
+          sizeBytes: Number.isFinite(file.size) ? file.size : null,
+        },
+        true
+      );
+      return response.media;
+    } catch (error) {
+      try {
+        await deleteObject(objectRef);
+      } catch {
+        // Best-effort rollback of orphaned uploads.
+      }
       throw new Error(asErrorMessage(error));
     }
   },

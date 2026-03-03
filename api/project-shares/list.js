@@ -5,6 +5,7 @@ import {
   computeShareStatus,
   parseOptionalIsoDate,
 } from '../_lib/projectShareCore.js';
+import { normalizePortalMedia } from '../_lib/projectShareMedia.js';
 import { requireOwner } from '../_lib/requireOwner.js';
 
 export default async function handler(req, res) {
@@ -37,6 +38,7 @@ export default async function handler(req, res) {
           revokedAt: parseOptionalIsoDate(data.revokedAt),
           createdAt: parseOptionalIsoDate(data.createdAt),
           lastViewedAt: parseOptionalIsoDate(data.lastViewedAt),
+          media: normalizePortalMedia(data.media),
         };
       })
       .sort((a, b) => {
