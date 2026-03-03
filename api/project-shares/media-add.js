@@ -1,4 +1,5 @@
 import { adminDb } from '../_lib/firebaseAdmin.js';
+import { FieldValue } from 'firebase-admin/firestore';
 import { createHttpError, handleRouteError, json, methodNotAllowed, parseBody } from '../_lib/http.js';
 import { PROJECT_SHARES_COLLECTION, computeShareStatus, nowIso } from '../_lib/projectShareCore.js';
 import {
@@ -29,37 +30,33 @@ export default async function handler(req, res) {
     const shareRef = adminDb.collection(PROJECT_SHARES_COLLECTION).doc(shareId);
     const media = buildPortalMediaFromPayload(payload);
     const now = nowIso();
-    let persisted = null;
+    const snapshot = await shareRef.get();
+    if (!snapshot.exists) {
+      throw createHttpError(404, 'Share link not found.');
+    }
 
-    await adminDb.runTransaction(async (transaction) => {
-      const snapshot = await transaction.get(shareRef);
-      if (!snapshot.exists) {
-        throw createHttpError(404, 'Share link not found.');
-      }
+    const share = snapshot.data() || {};
+    const linkedProjectId = typeof share.projectId === 'string' ? share.projectId.trim() : '';
+    if (!linkedProjectId || linkedProjectId !== projectId) {
+      throw createHttpError(409, 'Share link does not match this project.');
+    }
 
-      const share = snapshot.data() || {};
-      const linkedProjectId = typeof share.projectId === 'string' ? share.projectId.trim() : '';
-      if (!linkedProjectId || linkedProjectId !== projectId) {
-        throw createHttpError(409, 'Share link does not match this project.');
-      }
+    const shareStatus = computeShareStatus(share);
+    if (shareStatus !== 'active') {
+      throw createHttpError(409, 'Only active share links can receive media uploads.');
+    }
 
-      const shareStatus = computeShareStatus(share);
-      if (shareStatus !== 'active') {
-        throw createHttpError(409, 'Only active share links can receive media uploads.');
-      }
+    const existingMedia = normalizePortalMedia(share.media);
+    assertPortalMediaCapacity(existingMedia);
 
-      const existingMedia = normalizePortalMedia(share.media);
-      assertPortalMediaCapacity(existingMedia);
+    const persisted = {
+      ...media,
+      createdAt: now,
+    };
 
-      persisted = {
-        ...media,
-        createdAt: now,
-      };
-
-      transaction.update(shareRef, {
-        media: [...existingMedia, persisted],
-        updatedAt: now,
-      });
+    await shareRef.update({
+      media: FieldValue.arrayUnion(persisted),
+      updatedAt: now,
     });
 
     return json(res, 200, { media: persisted });

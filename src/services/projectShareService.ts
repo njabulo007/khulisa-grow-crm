@@ -69,8 +69,9 @@ export interface PublicProjectPortalData {
 }
 
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
-const MEDIA_ADD_TIMEOUT_MS = 30_000;
-const MEDIA_UPLOAD_STALL_TIMEOUT_MS = 30_000;
+const MEDIA_ADD_TIMEOUT_MS = 120_000;
+const MEDIA_UPLOAD_SLOW_THRESHOLD_MS = 25_000;
+const MEDIA_UPLOAD_HARD_TIMEOUT_MS = 10 * 60_000;
 const IMAGE_OPTIMIZE_MIN_BYTES = 750 * 1024;
 const IMAGE_OPTIMIZE_MAX_DIMENSION = 1920;
 
@@ -101,7 +102,7 @@ const createStoragePath = (projectId: string, shareId: string, fileName: string)
 
 interface AddMediaOptions {
   onProgress?: (percent: number) => void;
-  onStatusChange?: (status: 'preparing' | 'uploading' | 'finalizing') => void;
+  onStatusChange?: (status: 'preparing' | 'uploading' | 'finalizing' | 'slow-network') => void;
 }
 
 interface RequestOptions {
@@ -332,28 +333,42 @@ export const projectShareService = {
       });
       await new Promise<void>((resolve, reject) => {
         let settled = false;
-        let stallTimer: ReturnType<typeof setTimeout> | null = null;
-        const clearStallTimer = () => {
-          if (stallTimer) {
-            clearTimeout(stallTimer);
-            stallTimer = null;
+        let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
+        let slowNetworkTimer: ReturnType<typeof setTimeout> | null = null;
+
+        const clearTimers = () => {
+          if (hardTimeoutTimer) {
+            clearTimeout(hardTimeoutTimer);
+            hardTimeoutTimer = null;
+          }
+          if (slowNetworkTimer) {
+            clearTimeout(slowNetworkTimer);
+            slowNetworkTimer = null;
           }
         };
-        const resetStallTimer = () => {
-          clearStallTimer();
-          stallTimer = setTimeout(() => {
+
+        const armSlowNetworkTimer = () => {
+          if (slowNetworkTimer) {
+            clearTimeout(slowNetworkTimer);
+          }
+          slowNetworkTimer = setTimeout(() => {
             if (settled) return;
-            settled = true;
-            uploadTask.cancel();
-            reject(new Error('Upload stalled. Please retry or use a smaller image.'));
-          }, MEDIA_UPLOAD_STALL_TIMEOUT_MS);
+            options?.onStatusChange?.('slow-network');
+          }, MEDIA_UPLOAD_SLOW_THRESHOLD_MS);
         };
 
-        resetStallTimer();
+        hardTimeoutTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          uploadTask.cancel();
+          reject(new Error('Upload timed out. Please retry.'));
+        }, MEDIA_UPLOAD_HARD_TIMEOUT_MS);
+
+        armSlowNetworkTimer();
         uploadTask.on(
           'state_changed',
           (snapshot) => {
-            resetStallTimer();
+            armSlowNetworkTimer();
             if (typeof options?.onProgress === 'function') {
               const progress =
                 snapshot.totalBytes > 0
@@ -365,13 +380,13 @@ export const projectShareService = {
           (error) => {
             if (settled) return;
             settled = true;
-            clearStallTimer();
+            clearTimers();
             reject(error);
           },
           () => {
             if (settled) return;
             settled = true;
-            clearStallTimer();
+            clearTimers();
             options?.onProgress?.(96);
             resolve();
           }

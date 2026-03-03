@@ -52,7 +52,7 @@ import { Client, Invoice, Project, ProjectStatus, PROJECT_STATUSES } from '@/typ
 import { toast } from 'sonner';
 
 const OWNER_EDITABLE_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
-const MAX_PARALLEL_PORTAL_UPLOADS = 3;
+const MAX_PARALLEL_PORTAL_UPLOADS = 2;
 const MAX_PORTAL_MEDIA_FILE_BYTES = 25 * 1024 * 1024;
 
 const formatCurrency = (amount: number) => {
@@ -458,6 +458,13 @@ export function ProjectDetailPage() {
                     state: 'uploading',
                     message: 'Finalizing...',
                     progress: 97,
+                  });
+                  return;
+                }
+                if (status === 'slow-network') {
+                  updateUploadItem(uploadId, {
+                    state: 'uploading',
+                    message: 'Slow network... still uploading',
                   });
                   return;
                 }
