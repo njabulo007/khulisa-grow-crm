@@ -83,7 +83,9 @@ This app includes FCM-based web push plumbing so agents/owners can receive OS no
    - Project Settings -> Cloud Messaging -> Web Push certificates
 2. Add the public VAPID key to your frontend env:
    - `VITE_FIREBASE_VAPID_KEY=YOUR_PUBLIC_VAPID_KEY`
-3. Ensure your app is served over HTTPS (required for push).
+3. If Storage uploads fail with CORS/preflight errors, set the frontend bucket explicitly:
+   - `VITE_FIREBASE_STORAGE_BUCKET=YOUR_PROJECT.appspot.com`
+4. Ensure your app is served over HTTPS (required for push).
 
 ### Backend trigger setup
 

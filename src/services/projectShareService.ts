@@ -271,6 +271,11 @@ const asErrorMessage = (error: unknown): string => {
     const message = 'message' in error ? String(error.message || '') : '';
     const normalizedCode = code.trim().toLowerCase();
     const normalizedMessage = message.trim().toLowerCase();
+    const looksLikeCorsPreflightFailure =
+      normalizedMessage.includes('cors') ||
+      normalizedMessage.includes('preflight') ||
+      normalizedMessage.includes('xmlhttprequest') ||
+      normalizedMessage.includes('access control');
 
     if (normalizedCode.startsWith('storage/')) {
       if (normalizedCode === 'storage/unauthorized') {
@@ -286,6 +291,9 @@ const asErrorMessage = (error: unknown): string => {
         return 'Storage quota exceeded. Upgrade Firebase plan or clear space.';
       }
       if (normalizedCode === 'storage/unknown') {
+        if (looksLikeCorsPreflightFailure) {
+          return 'Storage upload blocked by bucket CORS/preflight. Set VITE_FIREBASE_STORAGE_BUCKET to your active Firebase bucket (usually <project-id>.appspot.com) and redeploy.';
+        }
         return message || 'Storage upload failed unexpectedly.';
       }
       return message || 'Storage upload failed.';

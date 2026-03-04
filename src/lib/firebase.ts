@@ -11,11 +11,13 @@ import {
 import { getFunctions, type Functions } from "firebase/functions";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 
+const configuredStorageBucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined)?.trim();
+
 const firebaseConfig: FirebaseOptions = {
   apiKey: "AIzaSyAD1uR5c0p8OCqSZ33aYJY_DHQOcEsmzDk",
   authDomain: "khulisa-grow-crm.firebaseapp.com",
   projectId: "khulisa-grow-crm",
-  storageBucket: "khulisa-grow-crm.firebasestorage.app",
+  storageBucket: configuredStorageBucket || "khulisa-grow-crm.appspot.com",
   messagingSenderId: "874376416901",
   appId: "1:874376416901:web:c13ef7d229a6af705763ec",
   measurementId: "G-GJP436QCX6",
