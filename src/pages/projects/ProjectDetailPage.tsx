@@ -1,5 +1,6 @@
 ﻿import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useRef } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -11,6 +12,7 @@ import {
   Loader2,
   Link as LinkIcon,
   Trash2,
+  Upload,
   User,
 } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
@@ -181,6 +183,7 @@ export function ProjectDetailPage() {
   const [isUploadingPortalMedia, setIsUploadingPortalMedia] = useState(false);
   const [uploadItems, setUploadItems] = useState<UploadItem[]>([]);
   const [latestShareLink, setLatestShareLink] = useState<{ shareId: string; url: string } | null>(null);
+  const portalMediaInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -890,13 +893,34 @@ export function ProjectDetailPage() {
                       <p className="text-sm font-medium">Portal Media</p>
                       {activePortalShare ? (
                         <>
-                          <Input
+                          <input
+                            ref={portalMediaInputRef}
                             type="file"
                             multiple
                             onChange={(event) => void handlePortalMediaUpload(event)}
                             disabled={isUploadingPortalMedia || isRevokingShareId === activePortalShare.id}
                             accept="image/*,video/*,.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.csv,.txt"
+                            className="sr-only"
                           />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="w-full sm:w-auto"
+                            disabled={isUploadingPortalMedia || isRevokingShareId === activePortalShare.id}
+                            onClick={() => portalMediaInputRef.current?.click()}
+                          >
+                            {isUploadingPortalMedia ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Uploading...
+                              </>
+                            ) : (
+                              <>
+                                <Upload className="mr-2 h-4 w-4" />
+                                Upload files
+                              </>
+                            )}
+                          </Button>
                           <div className="rounded-md border bg-muted/30 p-2 text-xs">
                             <p className="font-medium text-foreground">
                               {isUploadingPortalMedia ? (
