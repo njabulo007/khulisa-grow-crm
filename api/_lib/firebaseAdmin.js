@@ -32,7 +32,7 @@ const resolveStorageBucketName = (serviceAccount) => {
   if (serviceAccountBucket) return serviceAccountBucket;
 
   const projectId = process.env.FIREBASE_PROJECT_ID || serviceAccount?.project_id;
-  return projectId ? `${projectId}.appspot.com` : undefined;
+  return projectId ? `${projectId}.firebasestorage.app` : undefined;
 };
 
 const resolveApp = () => {

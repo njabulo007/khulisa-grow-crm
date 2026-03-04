@@ -17,7 +17,7 @@ const firebaseConfig: FirebaseOptions = {
   apiKey: "AIzaSyAD1uR5c0p8OCqSZ33aYJY_DHQOcEsmzDk",
   authDomain: "khulisa-grow-crm.firebaseapp.com",
   projectId: "khulisa-grow-crm",
-  storageBucket: configuredStorageBucket || "khulisa-grow-crm.appspot.com",
+  storageBucket: configuredStorageBucket || "khulisa-grow-crm.firebasestorage.app",
   messagingSenderId: "874376416901",
   appId: "1:874376416901:web:c13ef7d229a6af705763ec",
   measurementId: "G-GJP436QCX6",

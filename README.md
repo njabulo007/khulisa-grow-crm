@@ -84,7 +84,8 @@ This app includes FCM-based web push plumbing so agents/owners can receive OS no
 2. Add the public VAPID key to your frontend env:
    - `VITE_FIREBASE_VAPID_KEY=YOUR_PUBLIC_VAPID_KEY`
 3. If Storage uploads fail with CORS/preflight errors, set the frontend bucket explicitly:
-   - `VITE_FIREBASE_STORAGE_BUCKET=YOUR_PROJECT.appspot.com`
+   - `VITE_FIREBASE_STORAGE_BUCKET=YOUR_PROJECT_BUCKET`
+   - Example: `VITE_FIREBASE_STORAGE_BUCKET=khulisa-grow-crm.firebasestorage.app`
 4. Ensure your app is served over HTTPS (required for push).
 
 ### Backend trigger setup
@@ -106,3 +107,23 @@ The function `sendWebPushOnNotificationCreate` reads device tokens from `push_to
 
 - Users must grant notification permission at least once.
 - iOS web push requires installing the PWA to home screen and enabling notifications.
+
+## Portal Media Storage (Vercel Blob)
+
+Portal media uploads now use Vercel Blob via API routes (`/api/project-shares/media-upload` and `/api/project-shares/media-delete`), not direct Firebase Storage browser uploads.
+
+1. In Vercel Dashboard, create a Blob store for this project.
+2. Add env var in Vercel Project Settings:
+   - `BLOB_READ_WRITE_TOKEN=...`
+3. Redeploy the project.
+4. Upload limit is currently `4MB` per file.
+
+## Firebase Storage CORS (Only If You Switch Back)
+
+If you revert portal uploads to Firebase Storage browser uploads, use `storage.cors.json` and apply it to the correct bucket:
+
+1. Find the bucket:
+   - `gcloud storage buckets list --project=khulisa-grow-crm`
+2. Apply CORS:
+   - `gcloud storage buckets update gs://<BUCKET_NAME> --cors-file=storage.cors.json`
+   - or `gsutil cors set storage.cors.json gs://<BUCKET_NAME>`

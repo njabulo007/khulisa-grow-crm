@@ -54,7 +54,7 @@ import { toast } from 'sonner';
 
 const OWNER_EDITABLE_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
 const MAX_PARALLEL_PORTAL_UPLOADS = 2;
-const MAX_PORTAL_MEDIA_FILE_BYTES = 25 * 1024 * 1024;
+const MAX_PORTAL_MEDIA_FILE_BYTES = 4 * 1024 * 1024;
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -500,7 +500,7 @@ export function ProjectDetailPage() {
           name: file.name,
           progress: 0,
           state: 'error',
-          message: 'Too large (max 25MB)',
+          message: 'Too large (max 4MB)',
         });
         return;
       }
@@ -517,7 +517,7 @@ export function ProjectDetailPage() {
     setUploadItems((prev) => [...queue, ...rejectedQueue, ...prev].slice(0, 30));
 
     if (acceptedFiles.length === 0) {
-      toast.error('No files were uploaded. Max file size is 25MB.');
+      toast.error('No files were uploaded. Max file size is 4MB.');
       return;
     }
 
@@ -933,7 +933,7 @@ export function ProjectDetailPage() {
                               )}
                             </p>
                             <p className="text-muted-foreground">Select files above.</p>
-                            <p className="text-muted-foreground">Max size: 25MB per file. Slow uploads auto-retry once.</p>
+                            <p className="text-muted-foreground">Max size: 4MB per file.</p>
                           </div>
                           {uploadItems.length > 0 && (
                             <div className="space-y-2">
