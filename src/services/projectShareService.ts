@@ -1,6 +1,4 @@
 import { auth } from '@/lib/firebase';
-import { storage } from '@/lib/firebase';
-import { deleteObject, getDownloadURL, ref, uploadBytes, uploadBytesResumable } from 'firebase/storage';
 
 export type ProjectShareStatus = 'active' | 'revoked' | 'expired';
 
@@ -71,34 +69,14 @@ export interface PublicProjectPortalData {
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || '').trim();
 const API_REQUEST_TIMEOUT_MS = 45_000;
 const MEDIA_ADD_TIMEOUT_MS = 120_000;
-const MEDIA_GET_URL_TIMEOUT_MS = 45_000;
-const MEDIA_UPLOAD_SLOW_THRESHOLD_MS = 25_000;
-const MEDIA_UPLOAD_HARD_TIMEOUT_MS = 3 * 60_000;
-const MEDIA_UPLOAD_MAX_ATTEMPTS = 2;
+const MEDIA_UPLOAD_TIMEOUT_MS = 4 * 60_000;
+const MEDIA_UPLOAD_DELETE_TIMEOUT_MS = 20_000;
 
 const getApiUrl = (path: string): string => {
   if (API_BASE) {
     return `${API_BASE.replace(/\/$/, '')}${path}`;
   }
   return path;
-};
-
-const sanitizeFileName = (rawName: string): string => {
-  const cleaned = rawName
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-zA-Z0-9._-]/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  if (!cleaned) return 'project-file';
-  return cleaned.slice(0, 120);
-};
-
-const createStoragePath = (projectId: string, shareId: string, fileName: string): string => {
-  const safeFileName = sanitizeFileName(fileName);
-  const randomPart = Math.random().toString(36).slice(2, 10);
-  return `project-portals/${projectId}/${shareId}/${Date.now()}-${randomPart}-${safeFileName}`;
 };
 
 interface AddMediaOptions {
@@ -126,86 +104,82 @@ const getAuthHeader = async (): Promise<string> => {
   return `Bearer ${token}`;
 };
 
-const withTimeout = async <T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> => {
-  return await new Promise<T>((resolve, reject) => {
-    const timeoutId = setTimeout(() => reject(new Error(message)), timeoutMs);
-    promise
-      .then((value) => {
-        clearTimeout(timeoutId);
-        resolve(value);
-      })
-      .catch((error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      });
-  });
-};
+interface PortalUploadResponse {
+  url: string;
+  storagePath: string;
+  mimeType: string | null;
+  sizeBytes: number | null;
+}
 
-const runResumableUpload = async (
-  uploadTask: ReturnType<typeof uploadBytesResumable>,
+const uploadPortalMediaFile = async (
+  projectId: string,
+  shareId: string,
+  file: File,
   options?: AddMediaOptions
-): Promise<void> => {
-  await new Promise<void>((resolve, reject) => {
-    let settled = false;
-    let hardTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
-    let slowNetworkTimer: ReturnType<typeof setTimeout> | null = null;
+): Promise<PortalUploadResponse> => {
+  options?.onStatusChange?.('uploading');
+  options?.onProgress?.(8);
 
-    const clearTimers = () => {
-      if (hardTimeoutTimer) {
-        clearTimeout(hardTimeoutTimer);
-        hardTimeoutTimer = null;
-      }
-      if (slowNetworkTimer) {
-        clearTimeout(slowNetworkTimer);
-        slowNetworkTimer = null;
-      }
-    };
-
-    const armSlowNetworkTimer = () => {
-      if (slowNetworkTimer) {
-        clearTimeout(slowNetworkTimer);
-      }
-      slowNetworkTimer = setTimeout(() => {
-        if (settled) return;
-        options?.onStatusChange?.('slow-network');
-      }, MEDIA_UPLOAD_SLOW_THRESHOLD_MS);
-    };
-
-    hardTimeoutTimer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      uploadTask.cancel();
-      reject(new Error('Upload timed out. Please retry.'));
-    }, MEDIA_UPLOAD_HARD_TIMEOUT_MS);
-
-    armSlowNetworkTimer();
-    uploadTask.on(
-      'state_changed',
-      (snapshot) => {
-        armSlowNetworkTimer();
-        if (typeof options?.onProgress === 'function') {
-          const progress =
-            snapshot.totalBytes > 0
-              ? Math.min(100, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
-              : 0;
-          options.onProgress(Math.min(95, Math.max(1, progress)));
-        }
-      },
-      (error) => {
-        if (settled) return;
-        settled = true;
-        clearTimers();
-        reject(error);
-      },
-      () => {
-        if (settled) return;
-        settled = true;
-        clearTimers();
-        options?.onProgress?.(96);
-        resolve();
-      }
-    );
+  const authHeader = await getAuthHeader();
+  const params = new URLSearchParams({
+    projectId,
+    shareId,
+    fileName: file.name,
   });
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId =
+    controller && MEDIA_UPLOAD_TIMEOUT_MS > 0
+      ? setTimeout(() => controller.abort(), MEDIA_UPLOAD_TIMEOUT_MS)
+      : null;
+
+  let response: Response;
+  try {
+    response = await fetch(getApiUrl(`/api/project-shares/media-upload?${params.toString()}`), {
+      method: 'POST',
+      headers: {
+        Authorization: authHeader,
+        ...(file.type ? { 'x-file-type': file.type } : {}),
+      },
+      body: file,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+  } catch (error) {
+    if ((error as { name?: string })?.name === 'AbortError') {
+      throw new Error('Upload timed out. Please retry.');
+    }
+    throw error;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  let payload: unknown = null;
+  try {
+    payload = await response.json();
+  } catch {
+    // Keep parsing best-effort and fallback below.
+  }
+
+  if (!response.ok) {
+    if (payload && typeof payload === 'object' && 'error' in payload) {
+      throw new Error(String((payload as { error?: string }).error || 'Upload failed.'));
+    }
+    throw new Error('Upload failed.');
+  }
+
+  const uploaded = payload as Partial<PortalUploadResponse> | null;
+  if (!uploaded?.url || !uploaded?.storagePath) {
+    throw new Error('Upload succeeded but response is missing file metadata.');
+  }
+
+  options?.onProgress?.(96);
+  return {
+    url: uploaded.url,
+    storagePath: uploaded.storagePath,
+    mimeType: uploaded.mimeType ?? file.type ?? null,
+    sizeBytes: typeof uploaded.sizeBytes === 'number' ? uploaded.sizeBytes : file.size,
+  };
 };
 
 const requestJson = async <T>(
@@ -265,12 +239,26 @@ const requestJson = async <T>(
   return data as T;
 };
 
+const deleteUploadedPortalMedia = async (storagePath: string): Promise<void> => {
+  await requestJson<{ ok: boolean }>(
+    '/api/project-shares/media-delete',
+    { storagePath },
+    true,
+    { timeoutMs: MEDIA_UPLOAD_DELETE_TIMEOUT_MS }
+  );
+};
+
 const asErrorMessage = (error: unknown): string => {
   if (error && typeof error === 'object') {
     const code = 'code' in error ? String(error.code || '') : '';
     const message = 'message' in error ? String(error.message || '') : '';
     const normalizedCode = code.trim().toLowerCase();
     const normalizedMessage = message.trim().toLowerCase();
+    const looksLikeCorsPreflightFailure =
+      normalizedMessage.includes('cors') ||
+      normalizedMessage.includes('preflight') ||
+      normalizedMessage.includes('xmlhttprequest') ||
+      normalizedMessage.includes('access control');
 
     if (normalizedCode.startsWith('storage/')) {
       if (normalizedCode === 'storage/unauthorized') {
@@ -286,6 +274,9 @@ const asErrorMessage = (error: unknown): string => {
         return 'Storage quota exceeded. Upgrade Firebase plan or clear space.';
       }
       if (normalizedCode === 'storage/unknown') {
+        if (looksLikeCorsPreflightFailure) {
+          return 'Storage upload blocked by bucket CORS/preflight. Apply storage.cors.json to your real bucket (for this project likely gs://khulisa-grow-crm.firebasestorage.app), then retry.';
+        }
         return message || 'Storage upload failed unexpectedly.';
       }
       return message || 'Storage upload failed.';
@@ -367,72 +358,21 @@ export const projectShareService = {
   ): Promise<ProjectShareMediaRecord> {
     options?.onStatusChange?.('preparing');
     const uploadFile = file;
-    let uploadedRef: ReturnType<typeof ref> | null = null;
+    let uploadedStoragePath: string | null = null;
     try {
-      options?.onStatusChange?.('uploading');
-      for (let attempt = 1; attempt <= MEDIA_UPLOAD_MAX_ATTEMPTS; attempt += 1) {
-        if (attempt > 1) {
-          options?.onStatusChange?.('retrying');
-          options?.onProgress?.(Math.max(5, Math.min(90, 5 * attempt)));
-        }
-
-        let attemptRef: ReturnType<typeof ref> | null = null;
-        try {
-          attemptRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
-          const uploadTask = uploadBytesResumable(attemptRef, uploadFile, {
-            contentType: uploadFile.type || 'application/octet-stream',
-          });
-          await runResumableUpload(uploadTask, options);
-          uploadedRef = attemptRef;
-          break;
-        } catch (error) {
-          // Clean up any partial object from a failed attempt.
-          try {
-            if (attemptRef) {
-              await deleteObject(attemptRef);
-            }
-          } catch {
-            // ignore
-          }
-          if (attempt >= MEDIA_UPLOAD_MAX_ATTEMPTS) {
-            // After resumable retries fail, fallback to direct upload.
-            options?.onStatusChange?.('retrying');
-            options?.onProgress?.(10);
-            const fallbackRef = ref(storage, createStoragePath(projectId, shareId, uploadFile.name));
-            await withTimeout(
-              uploadBytes(fallbackRef, uploadFile, {
-                contentType: uploadFile.type || 'application/octet-stream',
-              }),
-              MEDIA_UPLOAD_HARD_TIMEOUT_MS,
-              'Upload timed out. Please retry.'
-            );
-            options?.onProgress?.(96);
-            uploadedRef = fallbackRef;
-            break;
-          }
-        }
-      }
-
-      if (!uploadedRef) {
-        throw new Error('Upload failed. Please retry.');
-      }
-
+      const uploaded = await uploadPortalMediaFile(projectId, shareId, uploadFile, options);
+      uploadedStoragePath = uploaded.storagePath;
       options?.onStatusChange?.('finalizing');
-      const url = await withTimeout(
-        getDownloadURL(uploadedRef),
-        MEDIA_GET_URL_TIMEOUT_MS,
-        'Upload completed but URL generation timed out. Please retry.'
-      );
       const response = await requestJson<{ media: ProjectShareMediaRecord }>(
         '/api/project-shares/media-add',
         {
           shareId,
           projectId,
           fileName: uploadFile.name,
-          url,
-          storagePath: uploadedRef.fullPath,
-          mimeType: uploadFile.type || null,
-          sizeBytes: Number.isFinite(uploadFile.size) ? uploadFile.size : null,
+          url: uploaded.url,
+          storagePath: uploaded.storagePath,
+          mimeType: uploaded.mimeType,
+          sizeBytes: uploaded.sizeBytes,
         },
         true,
         { timeoutMs: MEDIA_ADD_TIMEOUT_MS }
@@ -441,8 +381,8 @@ export const projectShareService = {
       return response.media;
     } catch (error) {
       try {
-        if (uploadedRef) {
-          await deleteObject(uploadedRef);
+        if (uploadedStoragePath) {
+          await deleteUploadedPortalMedia(uploadedStoragePath);
         }
       } catch {
         // Best-effort rollback of orphaned uploads.

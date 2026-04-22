@@ -1,0 +1,12 @@
+[
+  {
+    "origin": [
+      "https://khulisa-grow-crm.vercel.app",
+      "http://localhost:5173",
+      "http://localhost:4173"
+    ],
+    "method": ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
+    "responseHeader": ["Content-Type", "Authorization", "x-firebase-storage-version"],
+    "maxAgeSeconds": 3600
+  }
+]

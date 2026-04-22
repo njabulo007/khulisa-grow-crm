@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { del } from '@vercel/blob';
 import { adminStorageBucket } from './firebaseAdmin.js';
 import { createHttpError } from './http.js';
 import { nowIso, parseOptionalIsoDate } from './projectShareCore.js';
@@ -8,6 +9,7 @@ const MAX_MEDIA_NAME_LENGTH = 180;
 const MAX_STORAGE_PATH_LENGTH = 1024;
 const MAX_MIME_TYPE_LENGTH = 120;
 const MAX_MEDIA_SIZE_BYTES = 50 * 1024 * 1024;
+const VERCEL_BLOB_STORAGE_PREFIX = 'vercel-blob:';
 
 const asTrimmedString = (value, maxLength) => {
   if (typeof value !== 'string') return '';
@@ -35,6 +37,13 @@ const coerceStoragePath = (value) => {
   if (path.includes('..')) return null;
   if (path.startsWith('/') || path.startsWith('\\')) return null;
   return path;
+};
+
+const extractVercelBlobUrl = (storagePath) => {
+  if (typeof storagePath !== 'string') return null;
+  const raw = storagePath.trim();
+  if (!raw.startsWith(VERCEL_BLOB_STORAGE_PREFIX)) return null;
+  return coerceHttpUrl(raw.slice(VERCEL_BLOB_STORAGE_PREFIX.length));
 };
 
 const coerceSizeBytes = (value) => {
@@ -123,13 +132,33 @@ export const deletePortalMediaFiles = async (media) => {
   if (!normalized.length) {
     return { requested: 0, deleted: 0, failed: 0 };
   }
-  if (!adminStorageBucket) {
-    return { requested: normalized.length, deleted: 0, failed: normalized.length };
+  const vercelBlobUrls = [];
+  const firebaseEntries = [];
+  normalized.forEach((entry) => {
+    const blobUrl = extractVercelBlobUrl(entry.storagePath);
+    if (blobUrl) {
+      vercelBlobUrls.push(blobUrl);
+      return;
+    }
+    firebaseEntries.push(entry);
+  });
+
+  const tasks = [];
+  if (vercelBlobUrls.length > 0) {
+    const uniqueUrls = [...new Set(vercelBlobUrls)];
+    tasks.push(...uniqueUrls.map((url) => del(url)));
+  }
+  if (firebaseEntries.length > 0) {
+    if (!adminStorageBucket) {
+      tasks.push(...firebaseEntries.map(() => Promise.reject(new Error('Firebase Storage bucket unavailable.'))));
+    } else {
+      tasks.push(
+        ...firebaseEntries.map((entry) => adminStorageBucket.file(entry.storagePath).delete({ ignoreNotFound: true })),
+      );
+    }
   }
 
-  const settled = await Promise.allSettled(
-    normalized.map((entry) => adminStorageBucket.file(entry.storagePath).delete({ ignoreNotFound: true })),
-  );
+  const settled = await Promise.allSettled(tasks);
 
   let deleted = 0;
   let failed = 0;
