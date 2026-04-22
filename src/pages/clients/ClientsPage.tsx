@@ -285,107 +285,109 @@ export function ClientsPage() {
           }
         />
       ) : (
-        <Card>
+        <Card className="overflow-hidden border-border/50 shadow-md">
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Business</TableHead>
-                  <TableHead>Contact</TableHead>
-                  <TableHead>Location</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Projects</TableHead>
-                  {isOwner && <TableHead className="text-right">Total Spent</TableHead>}
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {clients.map((client) => {
-                  const stats = getClientStats(client.id);
-                  const status = getClientStatus(client);
-                  return (
-                    <TableRow 
-                      key={client.id}
-                      className="cursor-pointer"
-                      onClick={() => navigate(`/clients/${client.id}`)}
-                    >
-                      <TableCell>
-                        <div>
-                          <p className="font-medium">{client.businessName}</p>
-                          <p className="text-sm text-muted-foreground">{client.industry}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <p className="text-sm">{client.ownerName}</p>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span className="flex items-center gap-1">
-                              <Phone className="h-3 w-3" />
-                              {client.phone}
-                            </span>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-gradient-to-r from-primary/5 to-accent/5 hover:bg-gradient-to-r hover:from-primary/5 hover:to-accent/5">
+                    <TableHead className="font-semibold text-primary">Business</TableHead>
+                    <TableHead className="font-semibold text-primary">Contact</TableHead>
+                    <TableHead className="font-semibold text-primary">Location</TableHead>
+                    <TableHead className="font-semibold text-primary">Status</TableHead>
+                    <TableHead className="text-right font-semibold text-primary">Projects</TableHead>
+                    {isOwner && <TableHead className="text-right font-semibold text-primary">Total Spent</TableHead>}
+                    <TableHead className="w-[50px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {clients.map((client, index) => {
+                    const stats = getClientStats(client.id);
+                    const status = getClientStatus(client);
+                    return (
+                      <TableRow 
+                        key={client.id}
+                        className="cursor-pointer transition-all duration-200 hover:bg-accent/5 group"
+                        onClick={() => navigate(`/clients/${client.id}`)}
+                      >
+                        <TableCell className="py-4">
+                          <div className="space-y-1">
+                            <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{client.businessName}</p>
+                            <p className="text-xs text-muted-foreground uppercase tracking-wide">{client.industry || 'N/A'}</p>
                           </div>
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <MapPin className="h-3 w-3" />
-                          {client.location || 'Not specified'}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${getStatusClassName(status)}`}>
-                          {status}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <p className="font-medium">{stats.projectCount}</p>
-                        <p className="text-xs text-muted-foreground">{stats.activeProjects} active</p>
-                      </TableCell>
-                      {isOwner && (
-                        <TableCell className="text-right">
-                          <p className="font-semibold text-accent">{formatCurrency(stats.totalSpent)}</p>
                         </TableCell>
-                      )}
-                      <TableCell onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => navigate(`/clients/${client.id}`)}>
-                              <Eye className="mr-2 h-4 w-4" />
-                              View Details
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEditDialog(client)}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/projects?client=${client.id}`)}>
-                              <FolderKanban className="mr-2 h-4 w-4" />
-                              View Projects
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => navigate(`/invoices?client=${client.id}`)}>
-                              <FileText className="mr-2 h-4 w-4" />
-                              View Invoices
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
-                              onClick={() => setDeleteConfirm(client.id)}
-                              className="text-destructive"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
+                        <TableCell className="py-4">
+                          <div className="space-y-1.5">
+                            <p className="font-medium text-sm text-foreground">{client.ownerName}</p>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors">
+                              <Phone className="h-3 w-3 flex-shrink-0" />
+                              <span className="truncate">{client.phone}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <MapPin className="h-4 w-4 flex-shrink-0 text-accent" />
+                            <span>{client.location || 'Not specified'}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="py-4">
+                          <span className={`inline-flex rounded-lg border px-3 py-1 text-xs font-semibold transition-all ${getStatusClassName(status)}`}>
+                            {status}
+                          </span>
+                        </TableCell>
+                        <TableCell className="py-4 text-right">
+                          <div className="space-y-1">
+                            <p className="font-bold text-primary text-base">{stats.projectCount}</p>
+                            <p className="text-xs text-muted-foreground font-medium">{stats.activeProjects} active</p>
+                          </div>
+                        </TableCell>
+                        {isOwner && (
+                          <TableCell className="py-4 text-right">
+                            <p className="font-bold text-accent text-base">{formatCurrency(stats.totalSpent)}</p>
+                          </TableCell>
+                        )}
+                        <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => navigate(`/clients/${client.id}`)}>
+                                <Eye className="mr-2 h-4 w-4" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEditDialog(client)}>
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => navigate(`/projects?client=${client.id}`)}>
+                                <FolderKanban className="mr-2 h-4 w-4" />
+                                View Projects
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => navigate(`/invoices?client=${client.id}`)}>
+                                <FileText className="mr-2 h-4 w-4" />
+                                View Invoices
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem
+                                onClick={() => setDeleteConfirm(client.id)}
+                                className="text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       )}

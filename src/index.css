@@ -172,9 +172,77 @@
 }
 
 @layer components {
+  /* Animations */
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes fade-in-up {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slide-in-from-left {
+    from {
+      opacity: 0;
+      transform: translateX(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.5s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.5s ease-out;
+  }
+
+  .animate-slide-in {
+    animation: slide-in-from-left 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.3s ease-out;
+  }
+
   /* KPI Card Styles */
   .kpi-card {
-    @apply relative overflow-hidden rounded-xl p-5 text-white transition-all duration-300;
+    @apply relative overflow-hidden rounded-xl p-5 text-white transition-all duration-300 hover:shadow-lg hover:-translate-y-1;
   }
 
   .kpi-card-gold {
@@ -184,68 +252,84 @@
 
   .kpi-card-blue {
     background: var(--kpi-blue);
+    box-shadow: 0 4px 14px 0 hsl(210 52% 24% / 0.25);
   }
 
   .kpi-card-success {
     background: var(--kpi-success);
+    box-shadow: 0 4px 14px 0 hsl(142 76% 36% / 0.25);
   }
 
   .kpi-card-warning {
     background: var(--kpi-warning);
+    box-shadow: 0 4px 14px 0 hsl(38 92% 50% / 0.25);
   }
 
-  /* Status Badges */
+  /* Enhanced Card Styles */
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-lg hover:border-primary/20;
+  }
+
+  /* Status Badges - Enhanced */
   .status-badge {
-    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border transition-all duration-200;
   }
 
   .status-new {
-    @apply bg-info/10 text-info;
+    @apply bg-info/10 text-info border-info/30 hover:bg-info/20;
   }
 
   .status-contacted {
-    @apply bg-primary/10 text-primary;
+    @apply bg-primary/10 text-primary border-primary/30 hover:bg-primary/20;
   }
 
   .status-proposal {
-    @apply bg-warning/10 text-warning;
+    @apply bg-warning/10 text-warning border-warning/30 hover:bg-warning/20;
   }
 
   .status-negotiation {
-    @apply bg-accent/10 text-accent-foreground;
+    @apply bg-accent/10 text-accent-foreground border-accent/30 hover:bg-accent/20;
   }
 
   .status-won {
-    @apply bg-success/10 text-success;
+    @apply bg-success/10 text-success border-success/30 hover:bg-success/20;
   }
 
   .status-lost {
-    @apply bg-destructive/10 text-destructive;
+    @apply bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20;
   }
 
   .status-paid {
-    @apply bg-success/10 text-success;
+    @apply bg-success/10 text-success border-success/30 hover:bg-success/20;
   }
 
   .status-pending {
-    @apply bg-warning/10 text-warning;
+    @apply bg-warning/10 text-warning border-warning/30 hover:bg-warning/20;
   }
 
   .status-overdue {
-    @apply bg-destructive/10 text-destructive;
+    @apply bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20;
   }
 
   .status-draft {
-    @apply bg-muted text-muted-foreground;
+    @apply bg-muted text-muted-foreground border-border hover:bg-muted/80;
   }
 
-  /* Table Styles */
+  /* Table Styles - Enhanced */
   .data-table {
     @apply w-full text-sm;
   }
 
   .data-table th {
-    @apply sticky top-0 bg-card px-4 py-3 text-left font-medium text-muted-foreground border-b;
+    @apply sticky top-0 bg-gradient-to-b from-card to-card/95 px-4 py-3 text-left font-semibold text-muted-foreground border-b border-border/50 uppercase tracking-wide text-xs;
+  }
+
+  .data-table tbody tr {
+    @apply border-b border-border/40 transition-colors duration-150 hover:bg-muted/30;
+  }
+
+  .data-table tbody tr:last-child {
+    @apply border-b-0;
   }
 
   .data-table td {
@@ -254,6 +338,28 @@
 
   .data-table tr:hover td {
     @apply bg-muted/50;
+  }
+
+  /* Button Enhancements */
+  .btn-primary {
+    @apply bg-primary text-primary-foreground transition-all duration-200 hover:shadow-lg hover:shadow-primary/25 hover:bg-primary/90 active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground border border-primary/20 transition-all duration-200 hover:shadow-md hover:border-primary/40 active:scale-95;
+  }
+
+  .btn-accent {
+    @apply bg-accent text-accent-foreground transition-all duration-200 hover:shadow-lg hover:shadow-accent/30 active:scale-95;
+  }
+
+  .btn-outline {
+    @apply border border-border transition-all duration-200 hover:shadow-md hover:border-primary/50 active:scale-95;
+  }
+
+  /* Input Enhancements */
+  .input-enhanced {
+    @apply transition-all duration-200 focus:ring-2 focus:ring-accent/20 focus:border-accent hover:border-primary/40;
   }
 
   /* Sidebar Styles */
@@ -269,9 +375,9 @@
     @apply bg-accent text-accent-foreground font-medium;
   }
 
-  /* Form Input Enhancement */
-  .input-enhanced {
-    @apply transition-all duration-200 focus:ring-2 focus:ring-accent/20 focus:border-accent;
+  /* Page Section Enhancement */
+  .page-section {
+    @apply space-y-4 animate-fade-in;
   }
 
   /* Card Hover Effect */
