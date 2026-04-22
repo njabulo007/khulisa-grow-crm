@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   ArrowRight,
@@ -25,8 +25,9 @@ import { getPackageById, getPackageCombinedFeatures } from '@/config/packages';
 import { cn } from '@/lib/utils';
 
 const AUTO_REFRESH_MS = 10 * 60 * 1000;
+const PORTAL_THEME_COLOR = '#f6f5f1';
 const SURFACE_CARD_CLASS =
-  'overflow-hidden border-white/70 bg-white/85 shadow-[0_24px_80px_-36px_rgba(15,23,42,0.32)] backdrop-blur dark:border-white/10 dark:bg-slate-900/75 dark:shadow-[0_24px_80px_-36px_rgba(0,0,0,0.7)]';
+  'overflow-hidden border-slate-200 bg-white shadow-[0_24px_80px_-36px_rgba(15,23,42,0.24)] dark:border-slate-800 dark:bg-slate-950 dark:shadow-[0_24px_80px_-36px_rgba(0,0,0,0.72)]';
 
 const formatDate = (value: string | null): string => {
   if (!value) return 'Not available';
@@ -137,6 +138,35 @@ export function ProjectPortalPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
+
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const root = document.documentElement;
+    const hadDark = root.classList.contains('dark');
+    const hadLight = root.classList.contains('light');
+    const previousColorScheme = root.style.colorScheme;
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    const previousThemeColor = themeMeta?.getAttribute('content') ?? null;
+
+    root.classList.remove('dark');
+    root.classList.add('light');
+    root.style.colorScheme = 'light';
+    themeMeta?.setAttribute('content', PORTAL_THEME_COLOR);
+
+    return () => {
+      root.classList.toggle('dark', hadDark);
+      root.classList.toggle('light', hadLight);
+      root.style.colorScheme = previousColorScheme;
+
+      if (!themeMeta) return;
+      if (previousThemeColor) {
+        themeMeta.setAttribute('content', previousThemeColor);
+      } else {
+        themeMeta.removeAttribute('content');
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -540,7 +570,7 @@ export function ProjectPortalPage() {
                     </p>
                   </div>
 
-                  <div className="rounded-3xl border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
                     <p className="text-xs uppercase tracking-[0.22em] text-slate-500 dark:text-slate-400">
                       Current momentum
                     </p>
@@ -581,8 +611,8 @@ export function ProjectPortalPage() {
                         className={cn(
                           'group relative overflow-hidden rounded-[28px] border p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg',
                           milestone.isCompleted
-                            ? 'border-emerald-200/80 bg-[linear-gradient(135deg,rgba(236,253,245,0.96),rgba(255,255,255,0.95))] dark:border-emerald-800/60 dark:bg-emerald-950/20'
-                            : 'border-slate-200/80 bg-[linear-gradient(135deg,rgba(255,255,255,0.98),rgba(248,250,252,0.92))] hover:border-sky-200 dark:border-slate-800 dark:bg-slate-950/40 dark:hover:border-sky-900'
+                            ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-800/70 dark:bg-emerald-950/35'
+                            : 'border-slate-200 bg-white hover:border-sky-200 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-900'
                         )}
                       >
                         <div
@@ -649,7 +679,7 @@ export function ProjectPortalPage() {
                 </p>
               </CardHeader>
               <CardContent className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-[28px] border border-amber-200/70 bg-amber-50/70 p-5 dark:border-amber-800/50 dark:bg-amber-950/10">
+                <div className="rounded-[28px] border border-amber-200 bg-amber-50 p-5 dark:border-amber-800/60 dark:bg-amber-950/25">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-amber-700 dark:text-amber-300">
                       Up next
@@ -665,7 +695,7 @@ export function ProjectPortalPage() {
                       </p>
                     ) : (
                       openMilestones.slice(0, 4).map((milestone) => (
-                        <div key={milestone.id} className="rounded-2xl border border-white/70 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div key={milestone.id} className="rounded-2xl border border-white bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                           <div className="flex items-start gap-3">
                             <Circle className="mt-0.5 h-4 w-4 text-amber-600" />
                             <div className="space-y-1">
@@ -681,7 +711,7 @@ export function ProjectPortalPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[28px] border border-emerald-200/70 bg-emerald-50/70 p-5 dark:border-emerald-800/50 dark:bg-emerald-950/10">
+                <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/60 dark:bg-emerald-950/25">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
                       Recently delivered
@@ -697,7 +727,7 @@ export function ProjectPortalPage() {
                       </p>
                     ) : (
                       recentCompletedMilestones.map((milestone) => (
-                        <div key={milestone.id} className="rounded-2xl border border-white/70 bg-white/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                        <div key={milestone.id} className="rounded-2xl border border-white bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
                           <div className="flex items-start gap-3">
                             <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
                             <div className="space-y-1">
@@ -728,7 +758,7 @@ export function ProjectPortalPage() {
                     </p>
                   </CardHeader>
                   <CardContent className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-                    <div className="rounded-[28px] border border-slate-200/80 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-950/40">
+                    <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900">
                       {data.project.notes ? (
                         <p className="whitespace-pre-wrap text-sm leading-7 text-muted-foreground">{data.project.notes}</p>
                       ) : (
@@ -740,7 +770,7 @@ export function ProjectPortalPage() {
 
                     <div className="grid gap-4">
                       {packageDetails?.outcome && (
-                        <div className="rounded-[28px] border border-emerald-200/80 bg-emerald-50/80 p-5 dark:border-emerald-800/60 dark:bg-emerald-950/20">
+                        <div className="rounded-[28px] border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/60 dark:bg-emerald-950/30">
                           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-700 dark:text-emerald-300">
                             Expected Outcome
                           </p>
@@ -750,7 +780,7 @@ export function ProjectPortalPage() {
                         </div>
                       )}
 
-                      <div className="rounded-[28px] border border-sky-200/70 bg-sky-50/70 p-5 dark:border-sky-900/60 dark:bg-sky-950/20">
+                      <div className="rounded-[28px] border border-sky-200 bg-sky-50 p-5 dark:border-sky-900/60 dark:bg-sky-950/30">
                         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700 dark:text-sky-300">
                           Package Alignment
                         </p>
@@ -832,7 +862,7 @@ export function ProjectPortalPage() {
 
                       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-1">
                         {secondaryMedia.length === 0 ? (
-                          <div className="rounded-[28px] border border-dashed border-slate-300/80 bg-slate-50/80 p-6 dark:border-slate-700 dark:bg-slate-950/40">
+                          <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-6 dark:border-slate-700 dark:bg-slate-900">
                             <p className="text-sm font-semibold text-foreground">More files will appear here as they are shared.</p>
                             <p className="mt-2 text-sm leading-6 text-muted-foreground">
                               The portal refreshes automatically and keeps the latest client-facing assets in one place.
@@ -845,7 +875,7 @@ export function ProjectPortalPage() {
                               href={media.url}
                               target="_blank"
                               rel="noreferrer"
-                              className="group overflow-hidden rounded-[26px] border border-slate-200/80 bg-white/90 transition-all duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-lg dark:border-slate-800 dark:bg-slate-950/40 dark:hover:border-sky-900"
+                              className="group overflow-hidden rounded-[26px] border border-slate-200 bg-white transition-all duration-300 hover:-translate-y-1 hover:border-sky-200 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-sky-900"
                             >
                               <div className="aspect-video bg-slate-100 dark:bg-slate-900">
                                 {isImageMedia(media.mimeType, media.url) ? (
@@ -925,7 +955,7 @@ export function ProjectPortalPage() {
                       {packageDetails.combinedFeatures.map((feature) => (
                         <div
                           key={feature}
-                          className="flex items-start gap-3 rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40"
+                          className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900"
                         >
                           <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600" />
                           <span className="text-sm leading-6 text-foreground">{feature}</span>
@@ -952,7 +982,7 @@ export function ProjectPortalPage() {
                 </p>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="rounded-[28px] border border-slate-200/80 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900">
                   <div className="flex items-center gap-3">
                     <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-white dark:bg-slate-100 dark:text-slate-900">
                       <FolderKanban className="h-5 w-5" />
@@ -1006,7 +1036,7 @@ export function ProjectPortalPage() {
                     </a>
                   </Button>
                 ) : (
-                  <div className="rounded-[28px] border border-dashed border-slate-300/80 bg-slate-50/80 p-5 dark:border-slate-700 dark:bg-slate-950/40">
+                  <div className="rounded-[28px] border border-dashed border-slate-300 bg-slate-50 p-5 dark:border-slate-700 dark:bg-slate-900">
                     <p className="text-sm font-semibold text-foreground">A shared project folder has not been linked yet.</p>
                     <p className="mt-2 text-sm leading-6 text-muted-foreground">
                       Once provided, the folder link will appear here for quick access to working files and source material.
@@ -1014,7 +1044,7 @@ export function ProjectPortalPage() {
                   </div>
                 )}
 
-                <div className="rounded-[28px] border border-slate-200/80 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-950/40">
+                <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Portal notes</p>
                   <div className="mt-4 space-y-4 text-sm">
                     <div className="flex items-start gap-3">
