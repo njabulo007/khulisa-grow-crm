@@ -52,7 +52,11 @@ class FirestoreNotificationService implements NotificationService {
   private mapSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Notification {
     const data = snapshot.data() as Record<string, unknown>;
     const type =
-      data.type === 'invoice_paid' || data.type === 'activity'
+      data.type === 'invoice_paid' ||
+      data.type === 'activity' ||
+      data.type === 'project_deadline' ||
+      data.type === 'lead_follow_up' ||
+      data.type === 'chat'
         ? data.type
         : 'lead_assigned';
     return {
@@ -154,6 +158,8 @@ class FirestoreNotificationService implements NotificationService {
 // - Shape: { userId, type, leadId?, invoiceId?, clientId?, projectId?, title, message, isRead, createdAt }
 // - Current producers:
 //   - lead assignment/reassignment events (type = lead_assigned)
+//   - lead follow-up due/overdue events (type = lead_follow_up)
+//   - project due/overdue events (type = project_deadline)
 //   - invoice fully paid events for agents (type = invoice_paid)
-//   - activity events for relevant users (type = activity)
+//   - activity and WhatsApp/chat events for relevant users (type = activity/chat)
 export const notificationService: NotificationService = new FirestoreNotificationService();

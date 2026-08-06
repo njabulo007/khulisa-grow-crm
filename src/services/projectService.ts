@@ -5,7 +5,22 @@ import {
   normalizeProjectStatus,
 } from '@/lib/projectMilestones';
 import { Project } from '@/types/models';
+import { authService } from './authService';
+import { notificationService } from './notificationService';
 import { FirestoreCollection, generateId, getTimestamp } from './storage';
+
+const DEADLINE_ATTENTION_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+
+const parseDateMs = (value?: string): number | null => {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getDueDateKey = (value: string): string => new Date(value).toISOString().slice(0, 10);
+
+const isClosedStatus = (status: Project['status']): boolean =>
+  status === 'completed' || status === 'delivered';
 
 export interface ProjectService {
   getAll: () => Promise<Project[]>;
@@ -35,6 +50,57 @@ class FirestoreProjectService implements ProjectService {
       status: normalizeProjectStatus(project.status),
       milestones,
     };
+  }
+
+  private async notifyDeadline(project: Project, previousDueDate?: string): Promise<void> {
+    if (!project.dueDate || isClosedStatus(project.status)) return;
+    if (previousDueDate === project.dueDate) return;
+
+    const dueMs = parseDateMs(project.dueDate);
+    if (dueMs === null) return;
+
+    const nowMs = Date.now();
+    if (dueMs - nowMs > DEADLINE_ATTENTION_WINDOW_MS) return;
+
+    const recipients = new Set<string>();
+    if (project.assignedTo?.trim()) recipients.add(project.assignedTo.trim());
+    authService
+      .getAll()
+      .filter((user) => user.role === 'owner' && user.isActive !== false)
+      .forEach((owner) => recipients.add(owner.id));
+    if (recipients.size === 0) return;
+
+    const dateKey = getDueDateKey(project.dueDate);
+    const isOverdue = dueMs < nowMs;
+    const dueText = new Date(project.dueDate).toLocaleDateString('en-ZA', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    await Promise.all(
+      Array.from(recipients).map(async (recipientId) => {
+        const existingNotifications = await notificationService.getForUser(recipientId);
+        if (
+          existingNotifications.some(
+            (entry) =>
+              entry.type === 'project_deadline' &&
+              entry.projectId === project.id &&
+              entry.message.includes(dateKey)
+          )
+        ) {
+          return;
+        }
+
+        await notificationService.createForUser(recipientId, {
+          type: 'project_deadline',
+          projectId: project.id,
+          clientId: project.clientId,
+          title: isOverdue ? 'Project deadline overdue' : 'Project deadline due soon',
+          message: `${project.name} is ${isOverdue ? 'overdue' : 'due'} on ${dueText}. Ref: ${dateKey}`,
+        });
+      })
+    );
   }
 
   async getAll(): Promise<Project[]> {
@@ -74,7 +140,9 @@ class FirestoreProjectService implements ProjectService {
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
     });
-    return this.normalizeProject(created);
+    const normalized = this.normalizeProject(created);
+    await this.notifyDeadline(normalized);
+    return normalized;
   }
 
   async update(id: string, updates: Partial<Project>): Promise<Project | null> {
@@ -110,7 +178,11 @@ class FirestoreProjectService implements ProjectService {
     }
 
     const updated = await this.collection.update(id, normalizedUpdates);
-    return updated ? this.normalizeProject(updated) : null;
+    if (!updated) return null;
+
+    const normalized = this.normalizeProject(updated);
+    await this.notifyDeadline(normalized, current.dueDate);
+    return normalized;
   }
 
   async remove(id: string): Promise<boolean> {

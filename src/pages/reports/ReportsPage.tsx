@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Mail } from 'lucide-react';
 import { PageHeader } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,7 +16,8 @@ import {
 } from '@/components/ui/table';
 import { useAuth } from '@/contexts/AuthContext';
 import { activityService, authService, clientService, invoiceService, leadService, projectService } from '@/services';
-import { Invoice } from '@/types/models';
+import { Invoice, ProjectStatus } from '@/types/models';
+import { toast } from 'sonner';
 import {
   Bar,
   BarChart,
@@ -30,6 +32,8 @@ import {
 } from 'recharts';
 
 const MONTH_WINDOW = 12;
+const OWNER_GMAIL = 'njabulod007@gmail.com';
+const ACTIVE_PROJECT_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'waiting-client', 'on-hold'];
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat('en-ZA', {
@@ -45,6 +49,13 @@ const getInvoiceIssueDate = (invoice: Invoice): Date => {
 
 const toMonthKey = (date: Date): string =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+const formatReportDate = (value: Date): string =>
+  value.toLocaleDateString('en-ZA', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
 
 export function ReportsPage() {
   const navigate = useNavigate();
@@ -206,6 +217,74 @@ export function ReportsPage() {
     };
   }, [activities, clients, invoices, leads, projectLookup, projects, users]);
 
+  const handleExportPipelineSummary = useCallback(() => {
+    const now = new Date();
+    const activeProjects = projects.filter((project) => ACTIVE_PROJECT_STATUSES.includes(project.status));
+    const overdueProjects = activeProjects.filter((project) => new Date(project.dueDate).getTime() < now.getTime());
+    const openLeads = leads.filter((lead) => lead.stage !== 'won' && lead.stage !== 'lost');
+    const overdueFollowUps = openLeads.filter(
+      (lead) => lead.followUpDate && new Date(lead.followUpDate).getTime() < now.getTime()
+    );
+    const outstandingInvoices = invoices.filter((invoice) => invoice.status !== 'paid');
+    const outstandingRevenue = outstandingInvoices.reduce(
+      (sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total,
+      0
+    );
+    const paidRevenue = invoices
+      .filter((invoice) => invoice.status === 'paid')
+      .reduce((sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total, 0);
+
+    const topAgents = reportData.agentPerformance
+      .slice(0, 5)
+      .map((agent, index) => `${index + 1}. ${agent.agentName}: ${formatCurrency(agent.revenue)} revenue, ${agent.dealsWon} deals won`);
+    const funnelLines = reportData.funnel.map((row) => `${row.stage}: ${row.count}`);
+    const packageLines = reportData.revenueByPackage
+      .slice(0, 5)
+      .map((row) => `${row.packageType}: ${formatCurrency(row.revenue)} from ${row.invoiceCount} paid invoice(s)`);
+    const recentRevenueLines = reportData.revenueByMonth
+      .slice(-3)
+      .map((row) => `${row.month}: ${formatCurrency(row.revenue)} from ${row.invoiceCount} paid invoice(s)`);
+
+    const body = [
+      `Khulisa CRM Pipeline Summary`,
+      `Generated: ${formatReportDate(now)}`,
+      '',
+      'Privacy scope:',
+      '- Read-only export from the current Reports page.',
+      '- Excludes passwords, payment details, and full client notes.',
+      '',
+      'Pipeline snapshot:',
+      `- Total leads: ${leads.length}`,
+      `- Open leads: ${openLeads.length}`,
+      `- Won leads: ${reportData.funnel.find((row) => row.stage === 'Won')?.count || 0}`,
+      `- Lost leads: ${reportData.funnel.find((row) => row.stage === 'Lost')?.count || 0}`,
+      `- Win rate: ${reportData.winRate}%`,
+      `- Loss rate: ${reportData.lossRate}%`,
+      `- Active projects: ${activeProjects.length}`,
+      `- Overdue projects: ${overdueProjects.length}`,
+      `- Overdue lead follow-ups: ${overdueFollowUps.length}`,
+      `- Outstanding invoices: ${outstandingInvoices.length}`,
+      `- Paid revenue: ${formatCurrency(paidRevenue)}`,
+      `- Outstanding invoice value: ${formatCurrency(outstandingRevenue)}`,
+      '',
+      'Lead funnel:',
+      ...(funnelLines.length ? funnelLines : ['No funnel data yet.']),
+      '',
+      'Recent revenue:',
+      ...(recentRevenueLines.length ? recentRevenueLines : ['No revenue data yet.']),
+      '',
+      'Revenue by service package:',
+      ...(packageLines.length ? packageLines : ['No paid package revenue yet.']),
+      '',
+      'Agent performance:',
+      ...(topAgents.length ? topAgents : ['No agent performance data yet.']),
+    ].join('\n');
+
+    const subject = `Khulisa CRM pipeline summary - ${formatReportDate(now)}`;
+    window.location.href = `mailto:${OWNER_GMAIL}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    toast.success(`Pipeline summary ready for ${OWNER_GMAIL}.`);
+  }, [invoices, leads, projectLookup, projects, reportData]);
+
   if (!isOwner) {
     return (
       <div className="space-y-6 animate-fade-in">
@@ -235,7 +314,12 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Reports" description="Business analytics and insights" />
+      <PageHeader title="Reports" description="Business analytics and insights">
+        <Button variant="outline" onClick={handleExportPipelineSummary} disabled={isLoading}>
+          <Mail className="mr-2 h-4 w-4" />
+          Export pipeline summary
+        </Button>
+      </PageHeader>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

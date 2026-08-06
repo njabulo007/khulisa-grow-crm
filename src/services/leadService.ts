@@ -21,6 +21,16 @@ const normalizeCommissionRatePercent = (value: number, fallbackPercent: number):
 const rateFromPercent = (percent: number): number =>
   Math.round((percent / 100 + Number.EPSILON) * 10000) / 10000;
 
+const DEADLINE_ATTENTION_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+
+const parseDateMs = (value?: string): number | null => {
+  if (!value) return null;
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? null : parsed;
+};
+
+const getDueDateKey = (value: string): string => new Date(value).toISOString().slice(0, 10);
+
 export interface LeadService {
   getAll: () => Promise<Lead[]>;
   getById: (id: string) => Promise<Lead | undefined>;
@@ -125,6 +135,45 @@ class FirestoreLeadService implements LeadService {
     });
   }
 
+  private async notifyFollowUpDue(lead: Lead, previousFollowUpDate?: string): Promise<void> {
+    const assignedTo = lead.assignedTo?.trim();
+    if (!assignedTo || !lead.followUpDate) return;
+    if (previousFollowUpDate === lead.followUpDate) return;
+
+    const followUpMs = parseDateMs(lead.followUpDate);
+    if (followUpMs === null) return;
+
+    const nowMs = Date.now();
+    if (followUpMs - nowMs > DEADLINE_ATTENTION_WINDOW_MS) return;
+
+    const dateKey = getDueDateKey(lead.followUpDate);
+    const existingNotifications = await notificationService.getForUser(assignedTo);
+    if (
+      existingNotifications.some(
+        (entry) =>
+          entry.type === 'lead_follow_up' &&
+          entry.leadId === lead.id &&
+          entry.message.includes(dateKey)
+      )
+    ) {
+      return;
+    }
+
+    const isOverdue = followUpMs < nowMs;
+    const dueText = new Date(lead.followUpDate).toLocaleDateString('en-ZA', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    });
+
+    await notificationService.createForUser(assignedTo, {
+      type: 'lead_follow_up',
+      leadId: lead.id,
+      title: isOverdue ? 'Lead follow-up overdue' : 'Lead follow-up due soon',
+      message: `${lead.businessName} follow-up is ${isOverdue ? 'overdue' : 'due'} on ${dueText}. Ref: ${dateKey}`,
+    });
+  }
+
   async getAll(): Promise<Lead[]> {
     return this.collection.getAll();
   }
@@ -147,6 +196,7 @@ class FirestoreLeadService implements LeadService {
     };
     const persisted = await this.collection.create(created);
     await this.notifyAssignment(persisted);
+    await this.notifyFollowUpDue(persisted);
     return persisted;
   }
 
@@ -157,6 +207,7 @@ class FirestoreLeadService implements LeadService {
     const updated = await this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
     if (updated) {
       await this.notifyAssignment(updated, existing.assignedTo);
+      await this.notifyFollowUpDue(updated, existing.followUpDate);
     }
     return updated;
   }

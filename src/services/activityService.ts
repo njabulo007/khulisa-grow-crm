@@ -73,11 +73,14 @@ class FirestoreActivityService implements ActivityService {
     if (recipients.size === 0) return;
 
     const actorName = authService.getById(activity.createdBy)?.name || 'A team member';
-    const title = `${activity.entityType[0].toUpperCase()}${activity.entityType.slice(1)} activity`;
+    const isChatActivity = activity.type === 'whatsapp';
+    const title = isChatActivity
+      ? `${activity.entityType[0].toUpperCase()}${activity.entityType.slice(1)} chat`
+      : `${activity.entityType[0].toUpperCase()}${activity.entityType.slice(1)} activity`;
     const message = `${actorName}: ${activity.description}`;
 
     const notificationData = {
-      type: 'activity' as const,
+      type: isChatActivity ? 'chat' as const : 'activity' as const,
       title,
       message,
       leadId: activity.entityType === 'lead' ? activity.entityId : undefined,
