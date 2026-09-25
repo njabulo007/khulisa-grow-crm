@@ -209,7 +209,7 @@ export function useNotifications(): UseNotificationsResult {
     const nextPermission = await window.Notification.requestPermission();
     setDesktopPermission(nextPermission);
     if (nextPermission === 'granted' && user?.id) {
-      void pushService.registerForUser(user.id, false);
+      void pushService.registerForUser(user.id, true);
     }
     return nextPermission;
   }, [user?.id]);

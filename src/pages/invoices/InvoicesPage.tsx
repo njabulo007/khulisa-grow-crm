@@ -94,6 +94,7 @@ export function InvoicesPage() {
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
   const [isInvoiceMetaLoading, setIsInvoiceMetaLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
   const [formData, setFormData] = useState<InvoiceFormState>({
     clientId: '',
     projectId: '',
@@ -209,6 +210,7 @@ export function InvoicesPage() {
   const isPackageBackedDraft = Boolean(selectedPackageForDraft);
 
   const handleCreate = async () => {
+    if (isCreating) return;
     if (!user) return;
     const selectedProject = accessibleProjects.find((project) => project.id === formData.projectId);
     const selectedPackage = getPackageById(selectedProject?.packageId);
@@ -240,9 +242,11 @@ export function InvoicesPage() {
 
     const subtotal = quantity * unitPrice;
     const total = subtotal;
-    const invoiceNumber = await getNextNumber();
+    setIsCreating(true);
+    try {
+      const invoiceNumber = await getNextNumber();
 
-    await createInvoice({
+      await createInvoice({
       invoiceNumber,
       clientId: formData.clientId,
       projectId: formData.projectId || undefined,
@@ -264,12 +268,18 @@ export function InvoicesPage() {
       issuedDate: formData.issueDate,
       notes: formData.notes.trim() || undefined,
       createdBy: user.id,
-    });
-    await syncCommissionsFromInvoices();
+      });
+      await syncCommissionsFromInvoices();
 
-    toast.success('Invoice created successfully.');
-    setShowAddDialog(false);
-    resetForm();
+      toast.success('Invoice created successfully.');
+      setShowAddDialog(false);
+      resetForm();
+    } catch (error) {
+      console.error('[InvoicesPage] Failed to create invoice.', error);
+      toast.error('Invoice could not be created.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const requestDeleteInvoice = (invoice: Invoice) => {
@@ -613,11 +623,12 @@ export function InvoicesPage() {
               Cancel
             </Button>
             <Button
+              disabled={isCreating}
               onClick={() => {
                 void handleCreate();
               }}
             >
-              Create Invoice
+              {isCreating ? 'Creating...' : 'Create Invoice'}
             </Button>
           </DialogFooter>
         </DialogContent>

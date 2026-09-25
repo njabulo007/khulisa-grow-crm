@@ -4,7 +4,7 @@ import { PageHeader } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { authService, settingsService, syncCommissionsFromInvoices } from '@/services';
+import { authService, AuthService, settingsService, syncCommissionsFromInvoices } from '@/services';
 import { CommissionCalculationMode, User } from '@/types/models';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -21,13 +21,15 @@ const normalizeCommissionRatePercent = (value: number, fallbackPercent: number):
 
 export function SettingsPage() {
   const navigate = useNavigate();
-  const { isOwner } = useAuth();
+  const { isOwner, user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [agentUsers, setAgentUsers] = useState<User[]>([]);
   const [commissionMode, setCommissionMode] = useState<CommissionCalculationMode>('automatic');
   const [defaultManualCommissionRate, setDefaultManualCommissionRate] = useState<number>(15);
   const [agentCommissionRates, setAgentCommissionRates] = useState<Record<string, number>>({});
+  const [userProfiles, setUserProfiles] = useState<Awaited<ReturnType<typeof AuthService.listUserProfiles>>>([]);
+  const [roleChanges, setRoleChanges] = useState<Record<string, 'owner' | 'agent'>>({});
 
   const applySettingsToState = useCallback((
     mode: CommissionCalculationMode,
@@ -51,11 +53,16 @@ export function SettingsPage() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const globalSettings = await settingsService.getGlobal();
+        const [globalSettings, profiles] = await Promise.all([
+          settingsService.getGlobal(),
+          AuthService.listUserProfiles(),
+        ]);
         const agents = authService.getAll().filter((user) => user.role === 'agent');
         if (!isMounted) return;
 
         setAgentUsers(agents);
+        setUserProfiles(profiles);
+        setRoleChanges(Object.fromEntries(profiles.map((profile) => [profile.uid, profile.role])));
         applySettingsToState(
           globalSettings.commissionMode,
           globalSettings.defaultManualCommissionRate,
@@ -89,6 +96,13 @@ export function SettingsPage() {
         defaultManualCommissionRate: normalizedDefaultRate,
       });
 
+      await Promise.all(
+        userProfiles.map(async (profile) => {
+          const nextRole = roleChanges[profile.uid] || profile.role;
+          if (profile.uid !== user?.uid && nextRole !== profile.role) await AuthService.updateUserRole(profile.uid, nextRole);
+        }),
+      );
+
       agentUsers.forEach((agent) => {
         const nextRate = normalizeCommissionRatePercent(
           agentCommissionRates[agent.id],
@@ -99,7 +113,10 @@ export function SettingsPage() {
       });
 
       await syncCommissionsFromInvoices();
-      setAgentUsers(authService.getAll().filter((user) => user.role === 'agent'));
+       const refreshedProfiles = await AuthService.listUserProfiles();
+       setUserProfiles(refreshedProfiles);
+       setRoleChanges(Object.fromEntries(refreshedProfiles.map((profile) => [profile.uid, profile.role])));
+       setAgentUsers(authService.getAll().filter((user) => user.role === 'agent'));
       toast.success('Global settings saved and commissions refreshed.');
     } catch (error) {
       console.error('[SettingsPage] Failed to save settings.', error);
@@ -112,9 +129,14 @@ export function SettingsPage() {
   const handleReset = async () => {
     setIsLoading(true);
     try {
-      const globalSettings = await settingsService.getGlobal();
+       const [globalSettings, profiles] = await Promise.all([
+         settingsService.getGlobal(),
+         AuthService.listUserProfiles(),
+       ]);
       const agents = authService.getAll().filter((user) => user.role === 'agent');
-      setAgentUsers(agents);
+       setAgentUsers(agents);
+       setUserProfiles(profiles);
+       setRoleChanges(Object.fromEntries(profiles.map((profile) => [profile.uid, profile.role])));
       applySettingsToState(
         globalSettings.commissionMode,
         globalSettings.defaultManualCommissionRate,
@@ -191,6 +213,27 @@ export function SettingsPage() {
                     Used when an agent has no custom rate in manual mode.
                   </p>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="text-sm font-medium">User Roles</h3>
+                <Table>
+                  <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead></TableRow></TableHeader>
+                  <TableBody>
+                    {userProfiles.map((profile) => (
+                      <TableRow key={profile.uid}>
+                        <TableCell className="font-medium">{profile.displayName || profile.email}</TableCell>
+                        <TableCell>{profile.email}</TableCell>
+                        <TableCell>
+                          <Select disabled={profile.uid === user?.uid} value={roleChanges[profile.uid] || profile.role} onValueChange={(value) => setRoleChanges((prev) => ({ ...prev, [profile.uid]: value as 'owner' | 'agent' }))}>
+                            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
+                            <SelectContent><SelectItem value="owner">Owner</SelectItem><SelectItem value="agent">Agent</SelectItem></SelectContent>
+                          </Select>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
 
               <div className="space-y-2">

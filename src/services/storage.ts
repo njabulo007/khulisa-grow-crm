@@ -7,6 +7,7 @@ import {
   getDocs,
   limit,
   query,
+  where,
   setDoc,
   writeBatch,
   type DocumentData,
@@ -226,6 +227,7 @@ export class FirestoreCollection<T extends { id: string }> {
     await setDoc(firestoreDocRef(this.collectionRef, id), normalizeForFirestore(rest) as Record<string, unknown>, {
       merge: false,
     });
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('crm:data-changed'));
     return item;
   }
 
@@ -241,6 +243,7 @@ export class FirestoreCollection<T extends { id: string }> {
     await setDoc(firestoreDocRef(this.collectionRef, id), normalizeForFirestore(rest) as Record<string, unknown>, {
       merge: false,
     });
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('crm:data-changed'));
     return merged;
   }
 
@@ -248,7 +251,18 @@ export class FirestoreCollection<T extends { id: string }> {
     const existing = await this.getById(id);
     if (!existing) return false;
     await deleteDoc(firestoreDocRef(this.collectionRef, id));
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('crm:data-changed'));
     return true;
+  }
+
+  async removeWhere(field: string, value: unknown): Promise<number> {
+    const snapshot = await getDocs(query(this.collectionRef, where(field, '==', value)));
+    if (snapshot.empty) return 0;
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((entry) => batch.delete(entry.ref));
+    await batch.commit();
+    if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('crm:data-changed'));
+    return snapshot.size;
   }
 
   async seedIfMissing(seedData: T[]): Promise<void> {

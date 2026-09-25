@@ -25,6 +25,9 @@ export interface InvoiceService {
 class FirestoreInvoiceService implements InvoiceService {
   private readonly collection = new FirestoreCollection<Invoice & { packageType?: string }>('invoices');
   private readonly paymentsCollection = new FirestoreCollection<Payment>('payments');
+  private readonly commissionsCollection = new FirestoreCollection<{ id: string; invoiceId?: string }>('commissions');
+  private readonly activitiesCollection = new FirestoreCollection<{ id: string; entityType: string; entityId: string }>('activities');
+  private readonly notificationsCollection = new FirestoreCollection<{ id: string; invoiceId?: string }>('notifications');
 
   private async notifyInvoicePaid(nextInvoice: Invoice, previousStatus: Invoice['status'] | null): Promise<void> {
     if (nextInvoice.status !== 'paid' || previousStatus === 'paid') return;
@@ -190,7 +193,18 @@ class FirestoreInvoiceService implements InvoiceService {
   }
 
   async remove(id: string): Promise<boolean> {
-    return this.collection.remove(id);
+    const removed = await this.collection.remove(id);
+    if (!removed) return false;
+    const activities = await this.activitiesCollection.getAll();
+    await Promise.all([
+      this.paymentsCollection.removeWhere('invoiceId', id),
+      this.commissionsCollection.removeWhere('invoiceId', id),
+      this.notificationsCollection.removeWhere('invoiceId', id),
+      ...activities
+        .filter((entry) => entry.entityType === 'invoice' && entry.entityId === id)
+        .map((entry) => this.activitiesCollection.remove(entry.id)),
+    ]);
+    return true;
   }
 
   async seedIfMissing(seedData: Invoice[]): Promise<void> {

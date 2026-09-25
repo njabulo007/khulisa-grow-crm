@@ -64,6 +64,7 @@ export function ProjectsPage() {
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
   const agents = authService.getAll().filter((candidate) => candidate.role === 'agent');
 
@@ -87,6 +88,9 @@ export function ProjectsPage() {
 
   useEffect(() => {
     void loadData();
+    const refresh = () => void loadData();
+    window.addEventListener('crm:data-changed', refresh);
+    return () => window.removeEventListener('crm:data-changed', refresh);
   }, [loadData]);
 
   const accessibleClientIds = useMemo(() => {
@@ -142,6 +146,7 @@ export function ProjectsPage() {
   };
 
   const handleCreate = async () => {
+    if (isCreating) return;
     if (!user) return;
     if (!formData.name.trim() || !formData.clientId || !formData.dueDate || !formData.startDate) {
       toast.error('Please complete all required project fields.');
@@ -153,7 +158,9 @@ export function ProjectsPage() {
     }
 
     const assignedTo = isOwner ? formData.assignedTo || user.id : user.id;
-    await projectService.create({
+    setIsCreating(true);
+    try {
+      await projectService.create({
       name: formData.name.trim(),
       clientId: formData.clientId,
       packageId: formData.packageId,
@@ -164,12 +171,18 @@ export function ProjectsPage() {
       assignedTo,
       notes: formData.notes.trim(),
       createdBy: user.id,
-    });
+      });
 
-    toast.success('Project created successfully.');
-    await loadData();
-    setShowAddDialog(false);
-    resetForm();
+      toast.success('Project created successfully.');
+      await loadData();
+      setShowAddDialog(false);
+      resetForm();
+    } catch (error) {
+      console.error('[ProjectsPage] Failed to create project.', error);
+      toast.error('Project could not be created.');
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   const requestDeleteProject = (project: Project) => {
@@ -185,15 +198,6 @@ export function ProjectsPage() {
     if (!projectToDelete) return;
     if (!isOwner) {
       toast.error('Only owners can delete projects.');
-      return;
-    }
-
-    // Chosen approach: prevent deleting projects that still have linked invoices.
-    const hasLinkedInvoices = allInvoices.some((invoice) => invoice.projectId === projectToDelete.id);
-    if (hasLinkedInvoices) {
-      toast.error('This project has invoices linked. Delete or detach those invoices first.');
-      setShowDeleteDialog(false);
-      setProjectToDelete(null);
       return;
     }
 
@@ -448,11 +452,12 @@ export function ProjectsPage() {
               Cancel
             </Button>
             <Button
+              disabled={isCreating}
               onClick={() => {
                 void handleCreate();
               }}
             >
-              Create Project
+              {isCreating ? 'Creating...' : 'Create Project'}
             </Button>
           </DialogFooter>
         </DialogContent>

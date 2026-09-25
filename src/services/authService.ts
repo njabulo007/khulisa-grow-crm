@@ -273,6 +273,18 @@ export const AuthService = {
     }
   },
 
+  async updateUserRole(uid: string, role: Role): Promise<void> {
+    const profileRef = doc(db, 'users', uid.trim());
+    const profileSnap = await getDoc(profileRef);
+    if (!profileSnap.exists()) throw new Error('User profile not found.');
+    const data = profileSnap.data() as Record<string, unknown>;
+    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
+    await setDoc(profileRef, { role, updatedAt: new Date().toISOString() }, { merge: true });
+    const localUsers = new LocalStorageCollection<User>(STORAGE_KEYS.users);
+    const localUser = localUsers.getAll().find((candidate) => candidate.email.toLowerCase() === email);
+    if (localUser) localUsers.update(localUser.id, { role, commissionRate: role === 'owner' ? 0 : localUser.commissionRate });
+  },
+
   subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       const user = await mapUser(firebaseUser);

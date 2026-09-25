@@ -92,8 +92,11 @@ export function OwnerDashboard() {
       }
     };
     void loadData();
+    const refresh = () => void loadData();
+    window.addEventListener('crm:data-changed', refresh);
     return () => {
       isMounted = false;
+      window.removeEventListener('crm:data-changed', refresh);
     };
   }, []);
 
