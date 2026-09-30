@@ -132,6 +132,7 @@ class FirestoreLeadService implements LeadService {
       leadId: lead.id,
       title: 'New lead assigned',
       message,
+      dedupeKey: `lead-assigned:${lead.id}:${nextAssignedTo}`,
     });
   }
 
@@ -171,6 +172,7 @@ class FirestoreLeadService implements LeadService {
       leadId: lead.id,
       title: isOverdue ? 'Lead follow-up overdue' : 'Lead follow-up due soon',
       message: `${lead.businessName} follow-up is ${isOverdue ? 'overdue' : 'due'} on ${dueText}. Ref: ${dateKey}`,
+      dedupeKey: `lead-follow-up:${lead.id}:${dateKey}`,
     });
   }
 
@@ -195,8 +197,7 @@ class FirestoreLeadService implements LeadService {
       updatedAt: getTimestamp(),
     };
     const persisted = await this.collection.create(created);
-    await this.notifyAssignment(persisted);
-    await this.notifyFollowUpDue(persisted);
+    await this.notifySecondaryEffects(persisted);
     return persisted;
   }
 
@@ -206,10 +207,24 @@ class FirestoreLeadService implements LeadService {
 
     const updated = await this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
     if (updated) {
-      await this.notifyAssignment(updated, existing.assignedTo);
-      await this.notifyFollowUpDue(updated, existing.followUpDate);
+      await this.notifySecondaryEffects(updated, existing.assignedTo, existing.followUpDate);
     }
     return updated;
+  }
+
+  private async notifySecondaryEffects(
+    lead: Lead,
+    previousAssignedTo?: string,
+    previousFollowUpDate?: string,
+  ): Promise<void> {
+    try {
+      await this.notifyAssignment(lead, previousAssignedTo);
+      await this.notifyFollowUpDue(lead, previousFollowUpDate);
+    } catch (error) {
+      // The lead write is already durable. A notification failure must not make
+      // the primary mutation look unsuccessful or invite duplicate retries.
+      console.error('[LeadService] Lead saved but a notification could not be created.', error);
+    }
   }
 
   async remove(id: string): Promise<boolean> {

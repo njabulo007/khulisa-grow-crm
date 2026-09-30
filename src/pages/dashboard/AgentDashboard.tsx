@@ -36,6 +36,9 @@ export function AgentDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+  const latestLoadRef = React.useRef(0);
   const [clientsById, setClientsById] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<{
     activeLeads: Awaited<ReturnType<typeof leadService.getByAgent>>;
@@ -56,9 +59,11 @@ export function AgentDashboard() {
     let isMounted = true;
 
     const loadData = async () => {
+      const loadId = ++latestLoadRef.current;
       setIsLoading(true);
       if (!user) {
         setStats(null);
+        setError(null);
         setIsLoading(false);
         return;
       }
@@ -100,7 +105,7 @@ export function AgentDashboard() {
           return acc;
         }, {} as Record<string, number>);
 
-        if (!isMounted) return;
+        if (!isMounted || loadId !== latestLoadRef.current) return;
         setClientsById(
           allClients.reduce<Record<string, string>>((acc, client) => {
             acc[client.id] = client.businessName;
@@ -121,18 +126,45 @@ export function AgentDashboard() {
           myLeads,
           myProjects,
         });
+        setError(null);
+      } catch (loadError) {
+        console.error('[AgentDashboard] Failed to load dashboard data.', loadError);
+        if (isMounted && loadId === latestLoadRef.current) {
+          setStats(null);
+          setError('Unable to load your dashboard. Check your connection and try again.');
+        }
       } finally {
-        if (isMounted) {
+        if (isMounted && loadId === latestLoadRef.current) {
           setIsLoading(false);
         }
       }
     };
 
     void loadData();
+    const refresh = () => void loadData();
+    window.addEventListener('crm:data-changed', refresh);
     return () => {
       isMounted = false;
+      window.removeEventListener('crm:data-changed', refresh);
     };
-  }, [user]);
+  }, [retryKey, user]);
+
+  if (error && !stats) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader
+          title={`Hello, ${user?.name?.split(' ')[0] || 'Agent'}!`}
+          description="Track your leads, commissions, and performance."
+        />
+        <Card>
+          <CardContent className="space-y-3 py-10 text-center text-muted-foreground">
+            <p>{error}</p>
+            <Button variant="outline" onClick={() => setRetryKey((current) => current + 1)}>Try again</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading && !stats) {
     return (

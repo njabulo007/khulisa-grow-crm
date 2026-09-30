@@ -104,6 +104,7 @@ class FirestoreProjectService implements ProjectService {
           clientId: project.clientId,
           title: isOverdue ? 'Project deadline overdue' : 'Project deadline due soon',
           message: `${project.name} is ${isOverdue ? 'overdue' : 'due'} on ${dueText}. Ref: ${dateKey}`,
+          dedupeKey: `project-deadline:${project.id}:${dateKey}`,
         });
       })
     );

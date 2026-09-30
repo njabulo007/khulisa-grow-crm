@@ -64,14 +64,18 @@ export function OwnerDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [leads, setLeads] = useState<Awaited<ReturnType<typeof leadService.getAll>>>([]);
   const [clients, setClients] = useState<Awaited<ReturnType<typeof clientService.getAll>>>([]);
   const [projects, setProjects] = useState<Awaited<ReturnType<typeof projectService.getAll>>>([]);
+  const latestLoadRef = React.useRef(0);
   const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof invoiceService.getAll>>>([]);
 
   useEffect(() => {
     let isMounted = true;
     const loadData = async () => {
+      const loadId = ++latestLoadRef.current;
       setIsLoading(true);
       try {
         const [nextLeads, nextClients, nextProjects, nextInvoices] = await Promise.all([
@@ -80,13 +84,19 @@ export function OwnerDashboard() {
           projectService.getAll(),
           invoiceService.getAll(),
         ]);
-        if (!isMounted) return;
+        if (!isMounted || loadId !== latestLoadRef.current) return;
         setLeads(nextLeads);
         setClients(nextClients);
         setProjects(nextProjects);
         setInvoices(nextInvoices);
+        setError(null);
+      } catch (loadError) {
+        console.error('[OwnerDashboard] Failed to load dashboard data.', loadError);
+        if (isMounted && loadId === latestLoadRef.current) {
+          setError('Unable to load the dashboard. Check your connection and try again.');
+        }
       } finally {
-        if (isMounted) {
+        if (isMounted && loadId === latestLoadRef.current) {
           setIsLoading(false);
         }
       }
@@ -98,7 +108,7 @@ export function OwnerDashboard() {
       isMounted = false;
       window.removeEventListener('crm:data-changed', refresh);
     };
-  }, []);
+  }, [retryKey]);
 
   const users = authService.getAll();
   const projectLookup = useMemo(() => buildProjectLookup(projects), [projects]);
@@ -210,6 +220,23 @@ export function OwnerDashboard() {
     name: value.label,
     count: stats.leadsByStage[key] || 0,
   }));
+
+  if (error && leads.length === 0 && clients.length === 0 && projects.length === 0 && invoices.length === 0) {
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <PageHeader
+          title={`Welcome back, ${user?.name?.split(' ')[0] || 'Owner'}!`}
+          description="Here's what's happening with your business today."
+        />
+        <Card>
+          <CardContent className="space-y-3 py-10 text-center text-muted-foreground">
+            <p>{error}</p>
+            <Button variant="outline" onClick={() => setRetryKey((current) => current + 1)}>Try again</Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   if (isLoading && leads.length === 0 && clients.length === 0 && projects.length === 0 && invoices.length === 0) {
     return (

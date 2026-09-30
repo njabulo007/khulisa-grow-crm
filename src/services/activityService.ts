@@ -87,6 +87,7 @@ class FirestoreActivityService implements ActivityService {
       clientId: activity.entityType === 'client' ? activity.entityId : undefined,
       projectId: activity.entityType === 'project' ? activity.entityId : undefined,
       invoiceId: activity.entityType === 'invoice' ? activity.entityId : undefined,
+      dedupeKey: `activity:${activity.id}`,
     };
 
     await Promise.all(
@@ -118,7 +119,13 @@ class FirestoreActivityService implements ActivityService {
       createdAt: getTimestamp(),
     };
     const persisted = await this.collection.create(created);
-    await this.notifyActivity(persisted);
+    try {
+      await this.notifyActivity(persisted);
+    } catch (error) {
+      // Activity persistence is the primary operation. Notification delivery is
+      // best-effort and must not make a saved activity look like a failed write.
+      console.error('[ActivityService] Activity saved but notification delivery failed.', error);
+    }
     return persisted;
   }
 

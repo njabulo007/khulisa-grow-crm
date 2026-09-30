@@ -8,6 +8,7 @@ type LeadUpdateInput = Partial<Lead>;
 export interface UseLeadsResult {
   leads: Lead[];
   isLoading: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
   getById: (id: string) => Promise<Lead | undefined>;
   getByAgent: (agentId: string) => Promise<Lead[]>;
@@ -19,12 +20,17 @@ export interface UseLeadsResult {
 export function useLeads(): UseLeadsResult {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
       const next = await leadService.getAll();
       setLeads(next);
+      setError(null);
+    } catch (loadError) {
+      console.error('[useLeads] Failed to load leads.', loadError);
+      setError('Unable to load leads. Check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -68,6 +74,7 @@ export function useLeads(): UseLeadsResult {
   return {
     leads,
     isLoading,
+    error,
     refresh,
     getById,
     getByAgent,

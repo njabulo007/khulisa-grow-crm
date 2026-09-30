@@ -8,6 +8,7 @@ type ClientUpdateInput = Partial<Client>;
 export interface UseClientsResult {
   clients: Client[];
   isLoading: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
   getById: (id: string) => Promise<Client | undefined>;
   createClient: (client: ClientCreateInput) => Promise<Client>;
@@ -18,12 +19,17 @@ export interface UseClientsResult {
 export function useClients(): UseClientsResult {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     setIsLoading(true);
     try {
       const next = await clientService.getAll();
       setClients(next);
+      setError(null);
+    } catch (loadError) {
+      console.error('[useClients] Failed to load clients.', loadError);
+      setError('Unable to load clients. Check your connection and try again.');
     } finally {
       setIsLoading(false);
     }
@@ -65,6 +71,7 @@ export function useClients(): UseClientsResult {
   return {
     clients,
     isLoading,
+    error,
     refresh,
     getById,
     createClient,

@@ -65,10 +65,12 @@ export function ProjectsPage() {
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const latestLoadRef = useRef(0);
 
   const agents = authService.getAll().filter((candidate) => candidate.role === 'agent');
 
   const loadData = useCallback(async () => {
+    const loadId = ++latestLoadRef.current;
     setIsLoading(true);
     try {
       const [clients, projects, leads, invoices] = await Promise.all([
@@ -77,12 +79,13 @@ export function ProjectsPage() {
         leadService.getAll(),
         invoiceService.getAll(),
       ]);
+      if (loadId !== latestLoadRef.current) return;
       setAllClients(clients);
       setAllProjects(projects);
       setAllLeads(leads);
       setAllInvoices(invoices);
     } finally {
-      setIsLoading(false);
+      if (loadId === latestLoadRef.current) setIsLoading(false);
     }
   }, []);
 

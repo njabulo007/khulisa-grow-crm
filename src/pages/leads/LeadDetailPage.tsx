@@ -282,7 +282,7 @@ export function LeadDetailPage() {
                           {ACTIVITY_ICONS[activity.type]}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm">{activity.description}</p>
+                          <p className="whitespace-pre-wrap break-words text-sm">{activity.description}</p>
                           <p className="mt-1 text-xs text-muted-foreground">
                             {activityUser?.name || 'Unknown user'} |{' '}
                             {new Date(activity.createdAt).toLocaleDateString('en-ZA', {

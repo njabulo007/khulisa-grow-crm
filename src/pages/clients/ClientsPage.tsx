@@ -52,11 +52,12 @@ import { getAgentLinkedClientIds } from '@/lib/permissions';
 export function ClientsPage() {
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
-  const { clients: allClients, isLoading: isClientsLoading, createClient, updateClient, removeClient } = useClients();
+  const { clients: allClients, isLoading: isClientsLoading, error: clientsError, refresh: refreshClients, createClient, updateClient, removeClient } = useClients();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState({
     businessName: '',
@@ -162,8 +163,15 @@ export function ClientsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.businessName || !formData.ownerName) {
+    if (isSaving) return;
+
+    if (!formData.businessName.trim() || !formData.ownerName.trim()) {
       toast.error('Please fill in required fields');
+      return;
+    }
+
+    if (formData.email.trim() && !/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
+      toast.error('Please enter a valid email address');
       return;
     }
 
@@ -172,23 +180,41 @@ export function ClientsPage() {
       return;
     }
 
-    if (selectedClient) {
-      if (!accessibleClientIds.has(selectedClient.id)) {
-        toast.error('You do not have permission to update this client');
-        return;
-      }
-      await updateClient(selectedClient.id, formData);
-      toast.success('Client updated successfully');
-    } else {
-      await createClient({
-        ...formData,
-        createdBy: user?.id || '',
-      });
-      toast.success('Client created successfully');
-    }
+    const payload = {
+      ...formData,
+      businessName: formData.businessName.trim(),
+      ownerName: formData.ownerName.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      location: formData.location.trim(),
+      industry: formData.industry.trim(),
+    };
 
-    setShowAddDialog(false);
-    resetForm();
+    setIsSaving(true);
+    try {
+      if (selectedClient) {
+        if (!accessibleClientIds.has(selectedClient.id)) {
+          toast.error('You do not have permission to update this client');
+          return;
+        }
+        await updateClient(selectedClient.id, payload);
+        toast.success('Client updated successfully');
+      } else {
+        await createClient({
+          ...payload,
+          createdBy: user?.id || '',
+        });
+        toast.success('Client created successfully');
+      }
+
+      setShowAddDialog(false);
+      resetForm();
+    } catch (error) {
+      console.error('[ClientsPage] Failed to save client.', error);
+      toast.error('Client could not be saved. Check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -196,9 +222,14 @@ export function ClientsPage() {
       toast.error('You do not have permission to delete this client');
       return;
     }
-    await removeClient(id);
-    toast.success('Client deleted');
-    setDeleteConfirm(null);
+    try {
+      await removeClient(id);
+      toast.success('Client deleted');
+      setDeleteConfirm(null);
+    } catch (error) {
+      console.error('[ClientsPage] Failed to delete client.', error);
+      toast.error('Client could not be deleted. Check your connection and try again.');
+    }
   };
 
   const resetForm = () => {
@@ -267,7 +298,14 @@ export function ClientsPage() {
       </div>
 
       {/* Clients Table */}
-      {(isClientsLoading || isRelatedDataLoading) && allClients.length === 0 ? (
+      {clientsError && allClients.length === 0 ? (
+        <Card>
+          <CardContent className="space-y-3 py-10 text-center text-muted-foreground">
+            <p>{clientsError}</p>
+            <Button variant="outline" onClick={() => void refreshClients()}>Try again</Button>
+          </CardContent>
+        </Card>
+      ) : (isClientsLoading || isRelatedDataLoading) && allClients.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">Loading clients...</CardContent>
         </Card>
@@ -484,8 +522,9 @@ export function ClientsPage() {
               onClick={() => {
                 void handleSubmit();
               }}
+              disabled={isSaving}
             >
-              {selectedClient ? 'Update' : 'Create'} Client
+              {isSaving ? 'Saving...' : selectedClient ? 'Update' : 'Create'} Client
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,12 +3,13 @@ import { Notification } from '@/types/notification';
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
+  deleteDoc,
   getDocs,
   onSnapshot,
   query,
   serverTimestamp,
+  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -20,7 +21,7 @@ export interface NotificationService {
   getForUser: (userId: string) => Promise<Notification[]>;
   createForUser: (
     userId: string,
-    data: Omit<Notification, 'id' | 'userId' | 'isRead' | 'createdAt'>
+    data: Omit<Notification, 'id' | 'userId' | 'isRead' | 'createdAt'> & { dedupeKey?: string }
   ) => Promise<string>;
   markAsRead: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
@@ -45,6 +46,39 @@ const toDate = (value: unknown): Date => {
 
 const sortByCreatedAtDesc = (items: Notification[]): Notification[] =>
   [...items].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+const dedupeNotifications = (items: Notification[]): Notification[] => {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const isIdempotentEvent =
+      item.type === 'lead_assigned' ||
+      item.type === 'invoice_paid' ||
+      item.type === 'lead_follow_up' ||
+      item.type === 'project_deadline';
+    if (!isIdempotentEvent) return true;
+
+    const eventKey = [
+      item.type,
+      item.leadId || '',
+      item.invoiceId || '',
+      item.clientId || '',
+      item.projectId || '',
+      item.type === 'lead_follow_up' || item.type === 'project_deadline' ? item.message : '',
+    ].join('|');
+    if (seen.has(eventKey)) return false;
+    seen.add(eventKey);
+    return true;
+  });
+};
+
+const getDedupeDocumentId = (userId: string, dedupeKey: string): string => {
+  let hash = 2166136261;
+  for (const character of `${userId}:${dedupeKey}`) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `dedupe_${(hash >>> 0).toString(16)}`;
+};
 
 class FirestoreNotificationService implements NotificationService {
   private readonly collectionRef = collection(db, 'notifications');
@@ -81,7 +115,7 @@ class FirestoreNotificationService implements NotificationService {
         where('userId', '==', userId),
       );
       const snapshot = await getDocs(notificationsQuery);
-      return sortByCreatedAtDesc(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot)));
+      return dedupeNotifications(sortByCreatedAtDesc(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot))));
     } catch (error) {
       console.error('[NotificationService] Failed to fetch notifications for user.', error);
       return [];
@@ -90,20 +124,29 @@ class FirestoreNotificationService implements NotificationService {
 
   async createForUser(
     userId: string,
-    data: Omit<Notification, 'id' | 'userId' | 'isRead' | 'createdAt'>
+    data: Omit<Notification, 'id' | 'userId' | 'isRead' | 'createdAt'> & { dedupeKey?: string }
   ): Promise<string> {
-    const created = await addDoc(this.collectionRef, {
+    const { dedupeKey, ...notificationData } = data;
+    const payload = {
       userId,
-      type: data.type,
-      leadId: data.leadId || null,
-      invoiceId: data.invoiceId || null,
-      clientId: data.clientId || null,
-      projectId: data.projectId || null,
-      title: data.title,
-      message: data.message,
+      type: notificationData.type,
+      leadId: notificationData.leadId || null,
+      invoiceId: notificationData.invoiceId || null,
+      clientId: notificationData.clientId || null,
+      projectId: notificationData.projectId || null,
+      title: notificationData.title,
+      message: notificationData.message,
       isRead: false,
       createdAt: serverTimestamp(),
-    });
+    };
+
+    if (dedupeKey?.trim()) {
+      const notificationRef = doc(this.collectionRef, getDedupeDocumentId(userId, dedupeKey));
+      await setDoc(notificationRef, payload, { merge: true });
+      return notificationRef.id;
+    }
+
+    const created = await addDoc(this.collectionRef, payload);
     return created.id;
   }
 
@@ -143,7 +186,7 @@ class FirestoreNotificationService implements NotificationService {
     return onSnapshot(
       notificationsQuery,
       (snapshot) => {
-        callback(sortByCreatedAtDesc(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot))));
+        callback(dedupeNotifications(sortByCreatedAtDesc(snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot)))));
       },
       (error) => {
         console.error('[NotificationService] Failed to subscribe to user notifications.', error);

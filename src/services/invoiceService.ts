@@ -58,6 +58,7 @@ class FirestoreInvoiceService implements InvoiceService {
       clientId: nextInvoice.clientId,
       title: 'Client payment received',
       message: `Client ${clientName} has paid for ${packageName}. Your commission is now available.`,
+      dedupeKey: `invoice-paid:${nextInvoice.id}:${agentId}`,
     });
   }
 

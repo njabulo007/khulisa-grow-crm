@@ -63,7 +63,7 @@ const formatCurrency = (amount: number) => {
 export function LeadsPage() {
   const navigate = useNavigate();
   const { user, isOwner } = useAuth();
-  const { leads, isLoading: isLeadsLoading, createLead, updateLead, removeLead, getById: getLeadById } = useLeads();
+  const { leads, isLoading: isLeadsLoading, error: leadsError, refresh: refreshLeads, createLead, updateLead, removeLead, getById: getLeadById } = useLeads();
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -71,6 +71,8 @@ export function LeadsPage() {
   const [showConvertDialog, setShowConvertDialog] = useState(false);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -229,29 +231,63 @@ export function LeadsPage() {
   };
 
   const handleSubmit = async () => {
-    if (!formData.businessName || !formData.contactName) {
+    if (isSaving) return;
+
+    if (!formData.businessName.trim() || !formData.contactName.trim()) {
       toast.error('Please fill in required fields');
       return;
     }
 
-    if (selectedLead) {
-      if (!canManageLead(selectedLead)) {
-        toast.error('You do not have permission to update this lead');
-        return;
-      }
-      await updateLead(selectedLead.id, formData);
-      toast.success('Lead updated successfully');
-    } else {
-      await createLead({
-        ...formData,
-        assignedTo: formData.assignedTo || user?.id || '',
-        createdBy: user?.id || '',
-      });
-      toast.success('Lead created successfully');
+    if (formData.email.trim() && !/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
+      toast.error('Please enter a valid email address');
+      return;
     }
 
-    setShowAddDialog(false);
-    resetForm();
+    if (formData.followUpDate && !/^\d{4}-\d{2}-\d{2}$/.test(formData.followUpDate)) {
+      toast.error('Please enter a valid follow-up date');
+      return;
+    }
+
+    if (!Number.isFinite(formData.estimatedValue) || formData.estimatedValue < 0) {
+      toast.error('Estimated value cannot be negative');
+      return;
+    }
+
+    const payload = {
+      ...formData,
+      businessName: formData.businessName.trim(),
+      contactName: formData.contactName.trim(),
+      email: formData.email.trim(),
+      phone: formData.phone.trim(),
+      notes: formData.notes.trim(),
+    };
+
+    setIsSaving(true);
+    try {
+      if (selectedLead) {
+        if (!canManageLead(selectedLead)) {
+          toast.error('You do not have permission to update this lead');
+          return;
+        }
+        await updateLead(selectedLead.id, payload);
+        toast.success('Lead updated successfully');
+      } else {
+        await createLead({
+          ...payload,
+          assignedTo: payload.assignedTo || user?.id || '',
+          createdBy: user?.id || '',
+        });
+        toast.success('Lead created successfully');
+      }
+
+      setShowAddDialog(false);
+      resetForm();
+    } catch (error) {
+      console.error('[LeadsPage] Failed to save lead.', error);
+      toast.error('Lead could not be saved. Check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -260,9 +296,14 @@ export function LeadsPage() {
       toast.error('You do not have permission to delete this lead');
       return;
     }
-    await removeLead(id);
-    toast.success('Lead deleted');
-    setDeleteConfirm(null);
+    try {
+      await removeLead(id);
+      toast.success('Lead deleted');
+      setDeleteConfirm(null);
+    } catch (error) {
+      console.error('[LeadsPage] Failed to delete lead.', error);
+      toast.error('Lead could not be deleted. Check your connection and try again.');
+    }
   };
 
   const handleStageChange = async (leadId: string, newStage: LeadStage) => {
@@ -273,18 +314,24 @@ export function LeadsPage() {
       return;
     }
 
-    await updateLead(leadId, { stage: newStage });
-    
-    await activityService.create({
-      type: 'status-change',
-      entityType: 'lead',
-      entityId: leadId,
-      description: `Lead status changed from ${LEAD_STAGES[lead.stage].label} to ${LEAD_STAGES[newStage].label}`,
-      metadata: { from: lead.stage, to: newStage },
-      createdBy: user?.id || '',
-    });
+    try {
+      await updateLead(leadId, { stage: newStage });
 
-    toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+      await activityService.create({
+        type: 'status-change',
+        entityType: 'lead',
+        entityId: leadId,
+        description: `Lead status changed from ${LEAD_STAGES[lead.stage].label} to ${LEAD_STAGES[newStage].label}`,
+        metadata: { from: lead.stage, to: newStage },
+        createdBy: user?.id || '',
+      });
+
+      toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+    } catch (error) {
+      console.error('[LeadsPage] Failed to change lead stage.', error);
+      toast.error('Lead status could not be updated. Check your connection and try again.');
+      return;
+    }
 
     if (newStage === 'won' && !lead.clientId) {
       setSelectedLead({ ...lead, stage: 'won' });
@@ -300,6 +347,7 @@ export function LeadsPage() {
   };
 
   const handleConvert = async () => {
+    if (isConverting) return;
     if (!selectedLead) {
       toast.error('No lead selected for conversion');
       return;
@@ -313,44 +361,59 @@ export function LeadsPage() {
       return;
     }
 
-    // Create client
-    const client = await clientService.create({
-      businessName: selectedLead.businessName,
-      ownerName: selectedLead.contactName,
-      email: selectedLead.email,
-      phone: selectedLead.phone,
-      location: convertData.location,
-      industry: convertData.industry,
-      contractSigned: false,
-      onboardingCompleted: false,
-      leadId: selectedLead.id,
-      createdBy: user?.id || '',
-    });
+    setIsConverting(true);
+    try {
+      // Reuse a client already created for this lead if a previous attempt
+      // completed the first half of conversion before the request failed.
+      const existingClient = (await clientService.getAll()).find((client) => client.leadId === selectedLead.id);
+      const client =
+        existingClient ||
+        (await clientService.create({
+          businessName: selectedLead.businessName,
+          ownerName: selectedLead.contactName,
+          email: selectedLead.email,
+          phone: selectedLead.phone,
+          location: convertData.location.trim(),
+          industry: convertData.industry.trim(),
+          contractSigned: false,
+          onboardingCompleted: false,
+          leadId: selectedLead.id,
+          createdBy: user?.id || '',
+        }));
 
-    if (convertData.createProject) {
-      // Create project
-      await projectService.create({
-        name: convertData.projectName,
-        clientId: client.id,
-        packageId: convertData.packageId,
-        status: 'not-started',
-        milestones: createProjectMilestonesForPackage(convertData.packageId),
+      if (convertData.createProject) {
+        const existingProject = (await projectService.getAll()).find(
+          (project) => project.clientId === client.id && project.name === convertData.projectName.trim()
+        );
+        if (!existingProject) {
+          await projectService.create({
+            name: convertData.projectName.trim(),
+            clientId: client.id,
+            packageId: convertData.packageId,
+            status: 'not-started',
+            milestones: createProjectMilestonesForPackage(convertData.packageId),
+            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            startDate: new Date().toISOString(),
+            assignedTo: selectedLead.assignedTo,
+            notes: '',
+            createdBy: user?.id || '',
+          });
+        }
+      }
 
-        dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-        startDate: new Date().toISOString(),
-        assignedTo: selectedLead.assignedTo,
-        notes: '',
-        createdBy: user?.id || '',
-      });
+      // Link lead and mark won.
+      await updateLead(selectedLead.id, { stage: 'won', clientId: client.id });
+
+      toast.success(convertData.createProject ? 'Lead converted to client and project.' : 'Lead converted to client.');
+      setShowConvertDialog(false);
+      setSelectedLead(null);
+      navigate('/clients');
+    } catch (error) {
+      console.error('[LeadsPage] Failed to convert lead.', error);
+      toast.error('Lead conversion could not be completed. Check your connection and try again.');
+    } finally {
+      setIsConverting(false);
     }
-
-    // Link lead and mark won
-    await updateLead(selectedLead.id, { stage: 'won', clientId: client.id });
-
-    toast.success(convertData.createProject ? 'Lead converted to client and project.' : 'Lead converted to client.');
-    setShowConvertDialog(false);
-    setSelectedLead(null);
-    navigate('/clients');
   };
 
   const resetForm = () => {
@@ -458,7 +521,14 @@ export function LeadsPage() {
       </div>
 
       {/* Kanban Board */}
-      {isLeadsLoading && leads.length === 0 ? (
+      {leadsError && leads.length === 0 ? (
+        <Card>
+          <CardContent className="space-y-3 py-10 text-center text-muted-foreground">
+            <p>{leadsError}</p>
+            <Button variant="outline" onClick={() => void refreshLeads()}>Try again</Button>
+          </CardContent>
+        </Card>
+      ) : isLeadsLoading && leads.length === 0 ? (
         <Card>
           <CardContent className="py-10 text-center text-muted-foreground">Loading leads...</CardContent>
         </Card>
@@ -752,8 +822,9 @@ export function LeadsPage() {
               onClick={() => {
                 void handleSubmit();
               }}
+              disabled={isSaving}
             >
-              {selectedLead ? 'Update' : 'Create'} Lead
+              {isSaving ? 'Saving...' : selectedLead ? 'Update' : 'Create'} Lead
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -831,11 +902,12 @@ export function LeadsPage() {
               Cancel
             </Button>
             <Button
+              disabled={isConverting}
               onClick={() => {
                 void handleConvert();
               }}
             >
-              Confirm Conversion
+              {isConverting ? 'Converting...' : 'Confirm Conversion'}
             </Button>
           </DialogFooter>
         </DialogContent>

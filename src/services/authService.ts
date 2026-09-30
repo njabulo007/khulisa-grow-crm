@@ -286,9 +286,13 @@ export const AuthService = {
   },
 
   subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      const user = await mapUser(firebaseUser);
-      callback(user);
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      void mapUser(firebaseUser)
+        .then(callback)
+        .catch((error) => {
+          console.error('[AuthService] Failed to map the authenticated user.', error);
+          callback(null);
+        });
     });
     return unsubscribe;
   },
