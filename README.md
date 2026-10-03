@@ -103,6 +103,8 @@ The function `sendWebPushOnNotificationCreate` reads device tokens from `push_to
 - high-priority delivery
 - OS-level notification presentation/sound (Android/desktop defaults)
 
+The deployed Functions bundle also runs `sendScheduledCrmReminders` daily at 07:00 South Africa time. It creates idempotent reminders for lead follow-ups, project deadlines within seven days, and due/overdue invoices. Deploy Functions after enabling Cloud Scheduler in the Firebase project.
+
 ### Notes
 
 - Users must grant notification permission at least once.

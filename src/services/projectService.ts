@@ -7,7 +7,7 @@ import {
 import { Project } from '@/types/models';
 import { authService } from './authService';
 import { notificationService } from './notificationService';
-import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getCurrentAuthKeys, getCurrentAuthRole, getTimestamp } from './storage';
 
 const DEADLINE_ATTENTION_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 
@@ -111,8 +111,11 @@ class FirestoreProjectService implements ProjectService {
   }
 
   async getAll(): Promise<Project[]> {
-    const projects = await this.collection.getAll();
-    return projects.map((project) => this.normalizeProject(project));
+    const projects = (await getCurrentAuthRole()) === 'owner'
+      ? await this.collection.getAll()
+      : this.collection.getAllWhereIn('assignedTo', await getCurrentAuthKeys());
+    const resolvedProjects = await projects;
+    return resolvedProjects.map((project) => this.normalizeProject(project));
   }
 
   async getById(id: string): Promise<Project | undefined> {
@@ -126,8 +129,8 @@ class FirestoreProjectService implements ProjectService {
   }
 
   async getByAgent(agentId: string): Promise<Project[]> {
-    const projects = await this.getAll();
-    return projects.filter((project) => project.assignedTo === agentId);
+    const projects = await this.collection.getAllWhere('assignedTo', agentId);
+    return projects.map((project) => this.normalizeProject(project));
   }
 
   async create(project: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> {

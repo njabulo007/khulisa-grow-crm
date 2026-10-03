@@ -1,8 +1,4 @@
 // Khulisa CRM - Auth Context
-// TODO: Replace bootstrap/login/logout internals with Firebase Auth:
-// - onAuthStateChanged for session bootstrap
-// - signInWithEmailAndPassword for login
-// - signOut for logout
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import {
@@ -22,7 +18,6 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => void;
-  switchRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -213,9 +208,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       setUser(mapped);
       setIsLoading(false);
-      void syncUsersFromFirebaseProfiles().then(() => {
-        refreshCurrentUserFromCache();
-      });
+      if (mapped?.role === 'owner') {
+        void syncUsersFromFirebaseProfiles().then(() => {
+          refreshCurrentUserFromCache();
+        });
+      }
     });
 
     return unsubscribe;
@@ -234,8 +231,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Authenticated user has no valid email.');
     }
     setUser(mapped);
-    await syncUsersFromFirebaseProfiles();
-    refreshCurrentUserFromCache();
+    if (mapped.role === 'owner') {
+      await syncUsersFromFirebaseProfiles();
+      refreshCurrentUserFromCache();
+    }
   };
 
   const signup = async (email: string, password: string, displayName?: string): Promise<void> => {
@@ -251,21 +250,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Registered user has no valid email.');
     }
     setUser(mapped);
-    await syncUsersFromFirebaseProfiles();
-    refreshCurrentUserFromCache();
+    if (mapped.role === 'owner') {
+      await syncUsersFromFirebaseProfiles();
+      refreshCurrentUserFromCache();
+    }
   };
 
   const logout = () => {
     AuthService.logout().catch(() => undefined);
     authService.clearCurrentUser();
     setUser(null);
-  };
-
-  const switchRole = (role: UserRole) => {
-    if (!user) return;
-    // Dev-only role switching. Persisted in localStorage for testing permissions.
-    const switchedUser = authService.switchRole(role);
-    setUser(switchedUser);
   };
 
   return (
@@ -279,7 +273,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         signup,
         logout,
-        switchRole,
       }}
     >
       {children}

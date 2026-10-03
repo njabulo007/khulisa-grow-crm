@@ -1,6 +1,6 @@
 import { Activity } from '@/types/models';
 import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
-import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getCurrentAuthKeys, getCurrentAuthRole, getTimestamp } from './storage';
 import { authService } from './authService';
 import { clientService } from './clientService';
 import { invoiceService } from './invoiceService';
@@ -98,7 +98,8 @@ class FirestoreActivityService implements ActivityService {
   }
 
   async getAll(): Promise<Activity[]> {
-    return this.collection.getAll();
+    if ((await getCurrentAuthRole()) === 'owner') return this.collection.getAll();
+    return this.collection.getAllWhereIn('createdBy', await getCurrentAuthKeys());
   }
 
   async getById(id: string): Promise<Activity | undefined> {
@@ -106,7 +107,7 @@ class FirestoreActivityService implements ActivityService {
   }
 
   async getByEntity(entityType: string, entityId: string): Promise<Activity[]> {
-    const activities = await this.collection.getAll();
+    const activities = await this.collection.getAllWhere('entityId', entityId);
     return activities
       .filter((activity) => activity.entityType === entityType && activity.entityId === entityId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

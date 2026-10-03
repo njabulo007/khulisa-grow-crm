@@ -1,13 +1,5 @@
-import { adminAuth, adminDb } from './firebaseAdmin.js';
+import { adminAuth } from './firebaseAdmin.js';
 import { createHttpError } from './http.js';
-import { OWNER_EMAILS } from './projectShareCore.js';
-
-const getRoleFromData = (data) => {
-  if (!data || typeof data !== 'object') return null;
-  const rawRole = data.role || data.userRole || data.Role || data.user_role;
-  if (rawRole === 'owner' || rawRole === 'agent') return rawRole;
-  return null;
-};
 
 export const requireOwner = async (req) => {
   const authorization = req.headers.authorization || '';
@@ -28,26 +20,11 @@ export const requireOwner = async (req) => {
   }
 
   const uid = decoded.uid;
-  let role = 'agent';
-
-  try {
-    const userDoc = await adminDb.collection('users').doc(uid).get();
-    if (userDoc.exists) {
-      const candidate = getRoleFromData(userDoc.data() || {});
-      if (candidate) role = candidate;
-    }
-  } catch {
-    // Continue with email fallback.
-  }
-
-  const email = typeof decoded.email === 'string' ? decoded.email.trim().toLowerCase() : '';
-  if (OWNER_EMAILS.has(email)) {
-    role = 'owner';
-  }
-
+  const role = decoded.role === 'owner' ? 'owner' : 'agent';
   if (role !== 'owner') {
     throw createHttpError(403, 'Only owners can manage client share links.');
   }
 
+  const email = typeof decoded.email === 'string' ? decoded.email.trim().toLowerCase() : '';
   return { uid, email, role };
 };

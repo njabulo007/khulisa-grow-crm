@@ -8,6 +8,7 @@ import { invoiceService } from './invoiceService';
 import { leadService } from './leadService';
 import { projectService } from './projectService';
 import { settingsService } from './settingsService';
+import { getCurrentAuthRole } from './storage';
 
 const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
 const normalizeCommissionRatePercent = (value: number, fallbackPercent: number): number => {
@@ -82,7 +83,10 @@ const resolveEarnedDate = (
 };
 
 export async function syncCommissionsFromInvoices(): Promise<void> {
-  // TODO: Replace implementation with Firebase-triggered commission rules.
+  if ((await getCurrentAuthRole()) !== 'owner') return;
+
+  // Backend payment triggers are the source of truth. This remains as an owner-only
+  // repair path for historical records and manual migrations.
   const [globalSettings, users, invoices, projects, clients, leads, existingCommissions] = await Promise.all([
     settingsService.getGlobal(),
     authService.getAll(),

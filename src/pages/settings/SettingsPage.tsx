@@ -51,6 +51,10 @@ export function SettingsPage() {
     let isMounted = true;
 
     const loadData = async () => {
+      if (!isOwner) {
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       try {
         const [globalSettings, profiles] = await Promise.all([
@@ -80,7 +84,7 @@ export function SettingsPage() {
     return () => {
       isMounted = false;
     };
-  }, [applySettingsToState]);
+  }, [applySettingsToState, isOwner]);
 
   const commissionModeLabel = useMemo(
     () => (commissionMode === 'manual' ? 'Manual Mode Active' : 'Automatic Mode Active'),

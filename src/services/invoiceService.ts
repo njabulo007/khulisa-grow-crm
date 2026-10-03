@@ -3,7 +3,8 @@ import { getPackageById, resolvePackageId } from '@/config/packages';
 import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
 import { deriveInvoicePaymentSummary, InvoicePaymentSummary } from '@/lib/invoicePayments';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
-import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { assertValid, validateInvoice } from '@/lib/domainValidation';
+import { FirestoreCollection, generateId, getCurrentAuthRole, getTimestamp } from './storage';
 import { clientService } from './clientService';
 import { leadService } from './leadService';
 import { notificationService } from './notificationService';
@@ -86,7 +87,13 @@ class FirestoreInvoiceService implements InvoiceService {
   ): Promise<InvoicePaymentSummary> {
     const [resolvedProjects, resolvedPayments] = await Promise.all([
       projects ? Promise.resolve(projects) : projectService.getAll(),
-      payments ? Promise.resolve(payments) : this.paymentsCollection.getAll(),
+      payments
+        ? Promise.resolve(payments)
+        : getCurrentAuthRole().then((role) =>
+            role === 'owner'
+              ? this.paymentsCollection.getAll()
+              : this.paymentsCollection.getAllWhere('invoiceId', invoice.id)
+          ),
     ]);
 
     const totals = getInvoiceEffectiveTotals(invoice, buildProjectLookup(resolvedProjects));
@@ -117,16 +124,28 @@ class FirestoreInvoiceService implements InvoiceService {
   }
 
   async getAll(): Promise<Invoice[]> {
-    const [invoices, projects, payments] = await Promise.all([
-      this.collection.getAll(),
+    const role = await getCurrentAuthRole();
+    const [projects, payments] = await Promise.all([
       projectService.getAll(),
-      this.paymentsCollection.getAll(),
+      role === 'owner' ? this.paymentsCollection.getAll() : Promise.resolve([]),
     ]);
+    const invoices = role === 'owner'
+      ? await this.collection.getAll()
+      : await this.collection.getAllWhereIn('projectId', projects.map((project) => project.id));
 
-    const normalized = await Promise.all(invoices.map((invoice) => this.normalizeInvoice(invoice)));
+    const clientInvoices = role === 'owner'
+      ? []
+      : await this.collection.getAllWhereIn('clientId', (await clientService.getAll()).map((client) => client.id));
+    const invoicesById = new Map([...invoices, ...clientInvoices].map((invoice) => [invoice.id, invoice]));
+    const visibleInvoices = Array.from(invoicesById.values());
+    const visiblePayments = role === 'owner'
+      ? payments
+      : await this.paymentsCollection.getAllWhereIn('invoiceId', visibleInvoices.map((invoice) => invoice.id));
+
+    const normalized = await Promise.all(visibleInvoices.map((invoice) => this.normalizeInvoice(invoice)));
     return Promise.all(
       normalized.map(async (invoice) => {
-        const summary = await this.getPaymentSummaryForInvoice(invoice, projects, payments);
+        const summary = await this.getPaymentSummaryForInvoice(invoice, projects, visiblePayments);
         return { ...invoice, amountPaid: summary.amountPaid, status: summary.status };
       })
     );
@@ -154,6 +173,7 @@ class FirestoreInvoiceService implements InvoiceService {
   }
 
   async create(invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>): Promise<Invoice> {
+    assertValid(validateInvoice(invoice));
     const packageSnapshot = await this.resolvePackageSnapshot(invoice.projectId, invoice.packageId);
     const created = await this.collection.create({
       ...invoice,
@@ -173,6 +193,7 @@ class FirestoreInvoiceService implements InvoiceService {
   async update(id: string, updates: Partial<Invoice>): Promise<Invoice | null> {
     const current = await this.collection.getById(id);
     if (!current) return null;
+    assertValid(validateInvoice({ ...current, ...updates }));
     const previousStatus = current.status;
 
     const nextProjectId = updates.projectId ?? current.projectId;

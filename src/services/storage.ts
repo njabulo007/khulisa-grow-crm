@@ -1,7 +1,8 @@
-import { db } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
 import {
   collection as firestoreCollectionRef,
   deleteDoc,
+  documentId,
   doc as firestoreDocRef,
   getDoc,
   getDocs,
@@ -212,6 +213,37 @@ export class FirestoreCollection<T extends { id: string }> {
     return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
   }
 
+  async getAllWhere(field: string, value: unknown): Promise<T[]> {
+    const snapshot = await getDocs(query(this.collectionRef, where(field, '==', value)));
+    return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
+  }
+
+  async getAllWhereIn(field: string, values: string[]): Promise<T[]> {
+    const normalizedValues = Array.from(new Set(values.filter((value) => value.trim())));
+    if (normalizedValues.length === 0) return [];
+
+    const results: T[] = [];
+    for (let index = 0; index < normalizedValues.length; index += 10) {
+      const chunk = normalizedValues.slice(index, index + 10);
+      const snapshot = await getDocs(query(this.collectionRef, where(field, 'in', chunk)));
+      results.push(...snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot)));
+    }
+    return results;
+  }
+
+  async getByIds(ids: string[]): Promise<T[]> {
+    const normalizedIds = Array.from(new Set(ids.filter((id) => id.trim())));
+    if (normalizedIds.length === 0) return [];
+
+    const results: T[] = [];
+    for (let index = 0; index < normalizedIds.length; index += 10) {
+      const chunk = normalizedIds.slice(index, index + 10);
+      const snapshot = await getDocs(query(this.collectionRef, where(documentId(), 'in', chunk)));
+      results.push(...snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot)));
+    }
+    return results;
+  }
+
   async getById(id: string): Promise<T | undefined> {
     const snapshot = await getDoc(firestoreDocRef(this.collectionRef, id));
     if (!snapshot.exists()) return undefined;
@@ -282,3 +314,35 @@ export class FirestoreCollection<T extends { id: string }> {
     await batch.commit();
   }
 }
+
+export type AuthenticatedRole = 'owner' | 'agent';
+
+export const getCurrentAuthUid = (): string | null => auth?.currentUser?.uid || null;
+
+export const getCurrentAuthKeys = async (): Promise<string[]> => {
+  const currentUser = auth?.currentUser;
+  if (!currentUser) return [];
+
+  const keys = new Set([currentUser.uid]);
+  try {
+    const usersCollection = firestoreCollectionRef(db, 'users');
+    const profileSnapshot = await getDoc(firestoreDocRef(usersCollection, currentUser.uid));
+    const appUserId = profileSnapshot.exists() ? profileSnapshot.data().appUserId : null;
+    if (typeof appUserId === 'string' && appUserId.trim()) keys.add(appUserId.trim());
+  } catch {
+    // The Firebase UID remains a valid fallback key.
+  }
+  return Array.from(keys);
+};
+
+export const getCurrentAuthRole = async (): Promise<AuthenticatedRole> => {
+  const currentUser = auth?.currentUser;
+  if (!currentUser) return 'agent';
+
+  try {
+    const tokenResult = await currentUser.getIdTokenResult();
+    return tokenResult.claims.role === 'owner' ? 'owner' : 'agent';
+  } catch {
+    return 'agent';
+  }
+};

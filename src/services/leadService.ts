@@ -3,11 +3,12 @@ import {
   getCommissionRateForAgent,
 } from '@/config/commission';
 import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
+import { assertValid, validateLead } from '@/lib/domainValidation';
 import { GlobalSettings, Invoice, Lead } from '@/types/models';
 import { authService } from './authService';
 import { clientService } from './clientService';
 import { projectService } from './projectService';
-import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getCurrentAuthKeys, getCurrentAuthRole, getTimestamp } from './storage';
 import { notificationService } from './notificationService';
 import { settingsService } from './settingsService';
 
@@ -177,7 +178,8 @@ class FirestoreLeadService implements LeadService {
   }
 
   async getAll(): Promise<Lead[]> {
-    return this.collection.getAll();
+    if ((await getCurrentAuthRole()) === 'owner') return this.collection.getAll();
+    return this.collection.getAllWhereIn('assignedTo', await getCurrentAuthKeys());
   }
 
   async getById(id: string): Promise<Lead | undefined> {
@@ -185,11 +187,11 @@ class FirestoreLeadService implements LeadService {
   }
 
   async getByAgent(agentId: string): Promise<Lead[]> {
-    const leads = await this.collection.getAll();
-    return leads.filter((lead) => lead.assignedTo === agentId);
+    return this.collection.getAllWhere('assignedTo', agentId);
   }
 
   async create(lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>): Promise<Lead> {
+    assertValid(validateLead(lead));
     const created = {
       ...lead,
       id: generateId(),
@@ -204,6 +206,7 @@ class FirestoreLeadService implements LeadService {
   async update(id: string, updates: Partial<Lead>): Promise<Lead | null> {
     const existing = await this.collection.getById(id);
     if (!existing) return null;
+    assertValid(validateLead({ ...existing, ...updates }));
 
     const updated = await this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
     if (updated) {

@@ -53,6 +53,7 @@ const dedupeNotifications = (items: Notification[]): Notification[] => {
     const isIdempotentEvent =
       item.type === 'lead_assigned' ||
       item.type === 'invoice_paid' ||
+      item.type === 'invoice_due' ||
       item.type === 'lead_follow_up' ||
       item.type === 'project_deadline';
     if (!isIdempotentEvent) return true;
@@ -87,6 +88,7 @@ class FirestoreNotificationService implements NotificationService {
     const data = snapshot.data() as Record<string, unknown>;
     const type =
       data.type === 'invoice_paid' ||
+      data.type === 'invoice_due' ||
       data.type === 'activity' ||
       data.type === 'project_deadline' ||
       data.type === 'lead_follow_up' ||
@@ -204,5 +206,6 @@ class FirestoreNotificationService implements NotificationService {
 //   - lead follow-up due/overdue events (type = lead_follow_up)
 //   - project due/overdue events (type = project_deadline)
 //   - invoice fully paid events for agents (type = invoice_paid)
+//   - invoice due/overdue events for agents (type = invoice_due)
 //   - activity and WhatsApp/chat events for relevant users (type = activity/chat)
 export const notificationService: NotificationService = new FirestoreNotificationService();

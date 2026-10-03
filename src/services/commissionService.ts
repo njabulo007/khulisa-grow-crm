@@ -1,7 +1,7 @@
 import { COMMISSION_RATE } from '@/config/commission';
 import { getPackageById, resolvePackageId } from '@/config/packages';
 import { Commission } from '@/types/models';
-import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { FirestoreCollection, generateId, getCurrentAuthKeys, getCurrentAuthRole, getTimestamp } from './storage';
 
 export interface CommissionService {
   getAll: () => Promise<Commission[]>;
@@ -55,8 +55,11 @@ class FirestoreCommissionService implements CommissionService {
   }
 
   async getAll(): Promise<Commission[]> {
-    const commissions = await this.collection.getAll();
-    return commissions.map((commission) => this.normalizeCommission(commission));
+    const commissions = (await getCurrentAuthRole()) === 'owner'
+      ? await this.collection.getAll()
+      : this.collection.getAllWhereIn('agentId', await getCurrentAuthKeys());
+    const resolvedCommissions = await commissions;
+    return resolvedCommissions.map((commission) => this.normalizeCommission(commission));
   }
 
   async getById(id: string): Promise<Commission | undefined> {
@@ -65,18 +68,18 @@ class FirestoreCommissionService implements CommissionService {
   }
 
   async getByAgent(agentId: string): Promise<Commission[]> {
-    const commissions = await this.getAll();
-    return commissions.filter((commission) => commission.agentId === agentId);
+    const commissions = await this.collection.getAllWhere('agentId', agentId);
+    return commissions.map((commission) => this.normalizeCommission(commission));
   }
 
   async getByInvoice(invoiceId: string): Promise<Commission | undefined> {
-    const commissions = await this.getAll();
-    return commissions.find((commission) => commission.invoiceId === invoiceId);
+    const commissions = await this.collection.getAllWhere('invoiceId', invoiceId);
+    return commissions.map((commission) => this.normalizeCommission(commission))[0];
   }
 
   async getByInvoiceId(invoiceId: string): Promise<Commission[]> {
-    const commissions = await this.getAll();
-    return commissions.filter((commission) => commission.invoiceId === invoiceId);
+    const commissions = await this.collection.getAllWhere('invoiceId', invoiceId);
+    return commissions.map((commission) => this.normalizeCommission(commission));
   }
 
   async create(commission: Omit<Commission, 'id' | 'createdAt' | 'updatedAt'>): Promise<Commission> {

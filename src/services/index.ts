@@ -1,6 +1,7 @@
 export * from './storage';
 export * from './authService';
 export * from './leadService';
+export * from './leadConversionService';
 export * from './clientService';
 export * from './projectService';
 export * from './invoiceService';

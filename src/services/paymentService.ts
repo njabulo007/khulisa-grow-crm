@@ -1,6 +1,6 @@
 ﻿import { Payment } from '@/types/models';
-import { syncCommissionsFromInvoices } from './commissionRules';
-import { FirestoreCollection, generateId, getTimestamp } from './storage';
+import { assertValid, validatePayment } from '@/lib/domainValidation';
+import { FirestoreCollection, generateId, getCurrentAuthRole, getTimestamp } from './storage';
 import { invoiceService } from './invoiceService';
 
 export interface PaymentService {
@@ -18,7 +18,9 @@ class FirestorePaymentService implements PaymentService {
   private readonly collection = new FirestoreCollection<Payment>('payments');
 
   async getAll(): Promise<Payment[]> {
-    return this.collection.getAll();
+    if ((await getCurrentAuthRole()) === 'owner') return this.collection.getAll();
+    const accessibleInvoices = await invoiceService.getAll();
+    return this.collection.getAllWhereIn('invoiceId', accessibleInvoices.map((invoice) => invoice.id));
   }
 
   async getById(id: string): Promise<Payment | undefined> {
@@ -26,8 +28,7 @@ class FirestorePaymentService implements PaymentService {
   }
 
   async getByInvoice(invoiceId: string): Promise<Payment[]> {
-    const payments = await this.collection.getAll();
-    return payments.filter((payment) => payment.invoiceId === invoiceId);
+    return this.collection.getAllWhere('invoiceId', invoiceId);
   }
 
   async getByInvoiceId(invoiceId: string): Promise<Payment[]> {
@@ -35,29 +36,23 @@ class FirestorePaymentService implements PaymentService {
   }
 
   async create(payment: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> {
+    assertValid(validatePayment(payment));
     const created = {
       ...payment,
       id: generateId(),
       createdAt: getTimestamp(),
     };
     const persisted = await this.collection.create(created);
-    await invoiceService.refreshPaymentSummary(payment.invoiceId);
-    await syncCommissionsFromInvoices();
     return persisted;
   }
 
   async update(id: string, updates: Partial<Payment>): Promise<Payment | null> {
     const current = await this.getById(id);
     if (!current) return null;
+    assertValid(validatePayment({ ...current, ...updates }));
 
     const updated = await this.collection.update(id, updates);
     if (!updated) return null;
-
-    await invoiceService.refreshPaymentSummary(current.invoiceId);
-    if (updated.invoiceId && updated.invoiceId !== current.invoiceId) {
-      await invoiceService.refreshPaymentSummary(updated.invoiceId);
-    }
-    await syncCommissionsFromInvoices();
 
     return updated;
   }
@@ -67,10 +62,6 @@ class FirestorePaymentService implements PaymentService {
     if (!current) return false;
 
     const removed = await this.collection.remove(id);
-    if (removed) {
-      await invoiceService.refreshPaymentSummary(current.invoiceId);
-      await syncCommissionsFromInvoices();
-    }
     return removed;
   }
 

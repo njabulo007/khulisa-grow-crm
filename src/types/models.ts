@@ -49,6 +49,7 @@ export interface Client {
   contractSigned: boolean;
   onboardingCompleted: boolean;
   leadId?: string; // Original lead ID if converted
+  visibleTo?: string[]; // Agent IDs with an active project relationship
   createdAt: string;
   updatedAt: string;
   createdBy: string;

@@ -10,6 +10,7 @@ import {
   LogOut,
   Users,
   Building2,
+  FolderKanban,
   FileText,
   X,
 } from 'lucide-react';
@@ -99,6 +100,7 @@ export function Topbar({ onSearch }: TopbarProps) {
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const touchStartByNotificationRef = useRef<Map<string, number>>(new Map());
   const recentlySwipedRef = useRef<Set<string>>(new Set());
 
@@ -123,13 +125,32 @@ export function Topbar({ onSearch }: TopbarProps) {
     };
   }, [user?.id, isOwner]);
 
+  useEffect(() => {
+    const handleCommandShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        setIsSearchFocused(true);
+      }
+    };
+    window.addEventListener('keydown', handleCommandShortcut);
+    return () => window.removeEventListener('keydown', handleCommandShortcut);
+  }, []);
+
   const searchResults = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     if (!query || !user) {
-      return { leads: [] as SearchItem[], clients: [] as SearchItem[], invoices: [] as SearchItem[] };
+      return {
+        leads: [] as SearchItem[],
+        clients: [] as SearchItem[],
+        projects: [] as SearchItem[],
+        invoices: [] as SearchItem[],
+      };
     }
 
-    const visibleLeads = isOwner ? allLeads : allLeads.filter((lead) => lead.assignedTo === user.id);
+    const visibleLeads = isOwner
+      ? allLeads
+      : allLeads.filter((lead) => lead.assignedTo === user.id || lead.assignedTo === user.uid);
     const accessibleClientIds = isOwner
       ? new Set(allClients.map((client) => client.id))
       : getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
@@ -142,7 +163,9 @@ export function Topbar({ onSearch }: TopbarProps) {
       .filter(
         (lead) =>
           lead.businessName.toLowerCase().includes(query) ||
-          lead.contactName.toLowerCase().includes(query)
+          lead.contactName.toLowerCase().includes(query) ||
+          lead.email.toLowerCase().includes(query) ||
+          lead.phone.toLowerCase().includes(query)
       )
       .slice(0, MAX_RESULTS_PER_GROUP)
       .map((lead) => ({
@@ -162,8 +185,34 @@ export function Topbar({ onSearch }: TopbarProps) {
         path: `/clients/${client.id}`,
       }));
 
+    const projects = allProjects
+      .filter((project) => {
+        const client = allClients.find((candidate) => candidate.id === project.clientId);
+        return (
+          project.name.toLowerCase().includes(query) ||
+          client?.businessName.toLowerCase().includes(query) ||
+          project.status.toLowerCase().includes(query)
+        );
+      })
+      .slice(0, MAX_RESULTS_PER_GROUP)
+      .map((project) => {
+        const client = allClients.find((candidate) => candidate.id === project.clientId);
+        return {
+          id: project.id,
+          title: project.name,
+          subtitle: client?.businessName || 'Unknown client',
+          path: `/projects/${project.id}`,
+        };
+      });
+
     const invoices = visibleInvoices
-      .filter((invoice) => invoice.invoiceNumber.toLowerCase().includes(query))
+      .filter((invoice) => {
+        const client = allClients.find((candidate) => candidate.id === invoice.clientId);
+        return (
+          invoice.invoiceNumber.toLowerCase().includes(query) ||
+          client?.businessName.toLowerCase().includes(query)
+        );
+      })
       .slice(0, MAX_RESULTS_PER_GROUP)
       .map((invoice) => {
         const client = allClients.find((candidate) => candidate.id === invoice.clientId);
@@ -175,11 +224,14 @@ export function Topbar({ onSearch }: TopbarProps) {
         };
       });
 
-    return { leads, clients, invoices };
+    return { leads, clients, projects, invoices };
   }, [allClients, allInvoices, allLeads, allProjects, isOwner, searchQuery, user]);
 
   const totalResults =
-    searchResults.leads.length + searchResults.clients.length + searchResults.invoices.length;
+    searchResults.leads.length +
+    searchResults.clients.length +
+    searchResults.projects.length +
+    searchResults.invoices.length;
   const showDropdown = isSearchFocused && searchQuery.trim().length > 0;
   const recentNotifications = useMemo(
     () => notifications.slice(0, MAX_NOTIFICATIONS),
@@ -291,7 +343,8 @@ export function Topbar({ onSearch }: TopbarProps) {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search leads, clients, invoices..."
+            placeholder="Search CRM..."
+            ref={searchInputRef}
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
             onFocus={() => setIsSearchFocused(true)}
@@ -308,6 +361,7 @@ export function Topbar({ onSearch }: TopbarProps) {
                 <>
                   {renderResultGroup('Leads', <Users className="h-3.5 w-3.5" />, searchResults.leads)}
                   {renderResultGroup('Clients', <Building2 className="h-3.5 w-3.5" />, searchResults.clients)}
+                  {renderResultGroup('Projects', <FolderKanban className="h-3.5 w-3.5" />, searchResults.projects)}
                   {renderResultGroup('Invoices', <FileText className="h-3.5 w-3.5" />, searchResults.invoices)}
                 </>
               )}

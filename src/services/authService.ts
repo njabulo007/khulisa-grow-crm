@@ -1,5 +1,5 @@
 import { User, UserRole } from '@/types/models';
-import { auth, db } from '@/lib/firebase';
+import { auth, db, functions } from '@/lib/firebase';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -8,6 +8,7 @@ import {
   updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import { collection, doc, getDoc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
 import {
   LocalStorageCollection,
@@ -40,11 +41,8 @@ export interface AppUserProfile {
   hasAppUserId: boolean;
 }
 
-const OWNER_EMAILS = new Set(['njabulo@khulisamedia.co.za', 'njabulod007@gmail.com']);
-
-function getFallbackRoleForEmail(email?: string | null): Role {
-  if (!email) return 'agent';
-  return OWNER_EMAILS.has(email.trim().toLowerCase()) ? 'owner' : 'agent';
+function getFallbackRoleForEmail(_email?: string | null): Role {
+  return 'agent';
 }
 
 function pickRole(data: Record<string, unknown>): Role | null {
@@ -93,15 +91,29 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
   let appUserId: string | null = null;
 
   try {
+    const ensureUserRole = httpsCallable<undefined, { role?: Role }>(functions, 'ensureUserRole');
+    const result = await ensureUserRole(undefined);
+    if (result.data?.role === 'owner' || result.data?.role === 'agent') {
+      role = result.data.role;
+    }
+    await firebaseUser.getIdToken(true);
+  } catch {
+    try {
+      const tokenResult = await firebaseUser.getIdTokenResult();
+      if (tokenResult.claims.role === 'owner' || tokenResult.claims.role === 'agent') {
+        role = tokenResult.claims.role;
+      }
+    } catch {
+      // Missing claims keep the session in the least-privileged role.
+    }
+  }
+
+  try {
     // Read extra data (role) from Firestore: users/{uid}
     const profileRef = doc(db, 'users', firebaseUser.uid);
     const profileSnap = await getDoc(profileRef);
     if (profileSnap.exists()) {
       const data = profileSnap.data() as Record<string, unknown>;
-      const candidateRole = pickRole(data);
-      if (candidateRole) {
-        role = candidateRole;
-      }
       const candidateAppUserId = pickAppUserId(data);
       if (candidateAppUserId) {
         appUserId = candidateAppUserId;
@@ -120,10 +132,6 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
       const first = emailSnapshot.docs[0] || uidSnapshot.docs[0];
       if (first) {
         const data = first.data() as Record<string, unknown>;
-        const candidateRole = pickRole(data);
-        if (candidateRole) {
-          role = candidateRole;
-        }
         const candidateAppUserId = pickAppUserId(data);
         if (candidateAppUserId) {
           appUserId = candidateAppUserId;
@@ -139,8 +147,6 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
   } catch {
     // Continue with fallback role/display values when profile read is blocked.
   }
-
-  role = role || getFallbackRoleForEmail(firebaseUser.email);
 
   return {
     id: appUserId || firebaseUser.uid,
@@ -161,7 +167,6 @@ export const AuthService = {
         await updateProfile(cred.user, { displayName: trimmedDisplayName });
       }
 
-      const role = getFallbackRoleForEmail(normalizedEmail);
       try {
         await setDoc(
           doc(db, 'users', cred.user.uid),
@@ -170,7 +175,7 @@ export const AuthService = {
             appUserId: cred.user.uid,
             email: normalizedEmail,
             displayName: trimmedDisplayName || cred.user.displayName || null,
-            role,
+            role: 'agent',
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
           },
@@ -223,7 +228,6 @@ export const AuthService = {
           email: normalizedEmail,
           displayName: payload.displayName || null,
           name: payload.displayName || null,
-          role: payload.role,
           updatedAt: new Date().toISOString(),
         },
         { merge: true }
@@ -274,15 +278,17 @@ export const AuthService = {
   },
 
   async updateUserRole(uid: string, role: Role): Promise<void> {
-    const profileRef = doc(db, 'users', uid.trim());
-    const profileSnap = await getDoc(profileRef);
-    if (!profileSnap.exists()) throw new Error('User profile not found.');
-    const data = profileSnap.data() as Record<string, unknown>;
-    const email = typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
-    await setDoc(profileRef, { role, updatedAt: new Date().toISOString() }, { merge: true });
+    const updateUserRole = httpsCallable<{ uid: string; role: Role }, { role: Role }>(functions, 'setUserRole');
+    await updateUserRole({ uid: uid.trim(), role });
+
     const localUsers = new LocalStorageCollection<User>(STORAGE_KEYS.users);
-    const localUser = localUsers.getAll().find((candidate) => candidate.email.toLowerCase() === email);
-    if (localUser) localUsers.update(localUser.id, { role, commissionRate: role === 'owner' ? 0 : localUser.commissionRate });
+    const localUser = localUsers.getAll().find((candidate) => candidate.id === uid.trim());
+    if (localUser) {
+      localUsers.update(localUser.id, {
+        role,
+        commissionRate: role === 'owner' ? 0 : localUser.commissionRate,
+      });
+    }
   },
 
   subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
@@ -299,7 +305,7 @@ export const AuthService = {
 };
 
 export interface AuthService {
-  // User profile source (local now, Firestore profile docs later)
+  // Local cache used to hydrate the domain model after Firebase authentication.
   getAll: () => User[];
   getById: (id: string) => User | undefined;
   create: (user: Omit<User, 'createdAt' | 'updatedAt'> & { id?: string }) => User;
@@ -308,19 +314,14 @@ export interface AuthService {
   // Session helpers used by AuthContext
   getCurrentUser: () => User | null;
   getCurrentRole: () => UserRole;
-  // Dev login now; map to signInWithEmailAndPassword for Firebase Auth
+  // Legacy local helpers retained for seed/bootstrap compatibility.
   loginWithPassword: (email: string, password: string) => User | null;
   setCurrentUser: (userId: string) => void;
-  // Dev-only role switching for demos/testing
-  switchRole: (role: UserRole) => User;
-  // Map to Firebase signOut during migration
   clearCurrentUser: () => void;
   seedIfMissing: (seedUsers: User[], defaultUserId?: string, initializeSession?: boolean) => void;
 }
 
 class LocalAuthService implements AuthService {
-  // TODO: Replace with Firebase Auth (signInWithEmailAndPassword/signOut/onAuthStateChanged)
-  // and user profile reads from Firestore while keeping the AuthService interface stable.
   private readonly users = new LocalStorageCollection<User>(STORAGE_KEYS.users);
 
   private getUserByRole(role: UserRole): User | undefined {
@@ -401,16 +402,6 @@ class LocalAuthService implements AuthService {
     if (!user) return;
     writeStoredValue(STORAGE_KEYS.role, user.role);
     writeStoredValue(STORAGE_KEYS.currentUser, userId);
-  }
-
-  switchRole(role: UserRole): User {
-    const user = this.getUserByRole(role);
-    if (!user) {
-      throw new Error('No users available for role switching.');
-    }
-    writeStoredValue(STORAGE_KEYS.role, role);
-    writeStoredValue(STORAGE_KEYS.currentUser, user.id);
-    return user;
   }
 
   clearCurrentUser(): void {

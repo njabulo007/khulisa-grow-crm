@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 
-export const OWNER_EMAILS = new Set(['njabulo@khulisamedia.co.za', 'njabulod007@gmail.com']);
 export const PROJECT_SHARES_COLLECTION = 'project_shares';
 export const PROJECTS_COLLECTION = 'projects';
 export const CLIENTS_COLLECTION = 'clients';

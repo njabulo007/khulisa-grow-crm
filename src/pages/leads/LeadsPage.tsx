@@ -43,8 +43,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DEFAULT_PACKAGE_ID, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLeads } from '@/hooks/useLeads';
-import { createProjectMilestonesForPackage } from '@/lib/projectMilestones';
-import { activityService, AuthService, authService, clientService, projectService } from '@/services';
+import { activityService, AuthService, authService, leadConversionService } from '@/services';
 import { Lead, LeadStage, LeadSource, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 
@@ -115,6 +114,13 @@ export function LeadsPage() {
     let isMounted = true;
 
     const loadAgents = async () => {
+      if (!isOwner) {
+        setAgents([]);
+        setIsAgentsLoading(false);
+        setAgentsLoadError(null);
+        return;
+      }
+
       const localAgents = authService
         .getAll()
         .filter((candidate) => candidate.role === 'agent' && candidate.isActive !== false)
@@ -180,7 +186,7 @@ export function LeadsPage() {
     return () => {
       isMounted = false;
     };
-  }, [showAddDialog, user?.id]);
+  }, [isOwner, showAddDialog, user?.id]);
 
   const agentsById = useMemo(() => {
     const next = new Map<string, { id: string; name: string; email: string }>();
@@ -227,7 +233,7 @@ export function LeadsPage() {
 
   const canManageLead = (lead: Lead): boolean => {
     if (isOwner) return true;
-    return !!user && lead.assignedTo === user.id;
+    return !!user && (lead.assignedTo === user.id || lead.assignedTo === user.uid);
   };
 
   const handleSubmit = async () => {
@@ -314,6 +320,19 @@ export function LeadsPage() {
       return;
     }
 
+    if (newStage === 'won' && !lead.clientId) {
+      setSelectedLead({ ...lead, stage: 'won' });
+      setConvertData({
+        projectName: `${lead.businessName} - Website`,
+        packageId: DEFAULT_PACKAGE_ID,
+        createProject: true,
+        location: '',
+        industry: '',
+      });
+      setShowConvertDialog(true);
+      return;
+    }
+
     try {
       await updateLead(leadId, { stage: newStage });
 
@@ -333,17 +352,6 @@ export function LeadsPage() {
       return;
     }
 
-    if (newStage === 'won' && !lead.clientId) {
-      setSelectedLead({ ...lead, stage: 'won' });
-      setConvertData({
-        projectName: `${lead.businessName} - Website`,
-        packageId: DEFAULT_PACKAGE_ID,
-        createProject: true,
-        location: '',
-        industry: '',
-      });
-      setShowConvertDialog(true);
-    }
   };
 
   const handleConvert = async () => {
@@ -363,46 +371,14 @@ export function LeadsPage() {
 
     setIsConverting(true);
     try {
-      // Reuse a client already created for this lead if a previous attempt
-      // completed the first half of conversion before the request failed.
-      const existingClient = (await clientService.getAll()).find((client) => client.leadId === selectedLead.id);
-      const client =
-        existingClient ||
-        (await clientService.create({
-          businessName: selectedLead.businessName,
-          ownerName: selectedLead.contactName,
-          email: selectedLead.email,
-          phone: selectedLead.phone,
-          location: convertData.location.trim(),
-          industry: convertData.industry.trim(),
-          contractSigned: false,
-          onboardingCompleted: false,
-          leadId: selectedLead.id,
-          createdBy: user?.id || '',
-        }));
-
-      if (convertData.createProject) {
-        const existingProject = (await projectService.getAll()).find(
-          (project) => project.clientId === client.id && project.name === convertData.projectName.trim()
-        );
-        if (!existingProject) {
-          await projectService.create({
-            name: convertData.projectName.trim(),
-            clientId: client.id,
-            packageId: convertData.packageId,
-            status: 'not-started',
-            milestones: createProjectMilestonesForPackage(convertData.packageId),
-            dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            startDate: new Date().toISOString(),
-            assignedTo: selectedLead.assignedTo,
-            notes: '',
-            createdBy: user?.id || '',
-          });
-        }
-      }
-
-      // Link lead and mark won.
-      await updateLead(selectedLead.id, { stage: 'won', clientId: client.id });
+      await leadConversionService.convert({
+        leadId: selectedLead.id,
+        createProject: convertData.createProject,
+        projectName: convertData.projectName.trim(),
+        packageId: convertData.packageId,
+        location: convertData.location.trim(),
+        industry: convertData.industry.trim(),
+      });
 
       toast.success(convertData.createProject ? 'Lead converted to client and project.' : 'Lead converted to client.');
       setShowConvertDialog(false);
@@ -582,7 +558,7 @@ export function LeadsPage() {
                                 <Edit className="mr-2 h-4 w-4" />
                                 Edit
                               </DropdownMenuItem>
-                              {stageKey === 'negotiation' && (
+                              {(stageKey === 'negotiation' || (stageKey === 'won' && !lead.clientId)) && (
                                 <DropdownMenuItem onClick={() => openConvertDialog(lead)}>
                                   <UserPlus className="mr-2 h-4 w-4" />
                                   Convert to Client
