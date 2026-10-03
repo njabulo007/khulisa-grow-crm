@@ -9,6 +9,12 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const messaging = admin.messaging();
+// Bootstrap owners are still required to recover access when a custom claim is stale.
+// Keep this list small and change it only through a reviewed backend deployment.
+const OWNER_EMAILS = new Set([
+  'njabulod007@gmail.com',
+  'njabulo@khulisamedia.co.za',
+]);
 const PROJECT_SHARES_COLLECTION = 'project_shares';
 const PROJECTS_COLLECTION = 'projects';
 const CLIENTS_COLLECTION = 'clients';
@@ -62,6 +68,10 @@ const findUserProfile = async (uid) => {
 
 const deriveRoleForUser = async (uid) => {
   try {
+    const authUser = await admin.auth().getUser(uid);
+    const normalizedEmail = typeof authUser.email === 'string' ? authUser.email.trim().toLowerCase() : '';
+    if (OWNER_EMAILS.has(normalizedEmail)) return 'owner';
+
     const profile = await findUserProfile(uid);
     const role = getRoleFromUserDoc(profile?.data);
     if (role) return role;
