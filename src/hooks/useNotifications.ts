@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService } from '@/services';
-import { pushService } from '@/services/pushService';
 import { Notification } from '@/types/notification';
 
 export type DesktopNotificationPermission = NotificationPermission | 'unsupported';
@@ -171,17 +170,6 @@ export function useNotifications(): UseNotificationsResult {
       unsubscribe();
     };
   }, [playNotificationSound, user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    void pushService.registerForUser(user.id, false);
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    if (desktopPermission !== 'granted') return;
-    void pushService.registerForUser(user.id, false);
-  }, [desktopPermission, user?.id]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !notification.isRead).length,

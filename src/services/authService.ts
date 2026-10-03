@@ -91,10 +91,16 @@ async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | nul
   let appUserId: string | null = null;
 
   try {
-    const ensureUserRole = httpsCallable<undefined, { role?: Role }>(functions, 'ensureUserRole');
+    const ensureUserRole = httpsCallable<undefined, { role?: Role; appUserId?: string; displayName?: string | null }>(functions, 'ensureUserRole');
     const result = await ensureUserRole(undefined);
     if (result.data?.role === 'owner' || result.data?.role === 'agent') {
       role = result.data.role;
+    }
+    if (typeof result.data?.appUserId === 'string' && result.data.appUserId.trim()) {
+      appUserId = result.data.appUserId.trim();
+    }
+    if (!displayName && typeof result.data?.displayName === 'string') {
+      displayName = result.data.displayName;
     }
     await firebaseUser.getIdToken(true);
   } catch {

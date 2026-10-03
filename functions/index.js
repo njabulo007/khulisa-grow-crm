@@ -31,15 +31,42 @@ const getRoleFromUserDoc = (data) => {
   return null;
 };
 
+const findUserProfile = async (uid) => {
+  const directSnapshot = await db.collection('users').doc(uid).get();
+  let fallbackProfile = null;
+  if (directSnapshot.exists) {
+    const directProfile = { id: directSnapshot.id, data: directSnapshot.data() || {} };
+    if (getRoleFromUserDoc(directProfile.data)) return directProfile;
+    fallbackProfile = directProfile;
+  }
+
+  const authUser = await admin.auth().getUser(uid);
+  const lookupQueries = [
+    db.collection('users').where('uid', '==', uid).limit(1),
+    db.collection('users').where('appUserId', '==', uid).limit(1),
+  ];
+  if (typeof authUser.email === 'string' && authUser.email.trim()) {
+    lookupQueries.push(db.collection('users').where('email', '==', authUser.email.trim().toLowerCase()).limit(1));
+  }
+
+  for (const lookupQuery of lookupQueries) {
+    const snapshot = await lookupQuery.get();
+    if (!snapshot.empty) {
+      const profile = { id: snapshot.docs[0].id, data: snapshot.docs[0].data() || {} };
+      if (getRoleFromUserDoc(profile.data)) return profile;
+      fallbackProfile = fallbackProfile || profile;
+    }
+  }
+  return fallbackProfile;
+};
+
 const deriveRoleForUser = async (uid) => {
   try {
-    const userDoc = await db.collection('users').doc(uid).get();
-    if (userDoc.exists) {
-      const role = getRoleFromUserDoc(userDoc.data() || {});
-      if (role) return role;
-    }
+    const profile = await findUserProfile(uid);
+    const role = getRoleFromUserDoc(profile?.data);
+    if (role) return role;
   } catch (error) {
-    logger.warn('Failed to read users/{uid} profile when deriving role.', { uid, error: String(error) });
+    logger.warn('Failed to resolve user profile when deriving role.', { uid, error: String(error) });
   }
   return 'agent';
 };
@@ -113,10 +140,10 @@ const createProjectMilestones = (packageId) => {
 };
 
 const currentUserKeys = async (uid) => {
-  const profile = await db.collection('users').doc(uid).get();
-  const appUserId = profile.exists && typeof profile.data().appUserId === 'string'
-    ? profile.data().appUserId.trim()
-    : '';
+  const profile = await findUserProfile(uid);
+  const appUserId = profile && typeof profile.data.appUserId === 'string'
+    ? profile.data.appUserId.trim()
+    : profile && profile.id !== uid ? profile.id : '';
   return new Set([uid, appUserId].filter(Boolean));
 };
 
@@ -489,6 +516,38 @@ const buildLinkFromNotification = (notification) => {
   return '/';
 };
 
+const resolvePushTokenUserIds = async (userKey) => {
+  const normalizedKey = typeof userKey === 'string' ? userKey.trim() : '';
+  if (!normalizedKey) return [];
+
+  const userIds = new Set([normalizedKey]);
+  const profileSnapshots = [];
+  const directProfile = await db.collection('users').doc(normalizedKey).get();
+  if (directProfile.exists) profileSnapshots.push(directProfile);
+
+  const lookupValues = [normalizedKey];
+  if (normalizedKey.includes('@')) lookupValues.push(normalizedKey.toLowerCase());
+  const lookupQueries = [
+    ...lookupValues.map((value) => db.collection('users').where('uid', '==', value).limit(5)),
+    ...lookupValues.map((value) => db.collection('users').where('appUserId', '==', value).limit(5)),
+    ...lookupValues
+      .filter((value) => value.includes('@'))
+      .map((value) => db.collection('users').where('email', '==', value.toLowerCase()).limit(5)),
+  ];
+  const lookupResults = await Promise.all(lookupQueries.map((lookupQuery) => lookupQuery.get()));
+  lookupResults.forEach((snapshot) => profileSnapshots.push(...snapshot.docs));
+
+  profileSnapshots.forEach((profileSnapshot) => {
+    const profile = profileSnapshot.data() || {};
+    userIds.add(profileSnapshot.id);
+    ['uid', 'appUserId'].forEach((field) => {
+      if (typeof profile[field] === 'string' && profile[field].trim()) userIds.add(profile[field].trim());
+    });
+  });
+
+  return Array.from(userIds);
+};
+
 exports.sendWebPushOnNotificationCreate = onDocumentCreated('notifications/{notificationId}', async (event) => {
   const snapshot = event.data;
   if (!snapshot) return;
@@ -500,13 +559,20 @@ exports.sendWebPushOnNotificationCreate = onDocumentCreated('notifications/{noti
     return;
   }
 
-  const tokenSnapshot = await db.collection('push_tokens').where('userId', '==', userId).get();
-  if (tokenSnapshot.empty) {
+  const userKeys = await resolvePushTokenUserIds(userId);
+  const tokenSnapshots = await Promise.all(
+    userKeys.map((userKey) => db.collection('push_tokens').where('userId', '==', userKey).get())
+  );
+  const tokenDocuments = new Map();
+  tokenSnapshots.forEach((snapshot) => {
+    snapshot.docs.forEach((tokenDocument) => tokenDocuments.set(tokenDocument.id, tokenDocument));
+  });
+  if (tokenDocuments.size === 0) {
     logger.info('No push tokens registered for user', { userId });
     return;
   }
 
-  const tokens = tokenSnapshot.docs
+  const tokens = Array.from(tokenDocuments.values())
     .map((doc) => doc.data().token)
     .filter((value) => typeof value === 'string' && value.length > 0);
 
@@ -681,12 +747,33 @@ exports.ensureUserRole = onCall(async (request) => {
   const uid = requireAuth(request);
   const role = await deriveRoleForUser(uid);
   const authUser = await admin.auth().getUser(uid);
+  const profile = await findUserProfile(uid);
+  const profileData = profile?.data || {};
+  const appUserId = typeof profileData.appUserId === 'string' && profileData.appUserId.trim()
+    ? profileData.appUserId.trim()
+    : profile && profile.id !== uid ? profile.id : uid;
   await admin.auth().setCustomUserClaims(uid, {
     ...(authUser.customClaims || {}),
     role,
   });
+  await db.collection('users').doc(uid).set({
+    uid,
+    appUserId,
+    email: authUser.email || profileData.email || null,
+    displayName: typeof profileData.displayName === 'string'
+      ? profileData.displayName
+      : typeof profileData.name === 'string' ? profileData.name : authUser.displayName || null,
+    role,
+    updatedAt: nowIso(),
+  }, { merge: true });
   if (role === 'owner') await backfillClientVisibility();
-  return { role };
+  return {
+    role,
+    appUserId,
+    displayName: typeof profileData.displayName === 'string'
+      ? profileData.displayName
+      : typeof profileData.name === 'string' ? profileData.name : authUser.displayName || null,
+  };
 });
 
 exports.setUserRole = onCall(async (request) => {
