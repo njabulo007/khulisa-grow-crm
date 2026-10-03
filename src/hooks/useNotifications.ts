@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService } from '@/services';
+import { pushService } from '@/services/pushService';
 import { Notification } from '@/types/notification';
 
 export type DesktopNotificationPermission = NotificationPermission | 'unsupported';

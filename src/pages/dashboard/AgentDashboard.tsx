@@ -23,6 +23,7 @@ import {
   syncCommissionsFromInvoices,
 } from '@/services';
 import { LEAD_STAGES } from '@/types/models';
+import { getScopedProjectMilestoneCounts } from '@/lib/projectMilestoneCounts';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
@@ -374,8 +375,7 @@ export function AgentDashboard() {
               <div className="space-y-3">
                 {stats.activeProjects.slice(0, 4).map((project) => {
                   const clientName = clientsById[project.clientId];
-                  const completedMilestones = project.milestones.filter((m) => (m.isCompleted ?? m.completed) === true).length;
-                  const progress = project.milestones.length > 0 ? Math.round((completedMilestones / project.milestones.length) * 100) : 0;
+                  const milestoneCounts = getScopedProjectMilestoneCounts(project.milestones, project.packageId);
                   const isOverdue = new Date(project.dueDate) < new Date() && project.status !== 'completed' && project.status !== 'delivered';
                   
                   return (
@@ -393,12 +393,12 @@ export function AgentDashboard() {
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{completedMilestones}/{project.milestones.length} milestones</span>
+                          <span>{milestoneCounts.completed}/{milestoneCounts.total} deliverables</span>
                           <span className={isOverdue ? 'text-destructive' : ''}>
                             Due: {new Date(project.dueDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
                           </span>
                         </div>
-                        <Progress value={progress} className="h-1.5" />
+                        <Progress value={milestoneCounts.progress} className="h-1.5" />
                       </div>
                     </div>
                   );
