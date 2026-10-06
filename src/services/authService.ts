@@ -1,5 +1,6 @@
 import { User, UserRole } from '@/types/models';
-import { auth, db, functions } from '@/lib/firebase';
+import { auth, db } from '@/lib/firebase';
+import { authenticatedPost } from './apiClient';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
@@ -8,8 +9,7 @@ import {
   updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
-import { httpsCallable } from 'firebase/functions';
-import { collection, doc, getDoc, getDocs, limit, query, setDoc, where } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
 import {
   LocalStorageCollection,
   STORAGE_KEYS,
@@ -83,84 +83,29 @@ function getFirebaseAuthErrorMessage(error: unknown): string {
   }
 }
 
-async function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | null> {
-  if (!firebaseUser) return null;
+const pendingMappings = new WeakMap<FirebaseUser, Promise<AppUser | null>>();
 
-  let role: Role = getFallbackRoleForEmail(firebaseUser.email);
-  let displayName = firebaseUser.displayName;
-  let appUserId: string | null = null;
-
-  try {
-    const ensureUserRole = httpsCallable<undefined, { role?: Role; appUserId?: string; displayName?: string | null }>(functions, 'ensureUserRole');
-    const result = await ensureUserRole(undefined);
-    if (result.data?.role === 'owner' || result.data?.role === 'agent') {
-      role = result.data.role;
-    }
-    if (typeof result.data?.appUserId === 'string' && result.data.appUserId.trim()) {
-      appUserId = result.data.appUserId.trim();
-    }
-    if (!displayName && typeof result.data?.displayName === 'string') {
-      displayName = result.data.displayName;
-    }
+function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | null> {
+  if (!firebaseUser) return Promise.resolve(null);
+  const pending = pendingMappings.get(firebaseUser);
+  if (pending) return pending;
+  const mapping = (async (): Promise<AppUser> => {
+    const profile = await authenticatedPost<{ uid: string; role: Role; appUserId: string; displayName: string | null }>(
+      '/api/auth/ensure-role', {}, firebaseUser,
+    );
     await firebaseUser.getIdToken(true);
-  } catch {
-    try {
-      const tokenResult = await firebaseUser.getIdTokenResult();
-      if (tokenResult.claims.role === 'owner' || tokenResult.claims.role === 'agent') {
-        role = tokenResult.claims.role;
-      }
-    } catch {
-      // Missing claims keep the session in the least-privileged role.
+    const token = await firebaseUser.getIdTokenResult();
+    if (profile.uid !== firebaseUser.uid || token.claims.role !== profile.role
+      || typeof token.claims.appUserId !== 'string' || token.claims.appUserId !== profile.appUserId) {
+      throw new Error('Your role could not be synchronized. Please sign in again.');
     }
-  }
-
-  try {
-    // Read extra data (role) from Firestore: users/{uid}
-    const profileRef = doc(db, 'users', firebaseUser.uid);
-    const profileSnap = await getDoc(profileRef);
-    if (profileSnap.exists()) {
-      const data = profileSnap.data() as Record<string, unknown>;
-      const candidateAppUserId = pickAppUserId(data);
-      if (candidateAppUserId) {
-        appUserId = candidateAppUserId;
-      }
-      if (!displayName && typeof data.displayName === 'string') {
-        displayName = data.displayName;
-      }
-      if (!displayName && typeof data.name === 'string') {
-        displayName = data.name;
-      }
-    } else if (firebaseUser.email) {
-      // Fallback for projects storing profile docs by email instead of uid.
-      const emailQuery = query(collection(db, 'users'), where('email', '==', firebaseUser.email), limit(1));
-      const uidQuery = query(collection(db, 'users'), where('uid', '==', firebaseUser.uid), limit(1));
-      const [emailSnapshot, uidSnapshot] = await Promise.all([getDocs(emailQuery), getDocs(uidQuery)]);
-      const first = emailSnapshot.docs[0] || uidSnapshot.docs[0];
-      if (first) {
-        const data = first.data() as Record<string, unknown>;
-        const candidateAppUserId = pickAppUserId(data);
-        if (candidateAppUserId) {
-          appUserId = candidateAppUserId;
-        }
-        if (!displayName && typeof data.displayName === 'string') {
-          displayName = data.displayName;
-        }
-        if (!displayName && typeof data.name === 'string') {
-          displayName = data.name;
-        }
-      }
-    }
-  } catch {
-    // Continue with fallback role/display values when profile read is blocked.
-  }
-
-  return {
-    id: appUserId || firebaseUser.uid,
-    uid: firebaseUser.uid,
-    email: firebaseUser.email,
-    displayName,
-    role,
-  };
+    return {
+      id: profile.appUserId, uid: firebaseUser.uid, email: firebaseUser.email,
+      displayName: profile.displayName || firebaseUser.displayName, role: profile.role,
+    };
+  })().finally(() => pendingMappings.delete(firebaseUser));
+  pendingMappings.set(firebaseUser, mapping);
+  return mapping;
 }
 
 export const AuthService = {
@@ -173,28 +118,11 @@ export const AuthService = {
         await updateProfile(cred.user, { displayName: trimmedDisplayName });
       }
 
-      try {
-        await setDoc(
-          doc(db, 'users', cred.user.uid),
-          {
-            uid: cred.user.uid,
-            appUserId: cred.user.uid,
-            email: normalizedEmail,
-            displayName: trimmedDisplayName || cred.user.displayName || null,
-            role: 'agent',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          },
-          { merge: true }
-        );
-      } catch {
-        // Continue even when profile doc write is blocked; auth account is already created.
-      }
-
       const user = await mapUser(cred.user);
       if (!user) throw new Error('Could not map user');
       return user;
     } catch (error) {
+      if (error instanceof Error && !('code' in error)) throw error;
       throw new Error(getFirebaseAuthErrorMessage(error));
     }
   },
@@ -206,6 +134,7 @@ export const AuthService = {
       if (!user) throw new Error('Could not map user');
       return user;
     } catch (error) {
+      if (error instanceof Error && !('code' in error)) throw error;
       throw new Error(getFirebaseAuthErrorMessage(error));
     }
   },
@@ -229,9 +158,6 @@ export const AuthService = {
       await setDoc(
         doc(db, 'users', payload.uid.trim()),
         {
-          uid: payload.uid.trim(),
-          appUserId: normalizedAppUserId,
-          email: normalizedEmail,
           displayName: payload.displayName || null,
           name: payload.displayName || null,
           updatedAt: new Date().toISOString(),
@@ -284,11 +210,10 @@ export const AuthService = {
   },
 
   async updateUserRole(uid: string, role: Role): Promise<void> {
-    const updateUserRole = httpsCallable<{ uid: string; role: Role }, { role: Role }>(functions, 'setUserRole');
-    await updateUserRole({ uid: uid.trim(), role });
+    await authenticatedPost('/api/auth/set-role', { uid: uid.trim(), role });
 
     const localUsers = new LocalStorageCollection<User>(STORAGE_KEYS.users);
-    const localUser = localUsers.getAll().find((candidate) => candidate.id === uid.trim());
+    const localUser = localUsers.getAll().find((candidate) => candidate.uid === uid.trim() || candidate.id === uid.trim());
     if (localUser) {
       localUsers.update(localUser.id, {
         role,
@@ -297,16 +222,23 @@ export const AuthService = {
     }
   },
 
-  subscribeToAuthChanges(callback: (user: AppUser | null) => void): () => void {
+  subscribeToAuthChanges(callback: (user: AppUser | null) => void, onError?: (message: string) => void): () => void {
+    let active = true;
+    let generation = 0;
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      const requestGeneration = ++generation;
       void mapUser(firebaseUser)
-        .then(callback)
+        .then((user) => {
+          if (active && generation === requestGeneration) callback(user);
+        })
         .catch((error) => {
+          if (!active || generation !== requestGeneration) return;
           console.error('[AuthService] Failed to map the authenticated user.', error);
+          onError?.(error instanceof Error ? error.message : 'Your role could not be recovered. Please sign in again.');
           callback(null);
         });
     });
-    return unsubscribe;
+    return () => { active = false; generation += 1; unsubscribe(); };
   },
 };
 

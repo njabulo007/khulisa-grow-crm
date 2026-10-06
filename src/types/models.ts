@@ -6,6 +6,7 @@ export type UserRole = 'owner' | 'agent';
 
 export interface User {
   id: string;
+  uid?: string;
   email: string;
   name: string;
   role: UserRole;

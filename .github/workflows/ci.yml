@@ -31,6 +31,12 @@ jobs:
       - name: Run tests
         run: npm test -- --run
 
+      - name: Test Vercel API migration
+        run: npm run test:api
+
+      - name: Check frontend types
+        run: npx tsc --noEmit -p tsconfig.app.json
+
       - name: Build frontend
         run: npm run build
 

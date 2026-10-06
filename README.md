@@ -2,6 +2,8 @@
 
 Khulisa Grow CRM is a Vite + React + TypeScript application for managing leads, clients, projects, commissions, invoices, reports, and settings.
 
+For Vercel owner recovery and lead conversion while keeping Firebase Auth and Firestore, follow [the deployment guide](docs/VERCEL-MIGRATION.md). Existing Blob variables are reused.
+
 ## Getting Started
 
 ```sh
@@ -17,6 +19,7 @@ npm run dev
 - `npm run preview`: preview the production build
 - `npm run lint`: run ESLint
 - `npm run test`: run tests once with Vitest
+- `npm run test:api`: test authenticated Vercel endpoints and conversion retries
 - `npm run test:watch`: run Vitest in watch mode
 
 ## Tech Stack

@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, signup, isAuthenticated } = useAuth();
+  const { login, signup, isAuthenticated, authError } = useAuth();
 
   const [mode, setMode] = useState<'login' | 'signup'>('login');
   const [displayName, setDisplayName] = useState('');
@@ -147,7 +147,7 @@ export function LoginPage() {
                 </div>
               )}
 
-              {error && <p className="text-sm text-destructive">{error}</p>}
+              {(error || authError) && <p role="alert" className="text-sm text-destructive">{error || authError}</p>}
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? (mode === 'signup' ? 'Creating account...' : 'Signing in...') : mode === 'signup' ? 'Sign Up' : 'Log In'}

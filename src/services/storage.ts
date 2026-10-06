@@ -325,12 +325,10 @@ export const getCurrentAuthKeys = async (): Promise<string[]> => {
 
   const keys = new Set([currentUser.uid]);
   try {
-    const usersCollection = firestoreCollectionRef(db, 'users');
-    const profileSnapshot = await getDoc(firestoreDocRef(usersCollection, currentUser.uid));
-    const appUserId = profileSnapshot.exists() ? profileSnapshot.data().appUserId : null;
-    if (typeof appUserId === 'string' && appUserId.trim()) keys.add(appUserId.trim());
+    const claims = (await currentUser.getIdTokenResult()).claims;
+    if (typeof claims.appUserId === 'string' && claims.appUserId.trim()) keys.add(claims.appUserId.trim());
   } catch {
-    // The Firebase UID remains a valid fallback key.
+    // Only server-issued identity claims can extend the Firebase UID.
   }
   return Array.from(keys);
 };

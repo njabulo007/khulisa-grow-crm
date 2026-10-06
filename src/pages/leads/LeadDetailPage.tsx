@@ -25,7 +25,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
-import { activityService, authService, leadService } from '@/services';
+import { activityService, authService, leadConversionService, leadService } from '@/services';
 import { Activity, ActivityType, Lead, LeadStage, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 import { canAccessLead } from '@/lib/permissions';
@@ -57,6 +57,7 @@ export function LeadDetailPage() {
   const [newNote, setNewNote] = useState('');
   const [noteType, setNoteType] = useState<ActivityType>('note');
   const [isLoading, setIsLoading] = useState(true);
+  const [isChangingStage, setIsChangingStage] = useState(false);
 
   const usersById = useMemo(() => {
     return authService.getAll().reduce<Record<string, { id: string; name: string }>>((acc, currentUser) => {
@@ -124,23 +125,33 @@ export function LeadDetailPage() {
   }
 
   const handleStageChange = async (newStage: LeadStage) => {
+    if (isChangingStage || newStage === lead.stage) return;
     if (!canAccessLead(user, lead)) {
       toast.error('You do not have permission to update this lead');
       return;
     }
-    await leadService.update(lead.id, { stage: newStage });
+    setIsChangingStage(true);
+    try {
+      if (newStage === 'won') {
+        await leadConversionService.convert({ leadId: lead.id, createProject: false });
+      } else {
+        await leadService.update(lead.id, { stage: newStage });
 
-    await activityService.create({
-      type: 'status-change',
-      entityType: 'lead',
-      entityId: lead.id,
-      description: `Lead status changed from ${LEAD_STAGES[lead.stage].label} to ${LEAD_STAGES[newStage].label}`,
-      metadata: { from: lead.stage, to: newStage },
-      createdBy: user?.id || '',
-    });
+        await activityService.create({
+          type: 'status-change',
+          entityType: 'lead',
+          entityId: lead.id,
+          description: `Lead status changed from ${LEAD_STAGES[lead.stage].label} to ${LEAD_STAGES[newStage].label}`,
+          metadata: { from: lead.stage, to: newStage },
+          createdBy: user?.id || '',
+        });
+      }
 
-    await refreshLead();
-    toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+      await refreshLead();
+      toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Lead status could not be updated.');
+    } finally { setIsChangingStage(false); }
   };
 
   const handleAddActivity = async () => {
@@ -310,6 +321,7 @@ export function LeadDetailPage() {
             <CardContent>
               <Select
                 value={lead.stage}
+                disabled={isChangingStage}
                 onValueChange={(value) => {
                   void handleStageChange(value as LeadStage);
                 }}
@@ -390,4 +402,3 @@ export function LeadDetailPage() {
     </div>
   );
 }
-

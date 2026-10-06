@@ -72,12 +72,16 @@ export function AgentDashboard() {
       try {
         const now = new Date();
         await syncCommissionsFromInvoices();
-        const [myLeads, myProjects, myCommissions, allClients] = await Promise.all([
-          leadService.getByAgent(user.id),
-          projectService.getByAgent(user.id),
-          commissionService.getByAgent(user.id),
+        const [visibleLeads, visibleProjects, visibleCommissions, allClients] = await Promise.all([
+          leadService.getAll(),
+          projectService.getAll(),
+          commissionService.getAll(),
           clientService.getAll(),
         ]);
+
+        const myLeads = visibleLeads.filter((lead) => lead.assignedTo === user.id || lead.assignedTo === user.uid);
+        const myProjects = visibleProjects.filter((project) => project.assignedTo === user.id || project.assignedTo === user.uid);
+        const myCommissions = visibleCommissions.filter((commission) => commission.agentId === user.id || commission.agentId === user.uid);
 
         const activeLeads = myLeads.filter((lead) => lead.stage !== 'won' && lead.stage !== 'lost');
         const wonLeads = myLeads.filter((lead) => lead.stage === 'won');

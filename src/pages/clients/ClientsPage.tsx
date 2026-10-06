@@ -104,7 +104,7 @@ export function ClientsPage() {
   const accessibleClientIds = useMemo(() => {
     if (!user) return new Set<string>();
     if (isOwner) return new Set(allClients.map((client) => client.id));
-    return getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
+    return getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects, user.uid);
   }, [allClients, allLeads, allProjects, isOwner, user]);
 
   const clients = useMemo(() => {

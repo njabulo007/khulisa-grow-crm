@@ -89,7 +89,7 @@ export function CommissionsPage() {
       .filter((commission) => (agentFilter !== 'all' ? commission.agentId === agentFilter : true))
       .filter((commission) => (monthFilter !== 'all' ? getEarnedMonthKey(commission.earnedDate) === monthFilter : true))
       .filter((commission) => (statusFilter !== 'all' ? commission.status === statusFilter : true));
-    const base = isOwner ? ownerBase : allCommissions.filter((commission) => commission.agentId === user.id);
+    const base = isOwner ? ownerBase : allCommissions.filter((commission) => (commission.agentId === user.id || commission.agentId === user.uid));
     return base
       .sort((a, b) => {
         const aTime = a.earnedDate ? new Date(a.earnedDate).getTime() : new Date(a.updatedAt).getTime();
@@ -119,7 +119,7 @@ export function CommissionsPage() {
     const scope = user
       ? isOwner
         ? allCommissions
-        : allCommissions.filter((commission) => commission.agentId === user.id)
+        : allCommissions.filter((commission) => (commission.agentId === user.id || commission.agentId === user.uid))
       : [];
     const pending = scope
       .filter((commission) => commission.status === 'pending')

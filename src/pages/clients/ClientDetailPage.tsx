@@ -104,7 +104,7 @@ export function ClientDetailPage() {
   const projects = useMemo(() => {
     const projectList = allProjects.filter((project) => project.clientId === (id || ''));
     if (isOwner || !user) return projectList;
-    return projectList.filter((project) => project.assignedTo === user.id);
+    return projectList.filter((project) => (project.assignedTo === user.id || project.assignedTo === user.uid));
   }, [allProjects, id, isOwner, user]);
   const visibleInvoices = useMemo(() => {
     if (isOwner || !user) return invoices;
@@ -115,7 +115,7 @@ export function ClientDetailPage() {
   const canAccessClient = useMemo(() => {
     if (!client || !user) return false;
     if (isOwner) return true;
-    const linkedIds = getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
+    const linkedIds = getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects, user.uid);
     return linkedIds.has(client.id);
   }, [allClients, allLeads, allProjects, client, isOwner, user]);
 

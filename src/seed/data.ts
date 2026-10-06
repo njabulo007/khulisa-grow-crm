@@ -232,7 +232,7 @@ export const seedProjects: Project[] = [
     name: 'Mzansi Tech - Monthly Retainer',
     clientId: 'client_2',
     packageId: 'local-growth-engine',
-    packageName: 'Local Growth Engine (Most Popular)',
+    packageName: 'Local Growth Engine',
     packagePrice: 3500,
     status: 'in-progress',
     milestones: [
@@ -300,7 +300,7 @@ export const seedInvoices: Invoice[] = [
     clientId: 'client_2',
     projectId: 'project_2',
     packageId: 'local-growth-engine',
-    packageName: 'Local Growth Engine (Most Popular)',
+    packageName: 'Local Growth Engine',
     packagePrice: 3500,
     items: [{ id: 'item1', description: 'Local Growth Engine (Most Popular)', quantity: 1, unitPrice: 3500, total: 3500 }],
     subtotal: 3500,

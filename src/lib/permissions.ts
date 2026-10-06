@@ -7,26 +7,28 @@ export const getAgentLinkedClientIds = (
   userId: string,
   leads: Lead[],
   clients: Client[],
-  projects: Project[]
+  projects: Project[],
+  authUid?: string
 ): Set<string> => {
-  const linkedLeadIds = new Set(leads.filter((lead) => lead.assignedTo === userId).map((lead) => lead.id));
+  const keys = new Set([userId, ...(authUid ? [authUid] : [])]);
+  const linkedLeadIds = new Set(leads.filter((lead) => keys.has(lead.assignedTo)).map((lead) => lead.id));
   const clientIdsFromLeads = clients
     .filter((client) => client.leadId && linkedLeadIds.has(client.leadId))
     .map((client) => client.id);
   const clientIdsFromProjects = projects
-    .filter((project) => project.assignedTo === userId)
+    .filter((project) => keys.has(project.assignedTo))
     .map((project) => project.clientId);
   return new Set([...clientIdsFromLeads, ...clientIdsFromProjects]);
 };
 
 export const canAccessLead = (user: User | null | undefined, lead: Lead | null | undefined): boolean => {
   if (!user || !lead) return false;
-  return isOwnerUser(user) || lead.assignedTo === user.id;
+  return isOwnerUser(user) || (lead.assignedTo === user.id || lead.assignedTo === user.uid);
 };
 
 export const canAccessProject = (user: User | null | undefined, project: Project | null | undefined): boolean => {
   if (!user || !project) return false;
-  return isOwnerUser(user) || project.assignedTo === user.id;
+  return isOwnerUser(user) || (project.assignedTo === user.id || project.assignedTo === user.uid);
 };
 
 export const canAccessClient = (
@@ -38,7 +40,7 @@ export const canAccessClient = (
 ): boolean => {
   if (!user || !client) return false;
   if (isOwnerUser(user)) return true;
-  return getAgentLinkedClientIds(user.id, leads, clients, projects).has(client.id);
+  return getAgentLinkedClientIds(user.id, leads, clients, projects, user.uid).has(client.id);
 };
 
 export const canAccessInvoice = (
@@ -53,10 +55,10 @@ export const canAccessInvoice = (
 
   if (invoice.projectId) {
     const project = projects.find((item) => item.id === invoice.projectId);
-    if (project && project.assignedTo === user.id) return true;
+    if (project && (project.assignedTo === user.id || project.assignedTo === user.uid)) return true;
   }
 
-  return getAgentLinkedClientIds(user.id, leads, clients, projects).has(invoice.clientId);
+  return getAgentLinkedClientIds(user.id, leads, clients, projects, user.uid).has(invoice.clientId);
 };
 
 export const canAccessCommission = (
@@ -64,5 +66,5 @@ export const canAccessCommission = (
   commission: Commission | null | undefined
 ): boolean => {
   if (!user || !commission) return false;
-  return isOwnerUser(user) || commission.agentId === user.id;
+  return isOwnerUser(user) || (commission.agentId === user.id || commission.agentId === user.uid);
 };

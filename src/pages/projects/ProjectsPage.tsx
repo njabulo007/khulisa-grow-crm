@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Trash2 } from 'lucide-react';
 import { PageHeader, EmptyState, StatusBadge } from '@/components/common';
@@ -99,7 +99,7 @@ export function ProjectsPage() {
   const accessibleClientIds = useMemo(() => {
     if (!user) return new Set<string>();
     if (isOwner) return new Set(allClients.map((client) => client.id));
-    return getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects);
+    return getAgentLinkedClientIds(user.id, allLeads, allClients, allProjects, user.uid);
   }, [allClients, allLeads, allProjects, isOwner, user]);
 
   const accessibleClients = useMemo(

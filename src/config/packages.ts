@@ -74,7 +74,7 @@ export type PackageName = (typeof KHULISA_PACKAGES)[number]['name'];
 
 export const DEFAULT_PACKAGE_ID: PackageId = KHULISA_PACKAGES[0].id;
 
-export const getPackageById = (id: string | null | undefined) =>
+export const getPackageById = (id: string | null | undefined): (KhulisaPackage & { id: PackageId; name: PackageName }) | undefined =>
   KHULISA_PACKAGES.find((pkg) => pkg.id === id);
 
 export const getPackageNameById = (id: string | null | undefined): string =>

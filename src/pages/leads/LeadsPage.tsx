@@ -275,22 +275,30 @@ export function LeadsPage() {
           toast.error('You do not have permission to update this lead');
           return;
         }
-        await updateLead(selectedLead.id, payload);
+        const needsConversion = payload.stage === 'won' && (selectedLead.stage !== 'won' || !selectedLead.clientId);
+        await updateLead(selectedLead.id, { ...payload, ...(needsConversion ? { stage: selectedLead.stage } : {}) });
+        if (needsConversion) await leadConversionService.convert({ leadId: selectedLead.id, createProject: false });
         toast.success('Lead updated successfully');
       } else {
-        await createLead({
+        const created = await createLead({
           ...payload,
+          stage: payload.stage === 'won' ? 'new' : payload.stage,
           assignedTo: payload.assignedTo || user?.id || '',
           createdBy: user?.id || '',
         });
+        // Keep the saved lead selected if conversion fails, so a retry edits it
+        // instead of creating a second lead.
+        setSelectedLead(created);
+        if (payload.stage === 'won') await leadConversionService.convert({ leadId: created.id, createProject: false });
         toast.success('Lead created successfully');
       }
 
+      await refreshLeads();
       setShowAddDialog(false);
       resetForm();
     } catch (error) {
       console.error('[LeadsPage] Failed to save lead.', error);
-      toast.error('Lead could not be saved. Check your connection and try again.');
+      toast.error(error instanceof Error ? error.message : 'Lead could not be saved. Please retry.');
     } finally {
       setIsSaving(false);
     }
@@ -334,6 +342,12 @@ export function LeadsPage() {
     }
 
     try {
+      if (newStage === 'won') {
+        await leadConversionService.convert({ leadId, createProject: false });
+        await refreshLeads();
+        toast.success('Lead converted to client.');
+        return;
+      }
       await updateLead(leadId, { stage: newStage });
 
       await activityService.create({
@@ -386,7 +400,7 @@ export function LeadsPage() {
       navigate('/clients');
     } catch (error) {
       console.error('[LeadsPage] Failed to convert lead.', error);
-      toast.error('Lead conversion could not be completed. Check your connection and try again.');
+      toast.error(error instanceof Error ? error.message : 'Lead conversion could not be completed. Please retry.');
     } finally {
       setIsConverting(false);
     }
@@ -905,4 +919,3 @@ export function LeadsPage() {
     </div>
   );
 }
-

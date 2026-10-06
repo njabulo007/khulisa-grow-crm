@@ -14,6 +14,7 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  authError: string | null;
   isOwner: boolean;
   isAgent: boolean;
   login: (email: string, password: string) => Promise<void>;
@@ -26,6 +27,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const refreshCurrentUserFromCache = React.useCallback(() => {
     setUser((previous) => {
@@ -65,7 +67,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         normalizedEmail.split('@')[0] ||
         'User';
 
-      if (existing) {
+      if (existing && existing.id !== payload.id) authService.remove(existing.id);
+      if (existing && existing.id === payload.id) {
         const nextCommissionRate =
           payload.role === 'owner'
             ? 0
@@ -76,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 : getDefaultCommissionRatePercentForAgent(normalizedEmail);
 
         const updates: Partial<User> = {
+          uid: payload.uid,
           name: nextName,
           role: payload.role,
           isActive: true,
@@ -95,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       const created = authService.create({
         id: payload.id,
+        uid: payload.uid,
         email: normalizedEmail,
         name: nextName,
         role: payload.role,
@@ -126,10 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const normalizedEmail = profile.email.trim().toLowerCase();
         const allUsers = authService.getAll();
         const existingByEmail = allUsers.find((candidate) => candidate.email.toLowerCase() === normalizedEmail);
-        const targetId =
-          !profile.hasAppUserId && existingByEmail
-            ? existingByEmail.id
-            : profile.id;
+        const targetId = profile.id;
         const existingByTargetId = authService.getById(targetId);
         const nextName =
           profile.displayName ||
@@ -153,6 +155,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (existingByTargetId) {
           authService.update(existingByTargetId.id, {
+            uid: profile.uid,
             email: normalizedEmail,
             name: nextName,
             role: profile.role,
@@ -162,6 +165,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           authService.create({
             id: targetId,
+            uid: profile.uid,
             email: normalizedEmail,
             name: nextName,
             role: profile.role,
@@ -200,6 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      setAuthError(null);
       const mapped = upsertUserFromFirebase({
         id: firebaseUser.id,
         uid: firebaseUser.uid,
@@ -214,7 +219,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           refreshCurrentUserFromCache();
         });
       }
-    });
+    }, setAuthError);
 
     return unsubscribe;
   }, [refreshCurrentUserFromCache, syncUsersFromFirebaseProfiles, upsertUserFromFirebase]);
@@ -228,6 +233,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id]);
 
   const login = async (email: string, password: string): Promise<void> => {
+    setAuthError(null);
     const firebaseUser = await AuthService.loginWithPassword(email, password);
     const mapped = upsertUserFromFirebase({
       id: firebaseUser.id,
@@ -277,6 +283,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        authError,
         isOwner: user?.role === 'owner',
         isAgent: user?.role === 'agent',
         login,
