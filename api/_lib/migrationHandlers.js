@@ -137,6 +137,7 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
       const leadSnapshot = await transaction.get(leadRef);
       if (!leadSnapshot.exists) throw createHttpError(404, 'Lead not found.');
       const lead = leadSnapshot.data();
+      if (lead._deleting) throw createHttpError(409, 'This lead is being deleted. Finish deletion before converting it.');
       const keys = new Set([decoded.uid]);
       if (validId(decoded.appUserId)) keys.add(decoded.appUserId);
       if (Object.hasOwn(config.legacyIds, decoded.uid)) keys.add(config.legacyIds[decoded.uid]);
@@ -153,6 +154,7 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
         if (linkedClients.docs[0] && linkedClients.docs[0].id !== lead.clientId) throw createHttpError(409, 'This lead has conflicting client links.');
       }
       const clientSnapshot = await transaction.get(clientRef);
+      if (clientSnapshot.data()?._deleting) throw createHttpError(409, 'The linked client is being deleted.');
       if (lead.clientId && !clientSnapshot.exists) throw createHttpError(409, 'The linked client is missing.');
       if (clientSnapshot.exists && clientSnapshot.data().leadId !== leadId) throw createHttpError(409, 'The client is linked to another lead.');
       const previousActivity = await transaction.get(activityRef);
@@ -168,6 +170,7 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
           if (historicalProjects.docs[0]) { projectSnapshot = historicalProjects.docs[0]; projectRef = projectSnapshot.ref; }
         }
         if (projectSnapshot.exists && projectSnapshot.data().clientId !== clientRef.id) throw createHttpError(409, 'The conversion project is linked to another client.');
+        if (projectSnapshot.data()?._deleting) throw createHttpError(409, 'The linked project is being deleted.');
         if (previousProjectId && !projectSnapshot.exists) throw createHttpError(409, 'The conversion project was removed.');
       }
       const now = new Date().toISOString();
@@ -204,6 +207,7 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
     }
   };
   return {
+    authenticate,
     requireOwner,
     ensureRole: route(ensureRole, 'Role recovery is unavailable. Check the Vercel Firebase Admin configuration.'),
     setRole: route(setRole, 'The role update could not be completed. Retry or ask the user to sign in again to synchronize their role.'),

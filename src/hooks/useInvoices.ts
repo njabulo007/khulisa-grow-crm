@@ -1,3 +1,4 @@
+import type { DeletionOptions } from '@/services/deletionService';
 import { useCallback, useEffect, useState } from 'react';
 import { invoiceService } from '@/services';
 import { Invoice } from '@/types/models';
@@ -14,7 +15,7 @@ export interface UseInvoicesResult {
   getNextNumber: () => Promise<string>;
   createInvoice: (invoice: InvoiceCreateInput) => Promise<Invoice>;
   updateInvoice: (id: string, updates: InvoiceUpdateInput) => Promise<Invoice | null>;
-  removeInvoice: (id: string) => Promise<boolean>;
+  removeInvoice: (id: string, options?: DeletionOptions) => Promise<boolean>;
 }
 
 export function useInvoices(): UseInvoicesResult {
@@ -60,8 +61,8 @@ export function useInvoices(): UseInvoicesResult {
   );
 
   const removeInvoice = useCallback(
-    async (id: string) => {
-      const removed = await invoiceService.remove(id);
+    async (id: string, options?: DeletionOptions) => {
+      const removed = await invoiceService.remove(id, options);
       await refresh();
       return removed;
     },

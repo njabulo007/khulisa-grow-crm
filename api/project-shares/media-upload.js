@@ -112,6 +112,9 @@ export default async function handler(req, res) {
       throw createHttpError(409, 'Only active share links can receive media uploads.');
     }
 
+    const project = await adminDb.collection('projects').doc(projectId).get();
+    if (!project.exists || project.data()._deleting) throw createHttpError(409, 'Project deletion is in progress or the project is missing.');
+
     const payload = await readBodyBuffer(req);
     const mimeType = asTrimmed(req.headers['x-file-type']) || asTrimmed(req.headers['content-type']) || 'application/octet-stream';
     const blob = await put(buildBlobPath({ projectId, shareId, fileName }), payload, {

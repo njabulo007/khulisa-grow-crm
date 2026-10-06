@@ -228,7 +228,7 @@ export function ClientsPage() {
       setDeleteConfirm(null);
     } catch (error) {
       console.error('[ClientsPage] Failed to delete client.', error);
-      toast.error('Client could not be deleted. Check your connection and try again.');
+      toast.error(error instanceof Error ? error.message : 'Client deletion failed. Please retry.');
     }
   };
 
@@ -535,7 +535,7 @@ export function ClientsPage() {
         open={!!deleteConfirm}
         onOpenChange={() => setDeleteConfirm(null)}
         title="Delete Client"
-        description="Are you sure you want to delete this client? All associated data will be preserved but unlinked."
+        description="Permanently delete this client, its notes, notifications, and portal files? Delete or reassign linked projects and invoices first. Existing leads are kept and unlinked."
         confirmLabel="Delete"
         onConfirm={() => {
           if (!deleteConfirm) return;

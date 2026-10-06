@@ -1,3 +1,4 @@
+import { deleteCrmRecord } from './deletionService';
 import { Client } from '@/types/models';
 import {
   FirestoreCollection,
@@ -64,7 +65,7 @@ class FirestoreClientService implements ClientService {
   }
 
   async remove(id: string): Promise<boolean> {
-    return this.collection.remove(id);
+    return deleteCrmRecord('client', id);
   }
 
   async seedIfMissing(seedData: Client[]): Promise<void> {

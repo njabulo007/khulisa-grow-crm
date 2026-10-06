@@ -30,33 +30,18 @@ export default async function handler(req, res) {
     const shareRef = adminDb.collection(PROJECT_SHARES_COLLECTION).doc(shareId);
     const media = buildPortalMediaFromPayload(payload);
     const now = nowIso();
-    const snapshot = await shareRef.get();
-    if (!snapshot.exists) {
-      throw createHttpError(404, 'Share link not found.');
-    }
-
-    const share = snapshot.data() || {};
-    const linkedProjectId = typeof share.projectId === 'string' ? share.projectId.trim() : '';
-    if (!linkedProjectId || linkedProjectId !== projectId) {
-      throw createHttpError(409, 'Share link does not match this project.');
-    }
-
-    const shareStatus = computeShareStatus(share);
-    if (shareStatus !== 'active') {
-      throw createHttpError(409, 'Only active share links can receive media uploads.');
-    }
-
-    const existingMedia = normalizePortalMedia(share.media);
-    assertPortalMediaCapacity(existingMedia);
-
-    const persisted = {
-      ...media,
-      createdAt: now,
-    };
-
-    await shareRef.update({
-      media: FieldValue.arrayUnion(persisted),
-      updatedAt: now,
+    const persisted = { ...media, createdAt: now };
+    await adminDb.runTransaction(async (transaction) => {
+      const [snapshot, project] = await Promise.all([
+        transaction.get(shareRef), transaction.get(adminDb.collection('projects').doc(projectId)),
+      ]);
+      if (!snapshot.exists) throw createHttpError(404, 'Share link not found.');
+      if (!project.exists || project.data()._deleting) throw createHttpError(409, 'Project deletion is in progress or the project is missing.');
+      const share = snapshot.data() || {};
+      if (share.projectId !== projectId) throw createHttpError(409, 'Share link does not match this project.');
+      if (computeShareStatus(share) !== 'active') throw createHttpError(409, 'Only active share links can receive media uploads.');
+      assertPortalMediaCapacity(normalizePortalMedia(share.media));
+      transaction.update(shareRef, { media: FieldValue.arrayUnion(persisted), updatedAt: now });
     });
 
     return json(res, 200, { media: persisted });

@@ -27,9 +27,12 @@ export default async function handler(req, res) {
     const deletion = await revokeShareAndDeleteMedia({
       shareRef,
       shareData: snapshot.data() || {},
+      shareUpdateTime: snapshot.updateTime,
       revokedBy: uid,
       now,
     });
+
+    if (deletion.failed) throw createHttpError(502, 'Link revoked, but some files could not be deleted. Their references were kept. Retry file cleanup.');
 
     return json(res, 200, {
       ok: true,

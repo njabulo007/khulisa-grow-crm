@@ -7,8 +7,27 @@ Firebase continues to store accounts and CRM data. Vercel now runs these authent
 | `POST /api/auth/ensure-role` | Recover the canonical profile and Firebase role claims during sign-in |
 | `POST /api/auth/set-role` | Let an owner change another user's role |
 | `POST /api/leads/convert` | Atomically create/link a client, optionally create a project, and mark the lead Won |
+| `POST /api/records/delete` | Delete a lead/client/project/invoice and its owned notes, notifications, portal files, and other confirmed dependants |
 
 These operations no longer call Firebase Functions. The existing portal and Blob endpoints remain in place, and owner authorization also checks the canonical profile. Every protected endpoint verifies the Firebase bearer token. The recovery UID list is server configuration; supplying a role or email in a browser request cannot grant ownership.
+
+## Deletion cleanup update
+
+Deploy the updated code and republish `firestore.rules` together. No additional environment variables are required. Parent records must now be deleted through the authenticated cleanup endpoint; older cached frontends attempting a direct parent delete will receive permission denied under the new rules.
+
+| Delete action | Cleanup and protections |
+| --- | --- |
+| Lead | Deletes the lead, its activities and reminders; keeps its converted client/projects and removes the client's obsolete lead link. |
+| Client | Blocks while projects or invoices remain linked. Once resolved, deletes the client, its activities, notifications, portal shares/files, and removes retained leads' client links. |
+| Project | Blocks while invoices or commissions remain linked. Deletes the project, its activities, notifications, portal shares, Firebase Storage files and Vercel Blob files referenced by those shares. Keeps the client and lead. |
+| Invoice | Protects linked payments/commissions unless the owner explicitly selects the existing force-delete checkbox. Deletes the confirmed dependants, invoice activities, reminders, and invoice. |
+| Portal link revocation | Immediately disables the link, removes its files, and removes the share document when cleanup succeeds. Failed file paths remain on a revoked share with a Retry File Cleanup button. |
+
+Deleting payments, commissions, notes and dismissed notifications already performs a Firestore document deletion. Removing a user from the local authentication cache during sign-in is not an account deletion; this update does not delete Firebase Auth accounts.
+
+Cleanup queries use record IDs rather than loading entire collections and split large histories into bounded batches. The parent is marked `_deleting` during cleanup to prevent new linked writes, and is removed last. If cleanup fails, refresh and retry deletion; the parent remains locked against edits until deletion finishes. External file deletion cannot be rolled back, so files successfully removed before a later failure remain removed. Never clear failed file references just to dismiss the error.
+
+This change prevents new leftovers through these CRM delete actions. It does not automatically purge records/files left behind by earlier versions or delete untracked uploads. Firestore deletion reduces stored data but itself uses writes; normal reads/writes, file storage, and other quotas still apply, so cleanup cannot guarantee remaining within Spark limits.
 
 ## 1. Record your Firebase owner UID and existing assignment IDs
 
@@ -108,4 +127,4 @@ npm run build
 
 `npm run dev` serves the Vite UI only. To exercise actual API routes locally, use Vercel's local development runtime with server credentials. Automated API tests use a fake Auth/transaction store and never touch production records; a live deployment check is still required.
 
-Validation for this change: 18 server regression tests and 15 frontend/domain tests passed; TypeScript checking and the production/PWA build passed. Lint retained nine existing warnings and no errors. A browser smoke check with mocked authentication and empty service fixtures rendered eight routes at desktop/mobile widths without runtime errors. The Firestore emulator download was blocked by the environment's network proxy (HTTP 403), so emulator rules validation remains unverified; Firebase Console will compile the rules when you publish them.
+Validation for the migration and deletion update: 31 server regression tests and 17 frontend/domain tests passed; TypeScript checking and the production/PWA build passed. Lint retained nine existing warnings and no errors. The earlier migration browser smoke check with mocked authentication and empty service fixtures rendered eight routes at desktop/mobile widths without runtime errors. The Firestore emulator download was blocked by the environment's network proxy (HTTP 403), so emulator rules validation remains unverified; Firebase Console will compile the rules when you publish them. Test deletion against disposable linked records after deployment, including a protected invoice and a portal file.

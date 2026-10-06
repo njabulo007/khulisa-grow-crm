@@ -391,15 +391,19 @@ export function ProjectDetailPage() {
       return;
     }
 
-    const removed = await projectService.remove(project.id);
-    if (!removed) {
-      toast.error('Project could not be deleted.');
-      return;
-    }
+    try {
+      const removed = await projectService.remove(project.id);
+      if (!removed) {
+        toast.error('Project could not be deleted.');
+        return;
+      }
 
-    toast.success('Project deleted successfully.');
-    setShowDeleteDialog(false);
-    navigate('/projects');
+      toast.success('Project deleted successfully.');
+      setShowDeleteDialog(false);
+      navigate('/projects');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Project deletion failed. Please retry.');
+    }
   };
 
   const handleCreatePortalLink = async () => {
@@ -444,6 +448,7 @@ export function ProjectDetailPage() {
       await loadPortalShares(project.id);
       toast.success('Portal link revoked.');
     } catch (error) {
+      await loadPortalShares(project.id);
       const message = error instanceof Error ? error.message : 'Failed to revoke portal link.';
       toast.error(message);
     } finally {
@@ -1037,14 +1042,14 @@ export function ProjectDetailPage() {
                               {share.revokedAt && (
                                 <p className="text-xs text-muted-foreground">Revoked: {formatDateTime(share.revokedAt)}</p>
                               )}
-                              {isShareActive && (
+                              {(isShareActive || share.media.length > 0) && (
                                 <Button
                                   variant="outline"
                                   size="sm"
                                   disabled={isRevokingShareId === share.id}
                                   onClick={() => void handleRevokePortalLink(share.id)}
                                 >
-                                  Revoke Link
+                                  {isShareActive ? 'Revoke Link' : 'Retry File Cleanup'}
                                 </Button>
                               )}
                             </div>
@@ -1088,8 +1093,8 @@ export function ProjectDetailPage() {
           <DialogHeader>
             <DialogTitle>Delete Project</DialogTitle>
             <DialogDescription>
-              Delete this project? This will not delete invoices or leads, but the project will be removed from the
-              system.
+              Permanently delete this project, its notes, notifications, portal links, and uploaded portal files?
+              Linked invoices must be deleted or detached first. The client and lead are kept.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

@@ -340,40 +340,34 @@ export function InvoiceDetailPage() {
       return;
     }
 
-    const [linkedPayments, linkedCommissions] = await Promise.all([
-      paymentService.getByInvoiceId(invoice.id),
-      commissionService.getByInvoiceId(invoice.id),
-    ]);
-    const hasLinkedRecords = linkedPayments.length > 0 || linkedCommissions.length > 0;
-    if (hasLinkedRecords && !forceDeleteLinkedData) {
-      toast.error('This invoice has linked payments/commissions. Enable force delete to remove linked records too.');
-      return;
-    }
-
-    if (hasLinkedRecords && forceDeleteLinkedData) {
-      for (const payment of linkedPayments) {
-        await paymentService.remove(payment.id);
+    try {
+      const [linkedPayments, linkedCommissions] = await Promise.all([
+        paymentService.getByInvoiceId(invoice.id),
+        commissionService.getByInvoiceId(invoice.id),
+      ]);
+      const hasLinkedRecords = linkedPayments.length > 0 || linkedCommissions.length > 0;
+      if (hasLinkedRecords && !forceDeleteLinkedData) {
+        toast.error('This invoice has linked payments/commissions. Enable force delete to remove linked records too.');
+        return;
       }
-      const commissionsAfterPaymentRemoval = await commissionService.getByInvoiceId(invoice.id);
-      for (const commission of commissionsAfterPaymentRemoval) {
-        await commissionService.remove(commission.id);
+
+      const removed = await invoiceService.remove(invoice.id, { forceLinked: forceDeleteLinkedData });
+      if (!removed) {
+        toast.error('Invoice could not be deleted.');
+        return;
       }
-    }
 
-    const removed = await invoiceService.remove(invoice.id);
-    if (!removed) {
-      toast.error('Invoice could not be deleted.');
-      return;
+      if (hasLinkedRecords && forceDeleteLinkedData) {
+        toast.success('Invoice and linked records deleted successfully.');
+      } else {
+        toast.success('Invoice deleted successfully.');
+      }
+      setShowDeleteDialog(false);
+      setForceDeleteLinkedData(false);
+      navigate('/invoices');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Invoice deletion failed. Please retry.');
     }
-
-    if (hasLinkedRecords && forceDeleteLinkedData) {
-      toast.success('Invoice and linked records deleted successfully.');
-    } else {
-      toast.success('Invoice deleted successfully.');
-    }
-    setShowDeleteDialog(false);
-    setForceDeleteLinkedData(false);
-    navigate('/invoices');
   };
 
   return (

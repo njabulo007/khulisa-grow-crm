@@ -34,6 +34,7 @@ export default async function handler(req, res) {
     }
 
     const project = projectSnapshot.data() || {};
+    if (project._deleting) throw createHttpError(409, 'Project deletion is in progress.');
     const projectStatus = typeof project.status === 'string' ? project.status : 'not-started';
     if (isProjectClosed(projectStatus)) {
       throw createHttpError(409, 'Cannot create links for completed/delivered projects.');
@@ -63,20 +64,20 @@ export default async function handler(req, res) {
     if (!existingShares.empty) {
       for (const docSnapshot of existingShares.docs) {
         const data = docSnapshot.data() || {};
-        if (data.status === 'active' && !data.revokedAt) {
-          await revokeShareAndDeleteMedia({
-            shareRef: docSnapshot.ref,
-            shareData: data,
-            revokedBy: uid,
-            now,
-          });
-        }
+        const deletion = await revokeShareAndDeleteMedia({
+          shareRef: docSnapshot.ref,
+          shareData: data,
+          shareUpdateTime: docSnapshot.updateTime,
+          revokedBy: uid,
+          now,
+        });
+        if (deletion.failed) throw createHttpError(502, 'Old portal files could not be deleted. Retry cleanup before creating another link.');
       }
     }
 
     const token = crypto.randomBytes(32).toString('hex');
     const shareRef = adminDb.collection(PROJECT_SHARES_COLLECTION).doc();
-    await shareRef.set({
+    const newShare = {
       projectId,
       clientId,
       tokenHash: tokenHash(token),
@@ -89,6 +90,16 @@ export default async function handler(req, res) {
       updatedAt: now,
       lastViewedAt: null,
       media: [],
+    };
+    await adminDb.runTransaction(async (transaction) => {
+      const [currentProject, currentClient] = await Promise.all([
+        transaction.get(projectSnapshot.ref), transaction.get(adminDb.collection(CLIENTS_COLLECTION).doc(clientId)),
+      ]);
+      if (!currentProject.exists || !currentClient.exists || currentProject.data()._deleting || currentClient.data()._deleting
+        || currentProject.data().clientId !== clientId || isProjectClosed(currentProject.data().status)) {
+        throw createHttpError(409, 'The project or client changed. Refresh before creating a portal link.');
+      }
+      transaction.set(shareRef, newShare);
     });
 
     return json(res, 200, {

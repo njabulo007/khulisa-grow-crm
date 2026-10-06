@@ -1,4 +1,5 @@
-﻿import { getPackageById, resolvePackageId } from '@/config/packages';
+import { deleteCrmRecord } from './deletionService';
+import { getPackageById, resolvePackageId } from '@/config/packages';
 import {
   getAutoProjectStatusFromMilestones,
   normalizeProjectMilestones,
@@ -36,12 +37,6 @@ export interface ProjectService {
 class FirestoreProjectService implements ProjectService {
   // TODO: Keep this service boundary stable and swap internals with richer Firestore queries as needed.
   private readonly collection = new FirestoreCollection<Project & { packageType?: string }>('projects');
-  private readonly activitiesCollection = new FirestoreCollection<{ id: string; entityType: string; entityId: string }>('activities');
-  private readonly notificationsCollection = new FirestoreCollection<{ id: string; projectId?: string; invoiceId?: string }>('notifications');
-  private readonly sharesCollection = new FirestoreCollection<{ id: string; projectId?: string }>('project_shares');
-  private readonly invoicesCollection = new FirestoreCollection<{ id: string; projectId?: string }>('invoices');
-  private readonly paymentsCollection = new FirestoreCollection<{ id: string; invoiceId?: string }>('payments');
-  private readonly commissionsCollection = new FirestoreCollection<{ id: string; invoiceId?: string }>('commissions');
 
   private normalizeProject(project: Project & { packageType?: string }): Project {
     const packageId = resolvePackageId(project.packageId ?? project.packageType);
@@ -196,29 +191,7 @@ class FirestoreProjectService implements ProjectService {
   }
 
   async remove(id: string): Promise<boolean> {
-    const linkedInvoices = (await this.invoicesCollection.getAll()).filter((invoice) => invoice.projectId === id);
-    const removed = await this.collection.remove(id);
-    if (!removed) return false;
-    await Promise.all(
-      linkedInvoices.flatMap((invoice) => [
-        this.invoicesCollection.remove(invoice.id),
-        this.paymentsCollection.removeWhere('invoiceId', invoice.id),
-        this.commissionsCollection.removeWhere('invoiceId', invoice.id),
-        this.notificationsCollection.removeWhere('invoiceId', invoice.id),
-      ]),
-    );
-    await Promise.all([
-      this.activitiesCollection.getAll().then((activities) =>
-        Promise.all(
-          activities
-            .filter((entry) => entry.entityType === 'project' && entry.entityId === id)
-            .map((entry) => this.activitiesCollection.remove(entry.id)),
-        ),
-      ),
-      this.notificationsCollection.removeWhere('projectId', id),
-      this.sharesCollection.removeWhere('projectId', id),
-    ]);
-    return true;
+    return deleteCrmRecord('project', id);
   }
 
   async seedIfMissing(seedData: Project[]): Promise<void> {

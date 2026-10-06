@@ -17,7 +17,7 @@ export async function authenticatedPost<T>(path: string, payload: unknown = {}, 
     if (!data || typeof data !== 'object') throw new Error('The CRM API is unavailable. Deploy the latest API routes to Vercel.');
     return data as T;
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') throw new Error('The request timed out. Please retry; conversions will not be duplicated.');
+    if (error instanceof Error && error.name === 'AbortError') throw new Error('The request timed out. Refresh to check the result, then retry if needed.');
     throw error;
   } finally { clearTimeout(timeout); }
 }

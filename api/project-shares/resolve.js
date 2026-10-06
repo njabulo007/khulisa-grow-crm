@@ -58,6 +58,7 @@ export default async function handler(req, res) {
     }
 
     const project = projectSnapshot.data() || {};
+    if (project._deleting) throw createHttpError(403, 'This project is being deleted.');
     const projectStatus = typeof project.status === 'string' ? project.status : 'not-started';
     if (isProjectClosed(projectStatus)) {
       await shareDoc.ref.update({

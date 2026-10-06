@@ -26,6 +26,16 @@ service cloud.firestore {
       return signedIn() && (value == request.auth.uid || value == userKey());
     }
 
+    function available(collectionName, id) {
+      return id is string
+        && exists(/databases/$(database)/documents/$(collectionName)/$(id))
+        && get(/databases/$(database)/documents/$(collectionName)/$(id)).data.get('_deleting', false) != true;
+    }
+
+    function optionalAvailable(data, key, collectionName) {
+      return data.get(key, null) == null || data.get(key, '') == '' || available(collectionName, data.get(key, ''));
+    }
+
     function validLeadData(data) {
       return data.businessName is string
         && data.contactName is string
@@ -156,69 +166,91 @@ service cloud.firestore {
         && (isOwner()
         || (sameUser(request.resource.data.assignedTo) && sameUser(request.resource.data.createdBy)));
       allow update: if validLeadData(request.resource.data)
+        && resource.data.get('_deleting', false) != true
         && (request.resource.data.stage != 'won' || resource.data.stage == 'won')
         && request.resource.data.get('clientId', null) == resource.data.get('clientId', null)
         && (isOwner()
         || (sameUser(resource.data.assignedTo)
           && sameUser(request.resource.data.assignedTo)
           && request.resource.data.createdBy == resource.data.createdBy));
-      allow delete: if isOwner() || sameUser(resource.data.assignedTo);
+      // Parent deletion and dependant cleanup are handled by the verified API.
+      allow delete: if false;
     }
 
     match /clients/{clientId} {
       allow read: if isOwner() || clientAccessible(clientId);
       allow create: if validClientData(request.resource.data)
+        && optionalAvailable(request.resource.data, 'leadId', 'leads')
         && (isOwner() || sameUser(request.resource.data.createdBy));
       allow update: if validClientData(request.resource.data)
+        && resource.data.get('_deleting', false) != true
+        && optionalAvailable(request.resource.data, 'leadId', 'leads')
         && (isOwner()
         || (clientAccessible(clientId)
           && request.resource.data.diff(resource.data).affectedKeys().hasNone(['createdBy', 'leadId', 'visibleTo'])));
-      allow delete: if isOwner();
+      allow delete: if false;
     }
 
     match /projects/{projectId} {
       allow read: if isOwner() || sameUser(resource.data.assignedTo);
       allow create: if validProjectData(request.resource.data)
+        && available('clients', request.resource.data.clientId)
         && (isOwner()
         || (sameUser(request.resource.data.assignedTo) && sameUser(request.resource.data.createdBy)));
       allow update: if validProjectData(request.resource.data)
+        && resource.data.get('_deleting', false) != true
+        && available('clients', request.resource.data.clientId)
         && (isOwner()
         || (sameUser(resource.data.assignedTo)
           && sameUser(request.resource.data.assignedTo)
           && request.resource.data.diff(resource.data).affectedKeys().hasNone(['clientId', 'createdBy'])));
-      allow delete: if isOwner();
+      allow delete: if false;
     }
 
     match /invoices/{invoiceId} {
       allow read: if isOwner() || invoiceAccessible(invoiceId);
-      allow create, update: if isOwner() && validInvoiceData(request.resource.data);
-      allow delete: if isOwner();
+      allow create: if isOwner() && validInvoiceData(request.resource.data)
+        && available('clients', request.resource.data.clientId)
+        && optionalAvailable(request.resource.data, 'projectId', 'projects');
+      allow update: if isOwner() && validInvoiceData(request.resource.data)
+        && resource.data.get('_deleting', false) != true
+        && available('clients', request.resource.data.clientId)
+        && optionalAvailable(request.resource.data, 'projectId', 'projects');
+      allow delete: if false;
     }
 
     match /payments/{paymentId} {
       allow read: if isOwner() || invoiceAccessible(resource.data.invoiceId);
-      allow create, update: if isOwner() && validPaymentData(request.resource.data);
+      allow create, update: if isOwner() && validPaymentData(request.resource.data)
+        && available('invoices', request.resource.data.invoiceId);
       allow delete: if isOwner();
     }
 
     match /commissions/{commissionId} {
       allow read: if isOwner() || sameUser(resource.data.agentId);
-      allow create, update, delete: if isOwner();
+      allow create, update: if isOwner() && available('invoices', request.resource.data.invoiceId)
+        && optionalAvailable(request.resource.data, 'projectId', 'projects');
+      allow delete: if isOwner();
     }
 
     match /activities/{activityId} {
       allow read: if isOwner()
         || sameUser(resource.data.createdBy)
         || activityAccessible(resource.data.entityType, resource.data.entityId);
-      allow create: if isOwner()
+      allow create: if available(request.resource.data.entityType + 's', request.resource.data.entityId)
+        && (isOwner()
         || (sameUser(request.resource.data.createdBy)
-          && activityAccessible(request.resource.data.entityType, request.resource.data.entityId));
+          && activityAccessible(request.resource.data.entityType, request.resource.data.entityId)));
       allow update, delete: if isOwner() || sameUser(resource.data.createdBy);
     }
 
     match /notifications/{notificationId} {
       allow read, update, delete: if isOwner() || sameUser(resource.data.userId);
-      allow create: if isOwner() || sameUser(request.resource.data.userId);
+      allow create: if (isOwner() || sameUser(request.resource.data.userId))
+        && optionalAvailable(request.resource.data, 'leadId', 'leads')
+        && optionalAvailable(request.resource.data, 'clientId', 'clients')
+        && optionalAvailable(request.resource.data, 'projectId', 'projects')
+        && optionalAvailable(request.resource.data, 'invoiceId', 'invoices');
     }
 
     match /push_tokens/{tokenId} {

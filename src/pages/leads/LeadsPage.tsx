@@ -908,7 +908,7 @@ export function LeadsPage() {
         open={!!deleteConfirm}
         onOpenChange={() => setDeleteConfirm(null)}
         title="Delete Lead"
-        description="Are you sure you want to delete this lead? This action cannot be undone."
+        description="Permanently delete this lead, its notes, and notifications? Its converted client and projects are kept; the client is unlinked from the deleted lead."
         confirmLabel="Delete"
         onConfirm={() => {
           if (!deleteConfirm) return;

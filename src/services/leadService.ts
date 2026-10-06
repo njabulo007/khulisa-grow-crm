@@ -1,3 +1,4 @@
+import { deleteCrmRecord } from './deletionService';
 import {
   formatCommissionRatePercent,
   getCommissionRateForAgent,
@@ -231,7 +232,7 @@ class FirestoreLeadService implements LeadService {
   }
 
   async remove(id: string): Promise<boolean> {
-    return this.collection.remove(id);
+    return deleteCrmRecord('lead', id);
   }
 
   async seedIfMissing(seedData: Lead[]): Promise<void> {

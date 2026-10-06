@@ -204,16 +204,20 @@ export function ProjectsPage() {
       return;
     }
 
-    const removed = await projectService.remove(projectToDelete.id);
-    if (!removed) {
-      toast.error('Project could not be deleted.');
-      return;
-    }
+    try {
+      const removed = await projectService.remove(projectToDelete.id);
+      if (!removed) {
+        toast.error('Project could not be deleted.');
+        return;
+      }
 
-    toast.success('Project deleted successfully.');
-    setShowDeleteDialog(false);
-    setProjectToDelete(null);
-    await loadData();
+      toast.success('Project deleted successfully.');
+      setShowDeleteDialog(false);
+      setProjectToDelete(null);
+      await loadData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Project deletion failed. Please retry.');
+    }
   };
 
   return (
@@ -471,8 +475,8 @@ export function ProjectsPage() {
           <DialogHeader>
             <DialogTitle>Delete Project</DialogTitle>
             <DialogDescription>
-              Delete this project? This will not delete invoices or leads, but the project will be removed from the
-              system.
+              Permanently delete this project, its notes, notifications, portal links, and uploaded portal files?
+              Linked invoices must be deleted or detached first. The client and lead are kept.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
