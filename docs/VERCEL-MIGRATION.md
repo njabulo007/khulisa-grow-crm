@@ -8,8 +8,24 @@ Firebase continues to store accounts and CRM data. Vercel now runs these authent
 | `POST /api/auth/set-role` | Let an owner change another user's role |
 | `POST /api/leads/convert` | Atomically create/link a client, optionally create a project, and mark the lead Won |
 | `POST /api/records/delete` | Delete a lead/client/project/invoice and its owned notes, notifications, portal files, and other confirmed dependants |
+| `POST /api/notifications/push` | Deliver a saved CRM notification through Firebase Cloud Messaging from Vercel |
 
 These operations no longer call Firebase Functions. The existing portal and Blob endpoints remain in place, and owner authorization also checks the canonical profile. Every protected endpoint verifies the Firebase bearer token. The recovery UID list is server configuration; supplying a role or email in a browser request cannot grant ownership.
+
+## Android background push update
+
+New notifications created by CRM service actions now save their bell item in Firestore and request push delivery from Vercel. The recipient PWA does not need to remain open. Firebase Cloud Messaging remains the push transport; a billed Firebase Function is no longer needed to deliver these notifications. This does not create scheduled reminders while every CRM session is closed; the existing reminder scheduler is a separate Function.
+
+1. In **Firebase Console → Project settings → Cloud Messaging → Web Push certificates**, copy the public key pair value, or generate a key pair if none exists.
+2. Add `VITE_FIREBASE_VAPID_KEY` with that public key to **Vercel → Settings → Environment Variables → Production**, then redeploy. This is the public Web Push key, not the service account's private key. Reuse the existing Firebase Admin server credentials.
+3. The Firebase Cloud Messaging API must be enabled for this Firebase project, and the service account needs permission to send FCM messages. If delivery fails, inspect Vercel logs for the Firebase error code and the notification's `pushStatus` in Firestore.
+4. Update/reopen the installed Android PWA, sign in as the recipient agent, and use **bell → Enable / retry background notifications**. It should report **Background push registered**. Granted browser permission alone does not confirm a registered FCM token.
+5. Keep Android app/site notifications allowed, including lock-screen notifications and banners if desired. Disable Do Not Disturb for the test. Do not force-stop Chrome or the PWA; Android force-stop and battery restrictions can prevent background delivery.
+6. Close the PWA, keep the phone online, and use an owner account on another device to assign a new test lead to that agent. Check the Android notification tray and tap the notification to open its lead. Self-assigned lead creation deliberately does not notify the creator.
+
+The API sends a data message and the service worker displays it once. Delivery leases suppress immediate retries; invalid device tokens are removed. `pushStatus` values include `sent`, `failed`, and `no-devices`; `sent` means FCM accepted delivery, not proof that Android displayed it. Offline recipients may receive queued messages after reconnecting within the configured 24-hour TTL. Heads-up banners depend on Android settings; web code cannot force them.
+
+If the old Firebase `sendWebPushOnNotificationCreate` Function is still active, disable that sender or deploy the included guard so notifications marked `pushManagedBy: vercel` are not sent twice. The Vercel route does not automatically replay old bell items or notifications created directly in Firebase Console. If the initiating browser closes between saving an item and requesting push, that item can remain in the bell without being pushed; there is no persistent delivery queue yet.
 
 ## Deletion cleanup update
 
@@ -110,7 +126,7 @@ Conversions do not delete duplicate historical clients. An inconsistent existing
 
 ## Scope and costs
 
-This is a migration of owner recovery, role changes, and lead conversion. Payment reconciliation, commission triggers, scheduled reminders, and push delivery still have Firebase Functions implementations under `functions/`; this change does not restore those services if they are blocked by billing. The broader audit remains a separate repair list.
+This migration covers owner recovery, role changes, lead conversion, deletion cleanup, and push delivery for notifications created through the CRM. Payment reconciliation, commission triggers, and scheduled reminder generation still have Firebase Functions implementations under `functions/`; this change does not restore those services if they are blocked by billing. The broader audit remains a separate repair list.
 
 Vercel compute, Blob, and Firebase Auth/Firestore all have separate quotas; moving these endpoints does not remove Firebase database limits. Vercel Hobby eligibility also needs checking for a business CRM: its published policy has limited Hobby to personal, non-commercial use. Current numeric allowances were not verified from this environment; check the current plan and Blob usage in your Vercel dashboard before relying on a free deployment.
 
@@ -127,4 +143,4 @@ npm run build
 
 `npm run dev` serves the Vite UI only. To exercise actual API routes locally, use Vercel's local development runtime with server credentials. Automated API tests use a fake Auth/transaction store and never touch production records; a live deployment check is still required.
 
-Validation for the migration and deletion update: 31 server regression tests and 17 frontend/domain tests passed; TypeScript checking and the production/PWA build passed. Lint retained nine existing warnings and no errors. The earlier migration browser smoke check with mocked authentication and empty service fixtures rendered eight routes at desktop/mobile widths without runtime errors. The Firestore emulator download was blocked by the environment's network proxy (HTTP 403), so emulator rules validation remains unverified; Firebase Console will compile the rules when you publish them. Test deletion against disposable linked records after deployment, including a protected invoice and a portal file.
+Validation for the migration, deletion, and push updates: 37 server regression tests and 19 frontend/domain tests passed; TypeScript checking and the production/PWA build passed. Lint retained nine existing warnings and no errors. The earlier migration browser smoke check with mocked authentication and empty service fixtures rendered eight routes at desktop/mobile widths without runtime errors. The Firestore emulator download was blocked by the environment's network proxy (HTTP 403), so emulator rules validation remains unverified; Firebase Console will compile the rules when you publish them. Test deletion against disposable linked records after deployment, including a protected invoice and a portal file. Push tests simulate FCM and the service worker; real Android delivery still requires the deployment/device check above.

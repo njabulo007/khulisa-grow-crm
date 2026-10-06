@@ -1,4 +1,5 @@
 import { db } from '@/lib/firebase';
+import { authenticatedPost } from './apiClient';
 import { Notification } from '@/types/notification';
 import {
   addDoc,
@@ -139,17 +140,30 @@ class FirestoreNotificationService implements NotificationService {
       title: notificationData.title,
       message: notificationData.message,
       isRead: false,
+      pushManagedBy: 'vercel',
       createdAt: serverTimestamp(),
     };
 
     if (dedupeKey?.trim()) {
       const notificationRef = doc(this.collectionRef, getDedupeDocumentId(userId, dedupeKey));
       await setDoc(notificationRef, payload, { merge: true });
+      await this.deliverPush(notificationRef.id);
       return notificationRef.id;
     }
 
     const created = await addDoc(this.collectionRef, payload);
+    await this.deliverPush(created.id);
     return created.id;
+  }
+
+  private async deliverPush(notificationId: string): Promise<void> {
+    try {
+      const result = await authenticatedPost<{ status: string }>('/api/notifications/push', { notificationId });
+      if (result.status === 'failed') console.warn('[NotificationService] Push failed; the in-app notification remains saved.', { notificationId });
+    } catch (error) {
+      // A push outage must not make a durable lead/payment update look failed.
+      console.error('[NotificationService] Notification saved, but push delivery failed.', error);
+    }
   }
 
   async markAsRead(id: string): Promise<void> {

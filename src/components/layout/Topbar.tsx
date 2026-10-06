@@ -89,6 +89,7 @@ export function Topbar({ onSearch }: TopbarProps) {
     notifications,
     unreadCount,
     desktopPermission,
+    pushStatus,
     requestDesktopPermission,
     markAsRead,
     dismiss,
@@ -240,9 +241,10 @@ export function Topbar({ onSearch }: TopbarProps) {
   const desktopNotificationLabel = useMemo(() => {
     if (desktopPermission === 'unsupported') return 'Desktop notifications not supported';
     if (desktopPermission === 'denied') return 'Notifications blocked (check browser settings)';
-    if (desktopPermission === 'granted') return 'Desktop notifications enabled';
+    if (desktopPermission === 'granted' && pushStatus === 'registered') return 'Background push registered';
+    if (desktopPermission === 'granted') return 'Enable / retry background notifications';
     return 'Enable desktop notifications';
-  }, [desktopPermission]);
+  }, [desktopPermission, pushStatus]);
 
   const handleSearch = (event: React.FormEvent) => {
     event.preventDefault();
@@ -414,7 +416,7 @@ export function Topbar({ onSearch }: TopbarProps) {
               disabled={desktopPermission === 'unsupported'}
               onSelect={(event) => {
                 event.preventDefault();
-                if (desktopPermission === 'granted' || desktopPermission === 'unsupported') return;
+                if (desktopPermission === 'unsupported') return;
                 void requestDesktopPermission();
               }}
               className="text-xs"
@@ -521,5 +523,4 @@ export function Topbar({ onSearch }: TopbarProps) {
     </header>
   );
 }
-
 

@@ -563,6 +563,7 @@ exports.sendWebPushOnNotificationCreate = onDocumentCreated('notifications/{noti
   if (!snapshot) return;
 
   const payload = snapshot.data();
+  if (payload.pushManagedBy === 'vercel') return;
   const userId = payload.userId;
   if (typeof userId !== 'string' || !userId.trim()) {
     logger.warn('Skipping push: missing userId', { notificationId: event.params.notificationId });

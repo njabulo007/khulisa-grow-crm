@@ -2,6 +2,7 @@ import { applicationDefault, cert, getApps, initializeApp } from 'firebase-admin
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
+import { getMessaging } from 'firebase-admin/messaging';
 
 const parseServiceAccountFromEnv = () => {
   const base64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
@@ -61,6 +62,7 @@ const resolveApp = () => {
 const app = resolveApp();
 
 export const adminAuth = getAuth(app);
+export const adminMessaging = getMessaging(app);
 export const adminDb = getFirestore(app);
 export const adminStorage = getStorage(app);
 

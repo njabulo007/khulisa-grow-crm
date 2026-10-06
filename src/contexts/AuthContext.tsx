@@ -7,7 +7,6 @@ import {
 } from '@/config/commission';
 import { User, UserRole } from '@/types/models';
 import { authService, AuthService } from '@/services/authService';
-import { pushService } from '@/services/pushService';
 import { seedAppData } from '@/seed';
 
 interface AuthContextType {
@@ -223,14 +222,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     return unsubscribe;
   }, [refreshCurrentUserFromCache, syncUsersFromFirebaseProfiles, upsertUserFromFirebase]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-
-    // Re-register silently when permission was granted in an earlier session.
-    // The explicit permission prompt remains attached to the notifications menu.
-    void pushService.registerForUser(user.id, false);
-  }, [user?.id]);
 
   const login = async (email: string, password: string): Promise<void> => {
     setAuthError(null);

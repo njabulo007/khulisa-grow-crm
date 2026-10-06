@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { notificationService } from '@/services';
 import { pushService } from '@/services/pushService';
+import type { PushRegistrationResult } from '@/services/pushService';
+import { toast } from 'sonner';
 import { Notification } from '@/types/notification';
 
 export type DesktopNotificationPermission = NotificationPermission | 'unsupported';
@@ -10,6 +12,7 @@ export interface UseNotificationsResult {
   notifications: Notification[];
   unreadCount: number;
   desktopPermission: DesktopNotificationPermission;
+  pushStatus: PushRegistrationResult | null;
   requestDesktopPermission: () => Promise<DesktopNotificationPermission>;
   markAsRead: (id: string) => Promise<void>;
   dismiss: (id: string) => Promise<void>;
@@ -27,6 +30,14 @@ export function useNotifications(): UseNotificationsResult {
   const { user } = useAuth();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [desktopPermission, setDesktopPermission] = useState<DesktopNotificationPermission>(getDesktopPermission());
+  const [pushStatus, setPushStatus] = useState<PushRegistrationResult | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setPushStatus(null);
+    if (user?.id) void pushService.registerForUser(user.id, false).then((status) => { if (active) setPushStatus(status); });
+    return () => { active = false; };
+  }, [user?.id]);
   const hasHydratedRef = useRef(false);
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
@@ -193,12 +204,14 @@ export function useNotifications(): UseNotificationsResult {
   const requestDesktopPermission = useCallback(async (): Promise<DesktopNotificationPermission> => {
     const permission = getDesktopPermission();
     if (permission === 'unsupported') return permission;
-    if (permission === 'granted') return permission;
-
-    const nextPermission = await window.Notification.requestPermission();
+    const nextPermission = permission === 'granted' ? permission : await window.Notification.requestPermission();
     setDesktopPermission(nextPermission);
     if (nextPermission === 'granted' && user?.id) {
-      void pushService.registerForUser(user.id, true);
+      const status = await pushService.registerForUser(user.id, true);
+      setPushStatus(status);
+      if (status === 'registered') toast.success('Background push registration is active.');
+      else if (status === 'missing-vapid-key') toast.error('Background push needs VITE_FIREBASE_VAPID_KEY in Vercel, followed by redeployment.');
+      else toast.error(`Background push registration failed (${status}). Check notification permissions and retry.`);
     }
     return nextPermission;
   }, [user?.id]);
@@ -207,6 +220,7 @@ export function useNotifications(): UseNotificationsResult {
     notifications,
     unreadCount,
     desktopPermission,
+    pushStatus,
     requestDesktopPermission,
     markAsRead,
     dismiss,

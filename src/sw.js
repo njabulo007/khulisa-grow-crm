@@ -88,10 +88,12 @@ const buildNotificationFromPayload = (payload) => {
 
   const title =
     (typeof notification.title === "string" && notification.title) ||
+    (typeof data.title === "string" && data.title) ||
     (typeof payload.title === "string" && payload.title) ||
     "Khulisa CRM";
   const body =
     (typeof notification.body === "string" && notification.body) ||
+    (typeof data.body === "string" && data.body) ||
     (typeof payload.body === "string" && payload.body) ||
     "You have a new notification.";
   const link =
@@ -106,6 +108,7 @@ const buildNotificationFromPayload = (payload) => {
     "/images/khulisa-logo-icon.png";
   const tag =
     (typeof notification.tag === "string" && notification.tag) ||
+    (typeof data.notificationId === "string" && `khulisa-notification-${data.notificationId}`) ||
     `khulisa-${Date.now()}`;
 
   return {
