@@ -151,12 +151,29 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
       if (lead.clientId) {
         if (!validId(lead.clientId)) throw createHttpError(409, 'This lead has an invalid client link.');
         clientRef = db.collection('clients').doc(lead.clientId);
-        if (linkedClients.docs[0] && linkedClients.docs[0].id !== lead.clientId) throw createHttpError(409, 'This lead has conflicting client links.');
       }
-      const clientSnapshot = await transaction.get(clientRef);
+      let clientSnapshot = await transaction.get(clientRef);
+      if (linkedClients.docs[0] && linkedClients.docs[0].id !== clientRef.id) {
+        // A stale pointer must not cause a second client to be created. Only
+        // repair it if its target is absent and there is one verified lead link.
+        if (clientSnapshot.exists) throw createHttpError(409, 'This lead has conflicting client links.');
+        clientRef = linkedClients.docs[0].ref;
+        clientSnapshot = await transaction.get(clientRef);
+      }
       if (clientSnapshot.data()?._deleting) throw createHttpError(409, 'The linked client is being deleted.');
-      if (lead.clientId && !clientSnapshot.exists) throw createHttpError(409, 'The linked client is missing.');
       if (clientSnapshot.exists && clientSnapshot.data().leadId !== leadId) throw createHttpError(409, 'The client is linked to another lead.');
+      // Recreate a missing client at the original ID so surviving projects and
+      // invoices retain their links. Restore access from actual live projects.
+      const recoveredProjectAccess = new Map();
+      if (!clientSnapshot.exists) {
+        const existingProjects = await transaction.get(db.collection('projects').where('clientId', '==', clientRef.id));
+        for (const project of existingProjects.docs) {
+          const data = project.data();
+          if (!data._deleting && validId(data.assignedTo)) {
+            recoveredProjectAccess.set(data.assignedTo, project.id);
+          }
+        }
+      }
       const previousActivity = await transaction.get(activityRef);
       let projectRef;
       let projectSnapshot;
@@ -174,12 +191,16 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
         if (previousProjectId && !projectSnapshot.exists) throw createHttpError(409, 'The conversion project was removed.');
       }
       const now = new Date().toISOString();
+      if (createProject) {
+        const projectAgent = projectSnapshot.data()?.assignedTo || lead.assignedTo || decoded.uid;
+        recoveredProjectAccess.set(projectAgent, projectRef.id);
+      }
       if (!clientSnapshot.exists) transaction.set(clientRef, {
         businessName: lead.businessName || 'New client', ownerName: lead.contactName || '',
         email: lead.email || '', phone: lead.phone || '', location, industry,
         contractSigned: false, onboardingCompleted: false, leadId, createdBy: decoded.uid,
         visibleTo: lead.assignedTo ? [lead.assignedTo] : [],
-        projectAccess: createProject ? { [lead.assignedTo || decoded.uid]: projectRef.id } : {}, createdAt: now, updatedAt: now,
+        projectAccess: Object.fromEntries(recoveredProjectAccess), createdAt: now, updatedAt: now,
       });
       if (createProject && clientSnapshot.exists) {
         const projectAgent = projectSnapshot.data()?.assignedTo || lead.assignedTo || decoded.uid;
@@ -198,7 +219,8 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
       });
       if (lead.stage !== 'won' || lead.clientId !== clientRef.id) transaction.update(leadRef, { stage: 'won', clientId: clientRef.id, updatedAt: now });
       const previousProjectId = previousActivity.data()?.metadata?.projectId;
-      if (!previousActivity.exists || (createProject && !previousProjectId)) transaction.set(activityRef, {
+      if (!previousActivity.exists || previousActivity.data()?.metadata?.clientId !== clientRef.id
+        || (createProject && !previousProjectId)) transaction.set(activityRef, {
         type: 'status-change', entityType: 'lead', entityId: leadId, description: 'Lead converted to client',
         metadata: { to: 'won', clientId: clientRef.id, projectId: projectRef?.id || previousProjectId || null },
         createdAt: previousActivity.data()?.createdAt || now, createdBy: previousActivity.data()?.createdBy || decoded.uid,

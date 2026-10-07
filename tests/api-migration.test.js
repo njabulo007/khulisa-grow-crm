@@ -170,8 +170,12 @@ test('invalid payloads and conflicting client records cannot partially mutate da
   }
   const duplicate = fixture({ 'clients/one': { leadId: 'lead-one' }, 'clients/two': { leadId: 'lead-one' } });
   assert.equal((await duplicate.invoke('convertLead', 'agent', conversion)).statusCode, 409); assert.equal(duplicate.calls.writes, 0);
-  const broken = fixture({ 'leads/lead-one': { stage: 'won', assignedTo: 'agent', clientId: 'gone' } });
-  assert.equal((await broken.invoke('convertLead', 'agent', conversion)).statusCode, 409); assert.equal(broken.calls.writes, 0);
+  const conflicting = fixture({
+    'leads/lead-one': { assignedTo: 'agent', clientId: 'existing' },
+    'clients/existing': { leadId: 'another-lead' },
+  });
+  assert.equal((await conflicting.invoke('convertLead', 'agent', conversion)).statusCode, 409);
+  assert.equal(conflicting.calls.writes, 0);
 });
 test('internal configuration/credential errors are not returned to callers', async () => {
   const f = fixture(); f.auth.getUser = async () => { throw new Error('PRIVATE KEY VALUE'); };
@@ -193,4 +197,66 @@ test('conversion exposes actionable Firebase failures without private SDK detail
     assert(!response.body.error.includes('PRIVATE KEY'));
     assert.equal(f.calls.writes, 0);
   }
+});
+
+test('missing client is recovered at its original ID with surviving project access and financial links intact', async () => {
+  const f = fixture({
+    'leads/lead-one': { stage: 'won', assignedTo: 'agent', clientId: 'gone', businessName: 'Recovered business', contactName: 'Client', email: 'client@example.com', phone: '123' },
+    'projects/surviving': { clientId: 'gone', assignedTo: 'other' },
+    'projects/deleting': { clientId: 'gone', assignedTo: 'removed-agent', _deleting: true },
+    'invoices/surviving': { clientId: 'gone', status: 'paid', amount: 1500 },
+  });
+  const invoice = clone(f.records.get('invoices/surviving'));
+  const response = await f.invoke('convertLead', 'agent', { leadId: 'lead-one', createProject: false });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.clientId, 'gone');
+  assert.equal(response.body.projectId, undefined);
+  assert.equal(f.records.get('clients/gone').businessName, 'Recovered business');
+  assert.deepEqual(f.records.get('clients/gone').projectAccess, { other: 'surviving' });
+  assert.equal(f.records.get('projects/surviving').clientId, 'gone');
+  assert.deepEqual(f.records.get('invoices/surviving'), invoice);
+  const writes = f.calls.writes;
+  await f.invoke('convertLead', 'agent', { leadId: 'lead-one', createProject: false });
+  assert.equal(f.calls.writes, writes);
+});
+
+test('stale client pointer is relinked to the one existing client without creating duplicates', async () => {
+  const f = fixture({
+    'leads/lead-one': { stage: 'negotiation', assignedTo: 'agent', clientId: 'gone' },
+    'clients/actual': { leadId: 'lead-one', businessName: 'Keep original details' },
+  });
+  const response = await f.invoke('convertLead', 'agent', { leadId: 'lead-one', createProject: false });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.clientId, 'actual');
+  assert.equal(f.records.get('leads/lead-one').clientId, 'actual');
+  assert.equal(f.records.get('clients/actual').businessName, 'Keep original details');
+  assert(!f.records.has('clients/gone'));
+  assert.equal([...f.records.keys()].filter(key => key.startsWith('clients/')).length, 1);
+});
+
+test('concurrent recovery creates one client and never bypasses deletion or assignment checks', async () => {
+  const initial = { 'leads/lead-one': { stage: 'won', assignedTo: 'agent', clientId: 'gone' } };
+  const f = fixture(initial);
+  const body = { leadId: 'lead-one', createProject: false };
+  const responses = await Promise.all(Array.from({ length: 3 }, () => f.invoke('convertLead', 'agent', body)));
+  assert(responses.every(response => response.statusCode === 200));
+  assert.equal([...f.records.keys()].filter(key => key.startsWith('clients/')).length, 1);
+  const unauthorized = fixture(initial);
+  assert.equal((await unauthorized.invoke('convertLead', 'other', body)).statusCode, 403);
+  assert.equal(unauthorized.calls.writes, 0);
+  const deleting = fixture({ ...initial, 'clients/gone': { leadId: 'lead-one', _deleting: true } });
+  assert.equal((await deleting.invoke('convertLead', 'agent', body)).statusCode, 409);
+  assert.equal(deleting.calls.writes, 0);
+});
+
+test('recovery with project creation keeps existing access and links the new project to the original client ID', async () => {
+  const f = fixture({
+    'leads/lead-one': { stage: 'negotiation', assignedTo: 'agent', clientId: 'gone' },
+    'projects/surviving': { clientId: 'gone', assignedTo: 'other' },
+  });
+  const response = await f.invoke('convertLead', 'agent', conversion);
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.body.clientId, 'gone');
+  assert.equal(f.records.get('projects/' + response.body.projectId).clientId, 'gone');
+  assert.deepEqual(f.records.get('clients/gone').projectAccess, { other: 'surviving', agent: response.body.projectId });
 });
