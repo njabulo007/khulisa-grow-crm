@@ -45,6 +45,8 @@ test('push targets only the saved recipient and uses the saved message, not brow
   assert.equal(f.messages[0].data.link, '/leads/lead-1');
   assert.equal(f.messages[0].webpush.headers.TTL, '86400');
   assert.equal(f.messages[0].notification, undefined, 'custom service worker displays the data message once');
+  assert.equal(f.records.get('notifications/n').pushTargetCount, 1);
+  assert.equal(f.records.get('notifications/n').pushSentCount, 1);
 });
 test('another agent and unauthenticated caller cannot dispatch a notification', async () => {
   const f = fixture();
@@ -70,6 +72,7 @@ test('expired registrations are removed and failed delivery remains diagnosable'
   const result = await f.invoke();
   assert.equal(result.data.status, 'failed');
   assert(!f.records.has('push_tokens/device')); assert(f.records.has('notifications/n'));
+  assert.deepEqual(f.records.get('notifications/n').pushErrorCodes, ['messaging/registration-token-not-registered']);
 });
 test('service worker displays data-only FCM messages with their title, body, and link', async () => {
   const events = new Map(); const displayed = [];

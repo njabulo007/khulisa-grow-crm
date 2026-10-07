@@ -9,6 +9,7 @@ import {
   getDocs,
   onSnapshot,
   query,
+  runTransaction,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -108,6 +109,10 @@ class FirestoreNotificationService implements NotificationService {
       message: String(data.message || ''),
       isRead: Boolean(data.isRead),
       createdAt: toDate(data.createdAt),
+      pushStatus: typeof data.pushStatus === 'string' ? data.pushStatus : undefined,
+      pushErrorCodes: Array.isArray(data.pushErrorCodes) ? data.pushErrorCodes.filter((code): code is string => typeof code === 'string').slice(0, 10) : [],
+      pushSentCount: typeof data.pushSentCount === 'number' ? data.pushSentCount : undefined,
+      pushTargetCount: typeof data.pushTargetCount === 'number' ? data.pushTargetCount : undefined,
     };
   }
 
@@ -163,6 +168,13 @@ class FirestoreNotificationService implements NotificationService {
     } catch (error) {
       // A push outage must not make a durable lead/payment update look failed.
       console.error('[NotificationService] Notification saved, but push delivery failed.', error);
+      const status = typeof error === 'object' && error && 'status' in error ? String(error.status) : 'network';
+      await runTransaction(db, async (transaction) => {
+        const ref = doc(this.collectionRef, notificationId);
+        const current = await transaction.get(ref);
+        if (!current.exists() || ['sent', 'sending', 'failed', 'no-devices'].includes(current.data().pushStatus)) return;
+        transaction.update(ref, { pushStatus: 'request-failed', pushErrorCodes: [`api/${status}`] });
+      }).catch(() => {});
     }
   }
 

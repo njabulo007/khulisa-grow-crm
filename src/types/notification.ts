@@ -12,4 +12,8 @@ export interface Notification {
   message: string;
   isRead: boolean;
   createdAt: Date;
+  pushStatus?: string;
+  pushErrorCodes?: string[];
+  pushSentCount?: number;
+  pushTargetCount?: number;
 }

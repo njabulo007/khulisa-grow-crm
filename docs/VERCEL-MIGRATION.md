@@ -25,6 +25,8 @@ New notifications created by CRM service actions now save their bell item in Fir
 
 The API sends a data message and the service worker displays it once. Delivery leases suppress immediate retries; invalid device tokens are removed. `pushStatus` values include `sent`, `failed`, and `no-devices`; `sent` means FCM accepted delivery, not proof that Android displayed it. Offline recipients may receive queued messages after reconnecting within the configured 24-hour TTL. Heads-up banners depend on Android settings; web code cannot force them.
 
+For diagnosis, sign into the same account on another device, close the Android PWA, and select **bell → Send test push to my devices** on the other device. This sends only to that account's registered devices and saves a disposable test bell item. Each bell item now shows whether push was accepted, failed, had no registered devices, or never recorded a delivery result. Firebase response codes are stored in `pushErrorCodes` and shown with failed or partial deliveries; raw tokens and credentials are not displayed. An API request failing before the sender runs is recorded as `request-failed` with an `api/` status code, unless the server already recorded a delivery result.
+
 If the old Firebase `sendWebPushOnNotificationCreate` Function is still active, disable that sender or deploy the included guard so notifications marked `pushManagedBy: vercel` are not sent twice. The Vercel route does not automatically replay old bell items or notifications created directly in Firebase Console. If the initiating browser closes between saving an item and requesting push, that item can remain in the bell without being pushed; there is no persistent delivery queue yet.
 
 ## Deletion cleanup update

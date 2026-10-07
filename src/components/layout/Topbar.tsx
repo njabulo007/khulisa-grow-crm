@@ -28,7 +28,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
-import { clientService, invoiceService, leadService, projectService } from '@/services';
+import { clientService, invoiceService, leadService, projectService, notificationService } from '@/services';
+import { toast } from 'sonner';
 import { Client, Invoice, Lead, Project } from '@/types/models';
 
 interface TopbarProps {
@@ -96,6 +97,20 @@ export function Topbar({ onSearch }: TopbarProps) {
     markAllAsRead,
   } = useNotifications();
   const [searchQuery, setSearchQuery] = useState('');
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+
+  const sendTestPush = async () => {
+    if (!user || isSendingTestPush) return;
+    setIsSendingTestPush(true);
+    try {
+      await notificationService.createForUser(user.id, {
+        type: 'activity', title: 'Khulisa push test', message: 'Test notification for your registered devices.',
+      });
+      toast('Test item saved. Check its push delivery status below the message.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not create the push test.');
+    } finally { setIsSendingTestPush(false); }
+  };
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allClients, setAllClients] = useState<Client[]>([]);
@@ -423,6 +438,11 @@ export function Topbar({ onSearch }: TopbarProps) {
             >
               {desktopNotificationLabel}
             </DropdownMenuItem>
+            <DropdownMenuItem disabled={isSendingTestPush} onSelect={(event) => {
+              event.preventDefault(); void sendTestPush();
+            }}>
+              {isSendingTestPush ? 'Sending test…' : 'Send test push to my devices'}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <div className="px-3 py-1 text-[11px] text-muted-foreground">Tip: swipe on touch devices, or use X on desktop to dismiss.</div>
             <DropdownMenuSeparator />
@@ -483,6 +503,15 @@ export function Topbar({ onSearch }: TopbarProps) {
                   <span className="text-[11px] text-muted-foreground">
                     {formatNotificationTime(notification.createdAt)}
                   </span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {notification.pushStatus === 'sent'
+                      ? `Push accepted by FCM for ${notification.pushSentCount ?? '?'} of ${notification.pushTargetCount ?? '?'} devices`
+                      : notification.pushStatus === 'no-devices' ? 'Push: no registered devices found'
+                      : notification.pushStatus === 'sending' ? 'Push: sending'
+                      : notification.pushStatus === 'failed' || notification.pushStatus === 'request-failed' ? 'Push: failed'
+                      : 'Push: no delivery status recorded'}
+                    {notification.pushErrorCodes?.length ? ` · ${notification.pushErrorCodes.join(', ')}` : ''}
+                  </span>
                 </DropdownMenuItem>
               ))
             )}
@@ -523,4 +552,3 @@ export function Topbar({ onSearch }: TopbarProps) {
     </header>
   );
 }
-

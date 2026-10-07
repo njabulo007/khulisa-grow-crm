@@ -13,7 +13,7 @@ export async function authenticatedPost<T>(path: string, payload: unknown = {}, 
       body: JSON.stringify(payload), signal: controller.signal,
     });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(data?.error || 'The server request failed. Please retry.');
+    if (!response.ok) throw Object.assign(new Error(data?.error || 'The server request failed. Please retry.'), { status: response.status });
     if (!data || typeof data !== 'object') throw new Error('The CRM API is unavailable. Deploy the latest API routes to Vercel.');
     return data as T;
   } catch (error) {
