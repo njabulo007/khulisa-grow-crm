@@ -210,6 +210,18 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'POST') return methodNotAllowed(res, ['POST']);
     try { return json(res, 200, await operation(req)); } catch (error) {
+      // Log only the operation and code: SDK messages can contain configuration
+      // or private data. Give callers actionable, bounded diagnostics instead.
+      console.error('[Migration API]', operation.name, { code: error.code, status: error.status });
+      const firestoreMessages = {
+        7: 'The server cannot access Firebase. Check the Firebase Admin service account permissions in Vercel.',
+        8: 'Firebase usage limits have been reached. Check your Firestore quota and retry after it resets.',
+        14: 'Firebase is temporarily unavailable. Please retry shortly.',
+      };
+      if (firestoreMessages[error.code]) return json(res, 503, { error: firestoreMessages[error.code] });
+      if (error.code === 9 && /index/i.test(error.message || '')) {
+        return json(res, 503, { error: 'Lead conversion needs a Firestore index. Check the failed request in Vercel logs and your Firestore indexes.' });
+      }
       const status = Number.isInteger(error.status) ? error.status : 500;
       return json(res, status, { error: status < 500 ? error.message : fallback });
     }

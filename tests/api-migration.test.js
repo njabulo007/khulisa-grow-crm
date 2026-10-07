@@ -59,7 +59,7 @@ function fixture(initial = {}, configuration = { owners: new Set(), legacyIds: {
     await handlers[operation]({ method, headers: token ? { authorization: `Bearer ${token}` } : {}, body }, res);
     return res;
   };
-  return { records, users, tokens, calls, auth, handlers, invoke };
+  return { records, users, tokens, calls, auth, db, handlers, invoke };
 }
 
 test('missing/invalid credentials and wrong methods cannot mutate data', async () => {
@@ -181,4 +181,16 @@ test('internal configuration/credential errors are not returned to callers', asy
 test('legacy ID configuration rejects malformed or path-containing values', () => {
   assert.throws(() => readIdentityConfig({ CRM_USER_ID_MAP: '{' }), { status: 503 });
   assert.throws(() => readIdentityConfig({ CRM_USER_ID_MAP: '{"agent":"bad/path"}' }), { status: 503 });
+});
+
+test('conversion exposes actionable Firebase failures without private SDK details', async () => {
+  for (const [code, message] of [[7, 'service account permissions'], [8, 'usage limits'], [14, 'temporarily unavailable'], [9, 'Firestore index']]) {
+    const f = fixture();
+    f.db.runTransaction = async () => { throw Object.assign(new Error('PRIVATE KEY VALUE index'), { code }); };
+    const response = await f.invoke('convertLead', 'agent', { leadId: 'lead-one', createProject: false });
+    assert.equal(response.statusCode, 503);
+    assert(response.body.error.includes(message));
+    assert(!response.body.error.includes('PRIVATE KEY'));
+    assert.equal(f.calls.writes, 0);
+  }
 });

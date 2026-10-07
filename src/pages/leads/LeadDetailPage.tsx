@@ -1,3 +1,4 @@
+import { changeLeadStage, leadStageErrorMessage } from '@/services/leadStageService';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -25,7 +26,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
-import { activityService, authService, leadConversionService, leadService } from '@/services';
+import { activityService, authService, leadService } from '@/services';
 import { Activity, ActivityType, Lead, LeadStage, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 import { canAccessLead } from '@/lib/permissions';
@@ -132,25 +133,12 @@ export function LeadDetailPage() {
     }
     setIsChangingStage(true);
     try {
-      if (newStage === 'won') {
-        await leadConversionService.convert({ leadId: lead.id, createProject: false });
-      } else {
-        await leadService.update(lead.id, { stage: newStage });
-
-        await activityService.create({
-          type: 'status-change',
-          entityType: 'lead',
-          entityId: lead.id,
-          description: `Lead status changed from ${LEAD_STAGES[lead.stage].label} to ${LEAD_STAGES[newStage].label}`,
-          metadata: { from: lead.stage, to: newStage },
-          createdBy: user?.id || '',
-        });
-      }
-
+      const result = await changeLeadStage(lead, newStage, user?.id || '');
       await refreshLead();
       toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+      if (!result.activitySaved) toast.warning('The lead was saved, but its activity log could not be recorded.');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Lead status could not be updated.');
+      toast.error(leadStageErrorMessage(error));
     } finally { setIsChangingStage(false); }
   };
 

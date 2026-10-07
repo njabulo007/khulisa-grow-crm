@@ -44,9 +44,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DEFAULT_PACKAGE_ID, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLeads } from '@/hooks/useLeads';
-import { activityService, AuthService, authService, leadConversionService } from '@/services';
+import { AuthService, authService, leadConversionService } from '@/services';
 import { Lead, LeadStage, LeadSource, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
+
+import { changeLeadStage, leadStageErrorMessage } from '@/services/leadStageService';
 
 const AGENT_SELECT_LOADING_VALUE = '__agents_loading__';
 const AGENT_SELECT_EMPTY_VALUE = '__agents_empty__';
@@ -322,51 +324,30 @@ export function LeadsPage() {
   };
 
   const handleStageChange = async (leadId: string, newStage: LeadStage) => {
-    const lead = await getLeadById(leadId);
-    if (!lead) return;
-    if (!canManageLead(lead)) {
-      toast.error('You do not have permission to update this lead');
-      return;
-    }
-
-    if (newStage === 'won' && !lead.clientId) {
-      setSelectedLead({ ...lead, stage: 'won' });
-      setConvertData({
-        projectName: `${lead.businessName} - Website`,
-        packageId: DEFAULT_PACKAGE_ID,
-        createProject: true,
-        location: '',
-        industry: '',
-      });
-      setShowConvertDialog(true);
-      return;
-    }
-
     try {
-      if (newStage === 'won') {
-        await leadConversionService.convert({ leadId, createProject: false });
-        await refreshLeads();
-        toast.success('Lead converted to client.');
+      const lead = await getLeadById(leadId);
+      if (!lead) throw new Error('This lead no longer exists. Refresh the leads list.');
+      if (!canManageLead(lead)) {
+        toast.error('You do not have permission to update this lead');
         return;
       }
-      await updateLead(leadId, { stage: newStage });
-
-      await activityService.create({
-        type: 'status-change',
-        entityType: 'lead',
-        entityId: leadId,
-        description: `Lead status changed from ${LEAD_STAGES[lead.stage].label} to ${LEAD_STAGES[newStage].label}`,
-        metadata: { from: lead.stage, to: newStage },
-        createdBy: user?.id || '',
-      });
-
-      toast.success(`Lead moved to ${LEAD_STAGES[newStage].label}`);
+      if (newStage === 'won' && !lead.clientId) {
+        setSelectedLead({ ...lead, stage: 'won' });
+        setConvertData({
+          projectName: `${lead.businessName} - Website`, packageId: DEFAULT_PACKAGE_ID,
+          createProject: true, location: '', industry: '',
+        });
+        setShowConvertDialog(true);
+        return;
+      }
+      const result = await changeLeadStage(lead, newStage, user?.id || '');
+      await refreshLeads();
+      toast.success(newStage === 'won' ? 'Lead converted to client.' : `Lead moved to ${LEAD_STAGES[newStage].label}`);
+      if (!result.activitySaved) toast.warning('The lead was saved, but its activity log could not be recorded.');
     } catch (error) {
       console.error('[LeadsPage] Failed to change lead stage.', error);
-      toast.error('Lead status could not be updated. Check your connection and try again.');
-      return;
+      toast.error(leadStageErrorMessage(error));
     }
-
   };
 
   const handleConvert = async () => {
