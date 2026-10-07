@@ -1,5 +1,6 @@
+import { loadLeadDetail } from '@/services/leadDetailService';
 import { changeLeadStage, leadStageErrorMessage } from '@/services/leadStageService';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -26,7 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
-import { activityService, authService, leadService } from '@/services';
+import { activityService, authService } from '@/services';
 import { Activity, ActivityType, Lead, LeadStage, LEAD_STAGES, LEAD_SOURCES } from '@/types/models';
 import { toast } from 'sonner';
 import { canAccessLead } from '@/lib/permissions';
@@ -59,6 +60,11 @@ export function LeadDetailPage() {
   const [noteType, setNoteType] = useState<ActivityType>('note');
   const [isLoading, setIsLoading] = useState(true);
   const [isChangingStage, setIsChangingStage] = useState(false);
+  const [isAddingActivity, setIsAddingActivity] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [activityHistoryUnavailable, setActivityHistoryUnavailable] = useState(false);
+  const latestLoad = useRef(0);
+  const invalidateLoads = useCallback(() => { latestLoad.current++; }, []);
 
   const usersById = useMemo(() => {
     return authService.getAll().reduce<Record<string, { id: string; name: string }>>((acc, currentUser) => {
@@ -67,38 +73,47 @@ export function LeadDetailPage() {
     }, {});
   }, []);
 
-  const refreshLead = async () => {
-    const [nextLead, nextActivities] = await Promise.all([
-      leadService.getById(id || ''),
-      activityService.getByEntity('lead', id || ''),
-    ]);
-    setLead(nextLead);
-    setActivities(nextActivities);
-  };
+  const refreshLead = useCallback(async () => {
+    const requestId = ++latestLoad.current;
+    try {
+      const data = await loadLeadDetail(id || '');
+      if (requestId !== latestLoad.current) return;
+      setLead(data.lead);
+      setActivities(data.activities);
+      setActivityHistoryUnavailable(data.activityHistoryUnavailable);
+      setLoadError(null);
+    } catch (error) {
+      if (requestId !== latestLoad.current) return;
+      console.error('[LeadDetail] Failed to load lead.', error);
+      setLoadError(leadStageErrorMessage(error));
+    } finally {
+      if (requestId === latestLoad.current) setIsLoading(false);
+    }
+  }, [id]);
 
   useEffect(() => {
-    let isMounted = true;
-    const loadData = async () => {
-      setIsLoading(true);
-      const [nextLead, nextActivities] = await Promise.all([
-        leadService.getById(id || ''),
-        activityService.getByEntity('lead', id || ''),
-      ]);
-      if (!isMounted) return;
-      setLead(nextLead);
-      setActivities(nextActivities);
-      setIsLoading(false);
-    };
-    void loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, [id]);
+    setLead(undefined);
+    setActivities([]);
+    setLoadError(null);
+    setIsLoading(true);
+    void refreshLead();
+    return invalidateLoads;
+  }, [refreshLead, invalidateLoads, user?.id, user?.uid, user?.role]);
 
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <p className="text-muted-foreground">Loading lead...</p>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-col items-center gap-3 py-12">
+        <p role="alert" className="text-destructive">{loadError}</p>
+        <Button onClick={() => { void refreshLead(); }}>Retry</Button>
+        <Button variant="link" onClick={() => navigate('/leads')}>Back to Leads</Button>
       </div>
     );
   }
@@ -143,6 +158,7 @@ export function LeadDetailPage() {
   };
 
   const handleAddActivity = async () => {
+    if (isAddingActivity) return;
     if (!canAccessLead(user, lead)) {
       toast.error('You do not have permission to add activity for this lead');
       return;
@@ -152,17 +168,20 @@ export function LeadDetailPage() {
       return;
     }
 
-    await activityService.create({
-      type: noteType,
-      entityType: 'lead',
-      entityId: lead.id,
-      description: newNote,
-      createdBy: user?.id || '',
-    });
-
-    await refreshLead();
-    setNewNote('');
-    toast.success('Activity added');
+    setIsAddingActivity(true);
+    try {
+      await activityService.create({
+        type: noteType, entityType: 'lead', entityId: lead.id,
+        description: newNote.trim(), createdBy: user?.id || '',
+      });
+      setNewNote('');
+      toast.success('Activity added');
+      await refreshLead();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Activity could not be saved. Please retry.');
+    } finally {
+      setIsAddingActivity(false);
+    }
   };
 
   const agent = usersById[lead.assignedTo];
@@ -170,6 +189,12 @@ export function LeadDetailPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {activityHistoryUnavailable && (
+        <p role="alert" className="rounded-lg border p-3 text-sm text-muted-foreground">
+          Activity history could not be loaded. Lead details and status changes are still available.
+          <Button variant="link" onClick={() => { void refreshLead(); }}>Retry history</Button>
+        </p>
+      )}
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate('/leads')}>
           <ArrowLeft className="h-5 w-5" />
@@ -260,6 +285,7 @@ export function LeadDetailPage() {
                   />
                 </div>
                 <Button
+                  disabled={!newNote.trim() || isAddingActivity}
                   onClick={() => {
                     void handleAddActivity();
                   }}
@@ -271,7 +297,9 @@ export function LeadDetailPage() {
 
               <div className="space-y-4">
                 {activities.length === 0 ? (
-                  <p className="py-4 text-center text-muted-foreground">No activities yet</p>
+                  <p className="py-4 text-center text-muted-foreground">
+                    {activityHistoryUnavailable ? 'Activity history is unavailable.' : 'No activities yet'}
+                  </p>
                 ) : (
                   activities.map((activity) => {
                     const activityUser = usersById[activity.createdBy];

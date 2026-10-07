@@ -1,9 +1,11 @@
 import { Lead, LeadStage, LEAD_STAGES } from '@/types/models';
+import { assertValid, validateLead } from '@/lib/domainValidation';
 import { activityService } from './activityService';
 import { leadConversionService } from './leadConversionService';
 import { leadService } from './leadService';
 
 export async function changeLeadStage(lead: Lead, stage: LeadStage, actorId: string) {
+  assertValid(validateLead({ stage }));
   if (stage === 'won') {
     await leadConversionService.convert({ leadId: lead.id, createProject: false });
     return { activitySaved: true };

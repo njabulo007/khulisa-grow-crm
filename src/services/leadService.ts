@@ -207,7 +207,9 @@ class FirestoreLeadService implements LeadService {
   async update(id: string, updates: Partial<Lead>): Promise<Lead | null> {
     const existing = await this.collection.getById(id);
     if (!existing) return null;
-    assertValid(validateLead({ ...existing, ...updates }));
+    // Historical contact data must not block an unrelated stage/notes update.
+    // Still validate every supplied field, including an explicitly changed email.
+    assertValid(validateLead(updates));
 
     const updated = await this.collection.update(id, { ...updates, updatedAt: getTimestamp() });
     if (updated) {

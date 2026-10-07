@@ -1,4 +1,4 @@
-import type { Invoice, Lead, Payment } from '@/types/models';
+import { LEAD_SOURCES, LEAD_STAGES, type Invoice, type Lead, type Payment } from '@/types/models';
 
 export interface ValidationResult {
   valid: boolean;
@@ -7,7 +7,9 @@ export interface ValidationResult {
 
 const isValidDate = (value: string): boolean => {
   const parsed = new Date(value);
-  return !Number.isNaN(parsed.getTime());
+  if (Number.isNaN(parsed.getTime())) return false;
+  // JavaScript silently rolls dates such as February 30 into March.
+  return !/^\d{4}-\d{2}-\d{2}$/.test(value) || parsed.toISOString().slice(0, 10) === value;
 };
 
 const isValidEmail = (value: string): boolean =>
@@ -17,15 +19,17 @@ const result = (errors: string[]): ValidationResult => ({ valid: errors.length =
 
 export const validateLead = (lead: Partial<Lead>): ValidationResult => {
   const errors: string[] = [];
-  if (lead.businessName !== undefined && !lead.businessName.trim()) errors.push('Business name is required.');
-  if (lead.contactName !== undefined && !lead.contactName.trim()) errors.push('Contact name is required.');
-  if (lead.email !== undefined && !isValidEmail(lead.email.trim())) errors.push('Lead email is invalid.');
-  if (lead.phone !== undefined && lead.phone.trim().length > 50) errors.push('Lead phone number is too long.');
+  if (lead.businessName !== undefined && (typeof lead.businessName !== 'string' || !lead.businessName.trim())) errors.push('Business name is required.');
+  if (lead.contactName !== undefined && (typeof lead.contactName !== 'string' || !lead.contactName.trim())) errors.push('Contact name is required.');
+  if (lead.email !== undefined && (typeof lead.email !== 'string' || !isValidEmail(lead.email.trim()))) errors.push('Lead email is invalid.');
+  if (lead.phone !== undefined && (typeof lead.phone !== 'string' || lead.phone.trim().length > 50)) errors.push('Lead phone number is invalid or too long.');
   if (lead.estimatedValue !== undefined && (!Number.isFinite(lead.estimatedValue) || lead.estimatedValue < 0)) {
     errors.push('Estimated value must be a non-negative number.');
   }
-  if (lead.followUpDate && !isValidDate(lead.followUpDate)) errors.push('Follow-up date is invalid.');
-  if (lead.assignedTo !== undefined && !lead.assignedTo.trim()) errors.push('Lead assignee is required.');
+  if (lead.followUpDate !== undefined && (typeof lead.followUpDate !== 'string' || (lead.followUpDate && !isValidDate(lead.followUpDate)))) errors.push('Follow-up date is invalid.');
+  if (lead.assignedTo !== undefined && (typeof lead.assignedTo !== 'string' || !lead.assignedTo.trim())) errors.push('Lead assignee is required.');
+  if (lead.stage !== undefined && !Object.prototype.hasOwnProperty.call(LEAD_STAGES, lead.stage)) errors.push('Lead stage is invalid.');
+  if (lead.source !== undefined && !Object.prototype.hasOwnProperty.call(LEAD_SOURCES, lead.source)) errors.push('Lead source is invalid.');
   return result(errors);
 };
 

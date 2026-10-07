@@ -26,6 +26,26 @@ describe('domain validation', () => {
     expect(validation.errors).toHaveLength(4);
   });
 
+  it('uses the same strict email check for new/edited leads and accepts an empty optional email', () => {
+    for (const email of ['invalid', 'client@@example.com', 'client@example.com extra']) {
+      expect(validateLead({ email }).errors).toContain('Lead email is invalid.');
+    }
+    expect(validateLead({ email: '' }).valid).toBe(true);
+    expect(validateLead({ email: ' client@example.com ' }).valid).toBe(true);
+  });
+
+  it('validates stage/source values and malformed legacy field types without crashing', () => {
+    expect(validateLead({ stage: 'invalid' as never, source: '__proto__' as never }).valid).toBe(false);
+    expect(validateLead({ email: null as never, contactName: 123 as never }).errors).toHaveLength(2);
+    expect(validateLead({ stage: 'negotiation' }).valid).toBe(true);
+  });
+
+  it('rejects impossible follow-up dates instead of rolling them into the next month', () => {
+    expect(validateLead({ followUpDate: '2026-02-30' }).valid).toBe(false);
+    expect(validateLead({ followUpDate: '2026-02-28' }).valid).toBe(true);
+    expect(validateLead({ followUpDate: '' }).valid).toBe(true);
+  });
+
   it('rejects zero or negative payments', () => {
     expect(validatePayment({ invoiceId: 'invoice-1', amount: 0 }).valid).toBe(false);
     expect(validatePayment({ invoiceId: 'invoice-1', amount: -50 }).valid).toBe(false);

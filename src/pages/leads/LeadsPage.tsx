@@ -1,3 +1,4 @@
+import { validateLead } from '@/lib/domainValidation';
 import { canAccessLead } from '@/lib/permissions';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -75,6 +76,8 @@ export function LeadsPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isConverting, setIsConverting] = useState(false);
+  const stageChangesInFlight = useRef(new Set<string>());
+  const [changingStages, setChangingStages] = useState<Set<string>>(new Set());
 
   // Form state
   const [formData, setFormData] = useState({
@@ -242,26 +245,6 @@ export function LeadsPage() {
   const handleSubmit = async () => {
     if (isSaving) return;
 
-    if (!formData.businessName.trim() || !formData.contactName.trim()) {
-      toast.error('Please fill in required fields');
-      return;
-    }
-
-    if (formData.email.trim() && !/^\S+@\S+\.\S+$/.test(formData.email.trim())) {
-      toast.error('Please enter a valid email address');
-      return;
-    }
-
-    if (formData.followUpDate && !/^\d{4}-\d{2}-\d{2}$/.test(formData.followUpDate)) {
-      toast.error('Please enter a valid follow-up date');
-      return;
-    }
-
-    if (!Number.isFinite(formData.estimatedValue) || formData.estimatedValue < 0) {
-      toast.error('Estimated value cannot be negative');
-      return;
-    }
-
     const payload = {
       ...formData,
       businessName: formData.businessName.trim(),
@@ -271,6 +254,12 @@ export function LeadsPage() {
       notes: formData.notes.trim(),
     };
 
+    const validation = validateLead({ ...payload, assignedTo: payload.assignedTo || user?.id || '' });
+    if (!validation.valid) {
+      toast.error(validation.errors.join(' '));
+      return;
+    }
+
     setIsSaving(true);
     try {
       if (selectedLead) {
@@ -279,7 +268,8 @@ export function LeadsPage() {
           return;
         }
         const needsConversion = payload.stage === 'won' && (selectedLead.stage !== 'won' || !selectedLead.clientId);
-        await updateLead(selectedLead.id, { ...payload, ...(needsConversion ? { stage: selectedLead.stage } : {}) });
+        const saved = await updateLead(selectedLead.id, { ...payload, ...(needsConversion ? { stage: selectedLead.stage } : {}) });
+        if (!saved) throw new Error('This lead no longer exists. Refresh the leads list.');
         if (needsConversion) await leadConversionService.convert({ leadId: selectedLead.id, createProject: false });
         toast.success('Lead updated successfully');
       } else {
@@ -308,22 +298,27 @@ export function LeadsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    const lead = await getLeadById(id);
-    if (!lead || !canManageLead(lead)) {
-      toast.error('You do not have permission to delete this lead');
-      return;
-    }
     try {
-      await removeLead(id);
+      const lead = await getLeadById(id);
+      if (!lead) throw new Error('This lead no longer exists. Refresh the leads list.');
+      if (!canManageLead(lead)) {
+        toast.error('You do not have permission to delete this lead');
+        return;
+      }
+      const removed = await removeLead(id);
+      if (!removed) throw new Error('This lead no longer exists. Refresh the leads list.');
       toast.success('Lead deleted');
       setDeleteConfirm(null);
     } catch (error) {
       console.error('[LeadsPage] Failed to delete lead.', error);
-      toast.error('Lead could not be deleted. Check your connection and try again.');
+      toast.error(error instanceof Error ? error.message : 'Lead could not be deleted. Please retry.');
     }
   };
 
   const handleStageChange = async (leadId: string, newStage: LeadStage) => {
+    if (stageChangesInFlight.current.has(leadId)) return;
+    stageChangesInFlight.current.add(leadId);
+    setChangingStages(new Set(stageChangesInFlight.current));
     try {
       const lead = await getLeadById(leadId);
       if (!lead) throw new Error('This lead no longer exists. Refresh the leads list.');
@@ -347,6 +342,9 @@ export function LeadsPage() {
     } catch (error) {
       console.error('[LeadsPage] Failed to change lead stage.', error);
       toast.error(leadStageErrorMessage(error));
+    } finally {
+      stageChangesInFlight.current.delete(leadId);
+      setChangingStages(new Set(stageChangesInFlight.current));
     }
   };
 
@@ -612,7 +610,7 @@ export function LeadsPage() {
                               void handleStageChange(lead.id, value as LeadStage);
                             }}
                           >
-                            <SelectTrigger className="h-7 text-xs">
+                            <SelectTrigger className="h-7 text-xs" disabled={changingStages.has(lead.id)}>
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
