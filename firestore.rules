@@ -102,20 +102,23 @@ service cloud.firestore {
         && sameUser(get(/databases/$(database)/documents/leads/$(leadId)).data.assignedTo);
     }
 
+    function assignedClientProject(data, clientId) {
+      let access = data.get('projectAccess', {});
+      let uidProject = access.get(request.auth.uid, null);
+      let appProject = access.get(userKey(), null);
+      return (projectAccessible(uidProject)
+          && get(/databases/$(database)/documents/projects/$(uidProject)).data.clientId == clientId)
+        || (projectAccessible(appProject)
+          && get(/databases/$(database)/documents/projects/$(appProject)).data.clientId == clientId);
+    }
+
     function clientAccessible(clientId) {
       return signedIn()
         && clientId is string
         && exists(/databases/$(database)/documents/clients/$(clientId))
         && (
-          sameUser(get(/databases/$(database)/documents/clients/$(clientId)).data.createdBy)
-          || (
-            get(/databases/$(database)/documents/clients/$(clientId)).data.leadId is string
-            && leadAccessible(get(/databases/$(database)/documents/clients/$(clientId)).data.leadId)
-          )
-          || (
-            get(/databases/$(database)/documents/clients/$(clientId)).data.visibleTo is list
-            && get(/databases/$(database)/documents/clients/$(clientId)).data.visibleTo.hasAny([request.auth.uid, userKey()])
-          )
+          leadAccessible(get(/databases/$(database)/documents/clients/$(clientId)).data.get('leadId', null))
+          || assignedClientProject(get(/databases/$(database)/documents/clients/$(clientId)).data, clientId)
         );
     }
 
@@ -181,13 +184,13 @@ service cloud.firestore {
       allow read: if isOwner() || clientAccessible(clientId);
       allow create: if validClientData(request.resource.data)
         && optionalAvailable(request.resource.data, 'leadId', 'leads')
-        && (isOwner() || sameUser(request.resource.data.createdBy));
+        && isOwner();
       allow update: if validClientData(request.resource.data)
         && resource.data.get('_deleting', false) != true
         && optionalAvailable(request.resource.data, 'leadId', 'leads')
         && (isOwner()
         || (clientAccessible(clientId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasNone(['createdBy', 'leadId', 'visibleTo'])));
+          && request.resource.data.diff(resource.data).affectedKeys().hasNone(['createdBy', 'leadId', 'visibleTo', 'projectAccess'])));
       allow delete: if false;
     }
 

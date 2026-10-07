@@ -9,7 +9,7 @@ export function MainLayout() {
       <Sidebar />
       <div className="lg:pl-64">
         <Topbar />
-        <main className="min-h-[calc(100vh-4rem)] p-4 lg:p-6">
+        <main className="min-h-[calc(100vh-4rem)] p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
       </div>

@@ -50,6 +50,7 @@ export interface Client {
   contractSigned: boolean;
   onboardingCompleted: boolean;
   leadId?: string; // Original lead ID if converted
+  projectAccess?: Record<string, string>; // Agent identity to a linked project, rechecked by rules
   visibleTo?: string[]; // Agent IDs with an active project relationship
   createdAt: string;
   updatedAt: string;
@@ -83,6 +84,7 @@ export interface Project {
   assignedTo: string;
   driveLink?: string;
   notes: string;
+  clientUpdate?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;

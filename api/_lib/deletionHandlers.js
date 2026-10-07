@@ -73,6 +73,18 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
         const linked = await query(type === 'lead' ? 'clients' : 'leads', type === 'lead' ? 'leadId' : 'clientId', id);
         linked.forEach((doc) => updates.push({ doc, data: { [type === 'lead' ? 'leadId' : 'clientId']: deleteField(), updatedAt: new Date().toISOString() } }));
       }
+      if (type === 'project' && root.exists && validId(root.data().clientId)) {
+        const clientId = root.data().clientId;
+        const [client, linkedProjects] = await Promise.all([
+          db.collection('clients').doc(clientId).get(), query('projects', 'clientId', clientId),
+        ]);
+        if (client.exists) updates.push({ doc: client, data: {
+          projectAccess: Object.fromEntries(linkedProjects
+            .filter((entry) => entry.id !== id && !entry.data()._deleting && validId(entry.data().assignedTo))
+            .map((entry) => [entry.data().assignedTo, entry.id])),
+          updatedAt: new Date().toISOString(),
+        } });
+      }
       const field = `${type}Id`;
       const [activities, notifications, linkedActivities] = await Promise.all([
         query('activities', 'entityId', id), query('notifications', field, id), query('activities', `metadata.${field}`, id),

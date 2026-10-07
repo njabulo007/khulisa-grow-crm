@@ -81,6 +81,19 @@ export default async function handler(req, res) {
     }
 
     const client = clientSnapshot.data() || {};
+    if (client._deleting) throw createHttpError(403, 'This client is being deleted.');
+    let contact = null;
+    if (typeof project.assignedTo === 'string' && project.assignedTo && !project.assignedTo.includes('/')) {
+      let profile = await adminDb.collection('users').doc(project.assignedTo).get();
+      if (!profile.exists) {
+        const matches = await adminDb.collection('users').where('appUserId', '==', project.assignedTo).limit(1).get();
+        profile = matches.docs[0];
+      }
+      const person = profile?.data();
+      if (person?.isActive !== false && typeof person?.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email)) {
+        contact = { name: person.displayName || person.name || 'Khulisa Media', email: person.email };
+      }
+    }
     await shareDoc.ref.update({
       lastViewedAt: nowIso(),
       updatedAt: nowIso(),
@@ -105,7 +118,9 @@ export default async function handler(req, res) {
         packageId: typeof project.packageId === 'string' ? project.packageId : null,
         startDate: parseOptionalIsoDate(project.startDate),
         dueDate: parseOptionalIsoDate(project.dueDate),
-        notes: typeof project.notes === 'string' ? project.notes : '',
+        notes: '',
+        clientUpdate: typeof project.clientUpdate === 'string' ? project.clientUpdate : '',
+        contact,
         driveLink: typeof project.driveLink === 'string' ? project.driveLink : null,
         milestones: sanitizeMilestones(project.milestones),
         updatedAt: parseOptionalIsoDate(project.updatedAt),

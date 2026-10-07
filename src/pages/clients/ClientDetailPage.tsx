@@ -29,7 +29,7 @@ import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
 import { authService, clientService, invoiceService, leadService, paymentService, projectService } from '@/services';
 import { useAuth } from '@/contexts/AuthContext';
-import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
+import { canAccessLead, canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
 import { Client, Invoice, Lead, Payment, Project } from '@/types/models';
 
 const formatCurrency = (amount: number) => {
@@ -99,8 +99,8 @@ export function ClientDetailPage() {
     if (!client) return [];
     return allLeads
       .filter((lead) => lead.clientId === client.id || lead.id === client.leadId)
-      .filter((lead) => isOwner || lead.assignedTo === user?.id);
-  }, [allLeads, client, isOwner, user?.id]);
+      .filter((lead) => isOwner || canAccessLead(user, lead));
+  }, [allLeads, client, isOwner, user]);
   const projects = useMemo(() => {
     const projectList = allProjects.filter((project) => project.clientId === (id || ''));
     if (isOwner || !user) return projectList;

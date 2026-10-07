@@ -11,6 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { toast } from 'sonner';
+import { ConfirmDialog } from '@/components/common';
 
 const normalizeCommissionRatePercent = (value: number, fallbackPercent: number): number => {
   const baseline = Number.isFinite(fallbackPercent) ? fallbackPercent : 0;
@@ -29,6 +30,8 @@ export function SettingsPage() {
   const [defaultManualCommissionRate, setDefaultManualCommissionRate] = useState<number>(15);
   const [agentCommissionRates, setAgentCommissionRates] = useState<Record<string, number>>({});
   const [userProfiles, setUserProfiles] = useState<Awaited<ReturnType<typeof AuthService.listUserProfiles>>>([]);
+  const [rosterTarget, setRosterTarget] = useState<(typeof userProfiles)[number] | null>(null);
+  const [isRosterSaving, setIsRosterSaving] = useState(false);
   const [roleChanges, setRoleChanges] = useState<Record<string, 'owner' | 'agent'>>({});
 
   const applySettingsToState = useCallback((
@@ -61,7 +64,7 @@ export function SettingsPage() {
           settingsService.getGlobal(),
           AuthService.listUserProfiles(),
         ]);
-        const agents = authService.getAll().filter((user) => user.role === 'agent');
+        const agents = authService.getAll().filter((user) => user.role === 'agent' && user.isActive !== false);
         if (!isMounted) return;
 
         setAgentUsers(agents);
@@ -120,7 +123,7 @@ export function SettingsPage() {
        const refreshedProfiles = await AuthService.listUserProfiles();
        setUserProfiles(refreshedProfiles);
        setRoleChanges(Object.fromEntries(refreshedProfiles.map((profile) => [profile.uid, profile.role])));
-       setAgentUsers(authService.getAll().filter((user) => user.role === 'agent'));
+       setAgentUsers(authService.getAll().filter((user) => user.role === 'agent' && user.isActive !== false));
       toast.success('Global settings saved and commissions refreshed.');
     } catch (error) {
       console.error('[SettingsPage] Failed to save settings.', error);
@@ -130,6 +133,21 @@ export function SettingsPage() {
     }
   };
 
+  const handleRosterChange = async () => {
+    if (!rosterTarget || isRosterSaving) return;
+    setIsRosterSaving(true);
+    try {
+      await AuthService.updateAgentRosterState(rosterTarget.uid, !rosterTarget.isActive);
+      const profiles = await AuthService.listUserProfiles();
+      setUserProfiles(profiles);
+      setAgentUsers(authService.getAll().filter((agent) => agent.role === 'agent' && agent.isActive !== false));
+      setRosterTarget(null);
+      toast.success(rosterTarget.isActive ? 'Agent removed from the active roster.' : 'Agent restored to the roster.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update the agent roster.');
+    } finally { setIsRosterSaving(false); }
+  };
+
   const handleReset = async () => {
     setIsLoading(true);
     try {
@@ -137,7 +155,7 @@ export function SettingsPage() {
          settingsService.getGlobal(),
          AuthService.listUserProfiles(),
        ]);
-      const agents = authService.getAll().filter((user) => user.role === 'agent');
+      const agents = authService.getAll().filter((user) => user.role === 'agent' && user.isActive !== false);
        setAgentUsers(agents);
        setUserProfiles(profiles);
        setRoleChanges(Object.fromEntries(profiles.map((profile) => [profile.uid, profile.role])));
@@ -220,9 +238,10 @@ export function SettingsPage() {
               </div>
 
               <div className="space-y-2">
-                <h3 className="text-sm font-medium">User Roles</h3>
+                <h3 className="text-sm font-medium">Team & Access</h3>
+                <p className="text-xs text-muted-foreground">Archived agents leave the rankings and assignment menus. Their records and sign-in accounts are retained; archiving does not revoke access.</p>
                 <Table>
-                  <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Roster</TableHead></TableRow></TableHeader>
                   <TableBody>
                     {userProfiles.map((profile) => (
                       <TableRow key={profile.uid}>
@@ -233,6 +252,14 @@ export function SettingsPage() {
                             <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
                             <SelectContent><SelectItem value="owner">Owner</SelectItem><SelectItem value="agent">Agent</SelectItem></SelectContent>
                           </Select>
+                        </TableCell>
+                        <TableCell>
+                          {profile.role === 'agent' ? (
+                            <Button variant="outline" size="sm" disabled={isSaving || isRosterSaving || profile.uid === user?.uid}
+                              onClick={() => setRosterTarget(profile)}>
+                              {profile.isActive ? 'Archive agent' : 'Restore agent'}
+                            </Button>
+                          ) : <span className="text-xs text-muted-foreground">Owner</span>}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -293,6 +320,13 @@ export function SettingsPage() {
           )}
         </CardContent>
       </Card>
+      <ConfirmDialog open={Boolean(rosterTarget)} onOpenChange={(open) => { if (!open && !isRosterSaving) setRosterTarget(null); }}
+        title={rosterTarget?.isActive ? 'Archive agent?' : 'Restore agent?'}
+        description={rosterTarget?.isActive
+          ? `${rosterTarget.displayName || rosterTarget.email} will be removed from rankings and new assignment menus. Existing leads, clients, projects, and financial records are preserved.`
+          : 'This agent will appear in rankings and assignment menus again.'}
+        confirmLabel={isRosterSaving ? 'Saving...' : rosterTarget?.isActive ? 'Archive agent' : 'Restore agent'}
+        onConfirm={() => void handleRosterChange()} />
     </div>
   );
 }

@@ -62,7 +62,7 @@ export function CommissionsPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isPageLoading, setIsPageLoading] = useState(true);
 
-  const allAgents = authService.getAll().filter((candidate) => candidate.role === 'agent');
+  const allAgents = authService.getAll().filter((candidate) => candidate.role === 'agent' && candidate.isActive !== false);
 
   useEffect(() => {
     let isMounted = true;

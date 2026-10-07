@@ -54,6 +54,8 @@ export interface PublicProjectPortalData {
     startDate: string | null;
     dueDate: string | null;
     notes: string;
+    clientUpdate?: string;
+    contact?: { name: string; email: string } | null;
     driveLink: string | null;
     milestones: Array<{
       id: string;

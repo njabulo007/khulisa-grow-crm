@@ -24,7 +24,10 @@ export function KPICard({
   variant = 'default',
   className,
 }: KPICardProps) {
-  const isGradient = variant !== 'default';
+  const accentClass = {
+    default: 'bg-muted text-muted-foreground', gold: 'bg-accent/10 text-accent',
+    blue: 'bg-primary/10 text-primary', success: 'bg-success/10 text-success', warning: 'bg-warning/10 text-warning',
+  }[variant];
 
   const getTrendIcon = () => {
     if (!trend) return null;
@@ -35,59 +38,21 @@ export function KPICard({
 
   const getTrendColor = () => {
     if (!trend) return '';
-    if (isGradient) return trend.value >= 0 ? 'text-white/90' : 'text-white/70';
     return trend.value > 0 ? 'text-success' : trend.value < 0 ? 'text-destructive' : 'text-muted-foreground';
   };
 
-  if (isGradient) {
-    return (
-      <div
-        className={cn(
-          'kpi-card',
-          variant === 'gold' && 'kpi-card-gold',
-          variant === 'blue' && 'kpi-card-blue',
-          variant === 'success' && 'kpi-card-success',
-          variant === 'warning' && 'kpi-card-warning',
-          className
-        )}
-      >
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-sm font-medium text-white/80">{title}</p>
-            <p className="mt-2 text-3xl font-bold tracking-tight">{value}</p>
-            {subtitle && (
-              <p className="mt-1 text-sm text-white/70">{subtitle}</p>
-            )}
-          </div>
-          {icon && (
-            <div className="rounded-lg bg-white/20 p-2">
-              {icon}
-            </div>
-          )}
-        </div>
-        {trend && (
-          <div className={cn('mt-3 flex items-center gap-1 text-sm', getTrendColor())}>
-            {getTrendIcon()}
-            <span>{Math.abs(trend.value)}%</span>
-            <span className="text-white/60">{trend.label}</span>
-          </div>
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div className={cn('rounded-xl border bg-card p-5 card-hover', className)}>
+    <div className={cn('rounded-xl border border-border/80 bg-card p-6 shadow-[0_2px_12px_-6px_rgba(15,23,42,0.12)]', className)}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm font-medium text-muted-foreground">{title}</p>
-          <p className="mt-2 text-3xl font-bold tracking-tight text-foreground">{value}</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{title}</p>
+          <p className="mt-3 text-3xl font-semibold tracking-tight text-foreground">{value}</p>
           {subtitle && (
             <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           )}
         </div>
         {icon && (
-          <div className="rounded-lg bg-muted p-2 text-muted-foreground">
+          <div className={cn("rounded-xl p-2.5", accentClass)}>
             {icon}
           </div>
         )}

@@ -124,7 +124,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const syncUsersFromFirebaseProfiles = React.useCallback(async (): Promise<void> => {
     try {
       const profiles = await AuthService.listUserProfiles();
-      if (profiles.length === 0) return;
+
+      const profileIds = new Set(profiles.map((profile) => profile.id));
+      authService.getAll().forEach((cached) => {
+        if (!profileIds.has(cached.id)) authService.remove(cached.id);
+      });
 
       profiles.forEach((profile) => {
         const normalizedEmail = profile.email.trim().toLowerCase();
@@ -158,7 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: normalizedEmail,
             name: nextName,
             role: profile.role,
-            isActive: true,
+            isActive: profile.isActive,
             commissionRate: nextCommissionRate,
           });
         } else {
@@ -168,7 +172,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             email: normalizedEmail,
             name: nextName,
             role: profile.role,
-            isActive: true,
+            isActive: profile.isActive,
             commissionRate: nextCommissionRate,
           });
         }

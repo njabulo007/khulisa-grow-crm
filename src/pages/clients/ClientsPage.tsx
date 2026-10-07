@@ -1,7 +1,11 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import { repairClientProjectAccess } from '@/services/clientAccessService';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
+  RefreshCw,
+  Users,
+  CheckCircle2,
   Search,
   MoreHorizontal,
   Phone,
@@ -57,6 +61,7 @@ export function ClientsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [isRepairingAccess, setIsRepairingAccess] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -72,6 +77,8 @@ export function ClientsPage() {
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const [relatedDataError, setRelatedDataError] = useState<string | null>(null);
+  const [relatedRetryKey, setRelatedRetryKey] = useState(0);
   const [isRelatedDataLoading, setIsRelatedDataLoading] = useState(true);
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
 
@@ -89,6 +96,10 @@ export function ClientsPage() {
         setAllProjects(projects);
         setAllLeads(leads);
         setAllInvoices(invoices);
+        setRelatedDataError(null);
+      } catch (error) {
+        console.error('[ClientsPage] Failed to load linked records.', error);
+        if (isMounted) setRelatedDataError('Some linked projects or invoices could not be loaded. Refresh to try again.');
       } finally {
         if (isMounted) {
           setIsRelatedDataLoading(false);
@@ -99,7 +110,7 @@ export function ClientsPage() {
     return () => {
       isMounted = false;
     };
-  }, [allClients.length]);
+  }, [allClients, relatedRetryKey, user?.uid, user?.role]);
 
   const accessibleClientIds = useMemo(() => {
     if (!user) return new Set<string>();
@@ -112,9 +123,9 @@ export function ClientsPage() {
       .filter((client) => accessibleClientIds.has(client.id))
       .filter(
         (client) =>
-          client.businessName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          client.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          client.email.toLowerCase().includes(searchQuery.toLowerCase())
+          (client.businessName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (client.ownerName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (client.email || '').toLowerCase().includes(searchQuery.toLowerCase())
       );
   }, [accessibleClientIds, allClients, searchQuery]);
 
@@ -275,7 +286,16 @@ export function ClientsPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Clients" description="Manage your client relationships">
+      <PageHeader title="Clients" description={isOwner ? 'Every client relationship, in one place' : 'Clients linked to your assigned leads and projects'}>
+        <Button variant="outline" disabled={isClientsLoading || isRelatedDataLoading} onClick={() => { void refreshClients(); setRelatedRetryKey((key) => key + 1); }}>
+          <RefreshCw className="mr-2 h-4 w-4" /> Refresh
+        </Button>
+        {isOwner && <Button variant="outline" disabled={isRepairingAccess} onClick={async () => {
+          setIsRepairingAccess(true);
+          try { const count = await repairClientProjectAccess(); toast.success(`${count} client assignment${count === 1 ? '' : 's'} repaired.`); await refreshClients(); }
+          catch (error) { toast.error(error instanceof Error ? error.message : 'Could not repair client access.'); }
+          finally { setIsRepairingAccess(false); }
+        }}>{isRepairingAccess ? 'Repairing…' : 'Repair assignments'}</Button>}
         {isOwner && (
           <Button onClick={() => { resetForm(); setShowAddDialog(true); }}>
             <Plus className="mr-2 h-4 w-4" />
@@ -284,6 +304,19 @@ export function ClientsPage() {
         )}
       </PageHeader>
 
+      <div className="grid gap-4 sm:grid-cols-3">
+        {[
+          { label: isOwner ? 'All clients' : 'Assigned clients', value: accessibleClientIds.size, icon: Users },
+          { label: 'Active projects', value: allProjects.filter((project) => accessibleClientIds.has(project.clientId) && !['completed', 'delivered'].includes(project.status)).length, icon: FolderKanban },
+          { label: 'Onboarding complete', value: allClients.filter((client) => accessibleClientIds.has(client.id) && client.onboardingCompleted).length, icon: CheckCircle2 },
+        ].map(({ label, value, icon: Icon }) => (
+          <Card key={label}><CardContent className="flex items-center justify-between p-5">
+            <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold tracking-tight">{isClientsLoading ? '—' : value}</p></div>
+            <span className="rounded-xl bg-primary/5 p-3 text-primary"><Icon className="h-5 w-5" /></span>
+          </CardContent></Card>
+        ))}
+      </div>
+      {(clientsError || relatedDataError) && <div role="alert" className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">{clientsError || relatedDataError}</div>}
       {/* Search */}
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-md">
@@ -388,7 +421,7 @@ export function ClientsPage() {
                         <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="icon" aria-label={`Actions for ${client.businessName}`} className="h-8 w-8 sm:opacity-50 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity">
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>

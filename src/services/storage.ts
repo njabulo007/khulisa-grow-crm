@@ -172,7 +172,7 @@ const normalizeFromFirestore = (value: unknown): unknown => {
   return value;
 };
 
-const normalizeForFirestore = (value: unknown): unknown => {
+export const normalizeForFirestore = (value: unknown): unknown => {
   if (value === undefined) return undefined;
   if (value instanceof Date) return value.toISOString();
   if (Array.isArray(value)) {
@@ -324,23 +324,16 @@ export const getCurrentAuthKeys = async (): Promise<string[]> => {
   if (!currentUser) return [];
 
   const keys = new Set([currentUser.uid]);
-  try {
-    const claims = (await currentUser.getIdTokenResult()).claims;
-    if (typeof claims.appUserId === 'string' && claims.appUserId.trim()) keys.add(claims.appUserId.trim());
-  } catch {
-    // Only server-issued identity claims can extend the Firebase UID.
-  }
+  const claims = (await currentUser.getIdTokenResult()).claims;
+  if (typeof claims.appUserId === 'string' && claims.appUserId.trim()) keys.add(claims.appUserId.trim());
   return Array.from(keys);
 };
 
 export const getCurrentAuthRole = async (): Promise<AuthenticatedRole> => {
   const currentUser = auth?.currentUser;
-  if (!currentUser) return 'agent';
-
-  try {
-    const tokenResult = await currentUser.getIdTokenResult();
-    return tokenResult.claims.role === 'owner' ? 'owner' : 'agent';
-  } catch {
-    return 'agent';
-  }
+  if (!currentUser) throw new Error('Please sign in to load CRM records.');
+  const tokenResult = await currentUser.getIdTokenResult();
+  const role = tokenResult.claims.role;
+  if (role !== 'owner' && role !== 'agent') throw new Error('Your role could not be verified. Please sign in again.');
+  return role;
 };

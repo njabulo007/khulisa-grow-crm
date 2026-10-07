@@ -33,7 +33,7 @@ import { DEFAULT_PACKAGE_ID, getPackageById, KHULISA_PACKAGES, type PackageId } 
 import { useAuth } from '@/contexts/AuthContext';
 import { authService, clientService, invoiceService, leadService, projectService } from '@/services';
 import { Client, Invoice, Lead, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
-import { getAgentLinkedClientIds } from '@/lib/permissions';
+import { canAccessProject, getAgentLinkedClientIds } from '@/lib/permissions';
 import { createProjectMilestonesForPackage } from '@/lib/projectMilestones';
 import { toast } from 'sonner';
 
@@ -67,7 +67,7 @@ export function ProjectsPage() {
   const [isCreating, setIsCreating] = useState(false);
   const latestLoadRef = useRef(0);
 
-  const agents = authService.getAll().filter((candidate) => candidate.role === 'agent');
+  const agents = authService.getAll().filter((candidate) => candidate.role === 'agent' && candidate.isActive !== false);
 
   const loadData = useCallback(async () => {
     const loadId = ++latestLoadRef.current;
@@ -112,15 +112,15 @@ export function ProjectsPage() {
     setFormData((prev) => ({ ...prev, clientId: presetClientId, assignedTo: isOwner ? prev.assignedTo : user?.id || '' }));
     setShowAddDialog(true);
     setOpenedFromPreset(true);
-  }, [accessibleClientIds, isOwner, openedFromPreset, presetClientId, user?.id]);
+  }, [accessibleClientIds, isOwner, openedFromPreset, presetClientId, user]);
 
   const projects = useMemo(() => {
     const visible = isOwner
       ? allProjects
-      : allProjects.filter((project) => project.assignedTo === user?.id);
+      : allProjects.filter((project) => canAccessProject(user, project));
 
     return visible.filter((project) => {
-      if (!accessibleClientIds.has(project.clientId)) return false;
+      if (!isOwner && !accessibleClientIds.has(project.clientId)) return false;
       if (presetClientId && project.clientId !== presetClientId) return false;
       if (statusFilter !== 'all' && project.status !== statusFilter) return false;
 
@@ -133,7 +133,7 @@ export function ProjectsPage() {
         (client?.businessName || '').toLowerCase().includes(q);
       return matchesSearch;
     });
-  }, [accessibleClientIds, allClients, allProjects, isOwner, presetClientId, searchQuery, statusFilter, user?.id]);
+  }, [accessibleClientIds, allClients, allProjects, isOwner, presetClientId, searchQuery, statusFilter, user]);
 
   const resetForm = () => {
     setFormData({

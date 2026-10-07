@@ -28,8 +28,7 @@ class FirestoreClientService implements ClientService {
     const authKeys = await getCurrentAuthKeys();
     if (authKeys.length === 0) return [];
 
-    const [createdByAgent, assignedLeads, assignedProjects] = await Promise.all([
-      this.collection.getAllWhereIn('createdBy', authKeys),
+    const [assignedLeads, assignedProjects] = await Promise.all([
       this.leads.getAllWhereIn('assignedTo', authKeys),
       this.projects.getAllWhereIn('assignedTo', authKeys),
     ]);
@@ -42,7 +41,7 @@ class FirestoreClientService implements ClientService {
     );
 
     const byId = new Map<string, Client>();
-    [...createdByAgent, ...leadClients, ...visibleProjectClients].forEach((client) => byId.set(client.id, client));
+    [...leadClients, ...visibleProjectClients].forEach((client) => byId.set(client.id, client));
     return Array.from(byId.values());
   }
 

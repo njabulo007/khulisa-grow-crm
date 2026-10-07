@@ -42,7 +42,7 @@ import {
   projectService,
   syncCommissionsFromInvoices,
 } from '@/services';
-import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
+import { canAccessProject, canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
 import { Client, INVOICE_STATUSES, Invoice, InvoiceStatus, Lead, Payment, Project } from '@/types/models';
 import { toast } from 'sonner';
 
@@ -149,8 +149,8 @@ export function InvoicesPage() {
   const accessibleProjects = useMemo(() => {
     const base = allProjects.filter((project) => accessibleClientIds.has(project.clientId));
     if (isOwner) return base;
-    return base.filter((project) => project.assignedTo === user?.id);
-  }, [accessibleClientIds, allProjects, isOwner, user?.id]);
+    return base.filter((project) => canAccessProject(user, project));
+  }, [accessibleClientIds, allProjects, isOwner, user]);
 
   const accessibleInvoices = useMemo(() => {
     return allInvoices.filter((invoice) => canAccessInvoice(user, invoice, allLeads, allClients, allProjects));

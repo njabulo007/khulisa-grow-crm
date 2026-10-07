@@ -39,6 +39,7 @@ export interface AppUserProfile {
   displayName: string | null;
   role: Role;
   hasAppUserId: boolean;
+  isActive: boolean;
 }
 
 function getFallbackRoleForEmail(_email?: string | null): Role {
@@ -172,7 +173,8 @@ export const AuthService = {
   async listUserProfiles(): Promise<AppUserProfile[]> {
     try {
       const snapshot = await getDocs(collection(db, 'users'));
-      const profiles: AppUserProfile[] = [];
+      const profiles = new Map<string, AppUserProfile>();
+      const canonicalIds = new Set(snapshot.docs.map((item) => item.id));
 
       snapshot.docs.forEach((docSnapshot) => {
         const data = docSnapshot.data() as Record<string, unknown>;
@@ -181,6 +183,7 @@ export const AuthService = {
         const normalizedEmail =
           typeof data.email === 'string' ? data.email.trim().toLowerCase() : '';
         if (!normalizedUid || !normalizedEmail) return;
+        if (normalizedUid !== docSnapshot.id && canonicalIds.has(normalizedUid)) return;
 
         const role = pickRole(data) || getFallbackRoleForEmail(normalizedEmail);
         const displayNameRaw =
@@ -192,21 +195,31 @@ export const AuthService = {
         const normalizedDisplayName = displayNameRaw.trim() || null;
         const appUserId = pickAppUserId(data);
 
-        profiles.push({
+        profiles.set(normalizedUid, {
           id: appUserId || normalizedUid,
           uid: normalizedUid,
           email: normalizedEmail,
           displayName: normalizedDisplayName,
           role,
           hasAppUserId: Boolean(appUserId),
+          isActive: data.isActive !== false,
         });
       });
 
-      return profiles;
+      return [...profiles.values()];
     } catch (error) {
       console.error('[AuthService] Failed to load user profiles from Firestore users collection.', error);
       throw new Error('Failed to load user profiles from Firestore.');
     }
+  },
+
+  async updateAgentRosterState(uid: string, isActive: boolean): Promise<void> {
+    const targetUid = uid.trim();
+    if (!targetUid || targetUid === auth.currentUser?.uid) throw new Error('You cannot archive your own account.');
+    await setDoc(doc(db, 'users', targetUid), { isActive, updatedAt: getTimestamp() }, { merge: true });
+    authService.getAll().filter((user) => user.uid === targetUid || user.id === targetUid)
+      .forEach((user) => authService.update(user.id, { isActive }));
+    window.dispatchEvent(new CustomEvent('crm:data-changed'));
   },
 
   async updateUserRole(uid: string, role: Role): Promise<void> {
@@ -288,7 +301,7 @@ class LocalAuthService implements AuthService {
   }
 
   getById(id: string): User | undefined {
-    return this.users.getById(id);
+    return this.users.getById(id) || this.users.getAll().find((user) => user.uid === id);
   }
 
   create(user: Omit<User, 'createdAt' | 'updatedAt'> & { id?: string }): User {

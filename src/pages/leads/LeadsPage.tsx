@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { canAccessLead } from '@/lib/permissions';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
@@ -140,7 +141,7 @@ export function LeadsPage() {
         const localByEmail = new Map(localAgents.map((candidate) => [candidate.email, candidate]));
         const profiles = await AuthService.listUserProfiles();
         const profileAgents = profiles
-          .filter((profile) => profile.role === 'agent')
+          .filter((profile) => profile.role === 'agent' && profile.isActive !== false)
           .map((profile) => {
             const normalizedEmail = profile.email.trim().toLowerCase();
             const localMatch = localByEmail.get(normalizedEmail);
@@ -157,7 +158,7 @@ export function LeadsPage() {
           });
 
         const mergedById = new Map<string, { id: string; name: string; email: string }>();
-        [...localAgents, ...profileAgents].forEach((candidate) => {
+        profileAgents.forEach((candidate) => {
           mergedById.set(candidate.id, candidate);
         });
 
@@ -197,7 +198,7 @@ export function LeadsPage() {
   // Filter leads based on role
   const allLeads = useMemo(() => {
     if (isOwner) return leads;
-    return leads.filter(l => l.assignedTo === user?.id);
+    return leads.filter(l => canAccessLead(user, l));
   }, [isOwner, leads, user]);
 
   // Apply filters

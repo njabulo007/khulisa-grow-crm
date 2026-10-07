@@ -178,8 +178,16 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
         businessName: lead.businessName || 'New client', ownerName: lead.contactName || '',
         email: lead.email || '', phone: lead.phone || '', location, industry,
         contractSigned: false, onboardingCompleted: false, leadId, createdBy: decoded.uid,
-        visibleTo: lead.assignedTo ? [lead.assignedTo] : [], createdAt: now, updatedAt: now,
+        visibleTo: lead.assignedTo ? [lead.assignedTo] : [],
+        projectAccess: createProject ? { [lead.assignedTo || decoded.uid]: projectRef.id } : {}, createdAt: now, updatedAt: now,
       });
+      if (createProject && clientSnapshot.exists) {
+        const projectAgent = projectSnapshot.data()?.assignedTo || lead.assignedTo || decoded.uid;
+        const projectAccess = clientSnapshot.data().projectAccess || {};
+        if (projectAccess[projectAgent] !== projectRef.id) transaction.update(clientRef, {
+          projectAccess: { ...projectAccess, [projectAgent]: projectRef.id },
+        });
+      }
       if (createProject && !projectSnapshot.exists) transaction.set(projectRef, {
         name: projectName, clientId: clientRef.id, packageId, packageName: pkg.name, packagePrice: pkg.price,
         status: 'not-started', milestones: pkg.features.map((title, index) => ({

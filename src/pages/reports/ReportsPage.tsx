@@ -1,3 +1,4 @@
+import { getAgentPerformance } from '@/lib/agentPerformance';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail } from 'lucide-react';
@@ -60,6 +61,8 @@ const formatReportDate = (value: Date): string =>
 export function ReportsPage() {
   const navigate = useNavigate();
   const { isOwner } = useAuth();
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [leads, setLeads] = useState<Awaited<ReturnType<typeof leadService.getAll>>>([]);
   const [projects, setProjects] = useState<Awaited<ReturnType<typeof projectService.getAll>>>([]);
@@ -85,6 +88,10 @@ export function ReportsPage() {
         setInvoices(nextInvoices);
         setClients(nextClients);
         setActivities(nextActivities);
+        setLoadError(null);
+      } catch (error) {
+        console.error('[ReportsPage] Failed to load records.', error);
+        if (isMounted) setLoadError('Reports could not be refreshed. Check your connection and try again.');
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -92,10 +99,13 @@ export function ReportsPage() {
       }
     };
     void loadData();
+    const refresh = () => setRetryKey((key) => key + 1);
+    window.addEventListener('crm:data-changed', refresh);
     return () => {
       isMounted = false;
+      window.removeEventListener('crm:data-changed', refresh);
     };
-  }, []);
+  }, [retryKey]);
 
   const users = authService.getAll();
   const projectLookup = useMemo(() => buildProjectLookup(projects), [projects]);
@@ -162,32 +172,10 @@ export function ReportsPage() {
     const winRate = Math.round((wonCount / totalLeads) * 100);
     const lossRate = Math.round((lostCount / totalLeads) * 100);
 
-    const agentPerformance = users
-      .filter((user) => user.role === 'agent')
-      .map((agent) => {
-        const agentLeadIds = new Set(leads.filter((lead) => lead.assignedTo === agent.id).map((lead) => lead.id));
-        const agentProjectIds = new Set(projects.filter((project) => project.assignedTo === agent.id).map((project) => project.id));
-        const agentClientIdsFromLeads = new Set(
-          clients
-            .filter((client) => !!client.leadId && agentLeadIds.has(client.leadId))
-            .map((client) => client.id)
-        );
-        const revenue = paidInvoices.reduce((sum, invoice) => {
-          const linkedByProject = !!invoice.projectId && agentProjectIds.has(invoice.projectId);
-          const linkedByLeadClient = agentClientIdsFromLeads.has(invoice.clientId);
-          return linkedByProject || linkedByLeadClient ? sum + getInvoiceAmount(invoice) : sum;
-        }, 0);
-        const dealsWon = leads.filter((lead) => lead.assignedTo === agent.id && lead.stage === 'won').length;
-        return {
-          agentId: agent.id,
-          agentName: agent.name,
-          revenue,
-          dealsWon,
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
+    const agentPerformance = getAgentPerformance(users, leads, clients, projects, invoices)
+      .map((agent) => ({ ...agent, agentId: agent.id, agentName: agent.name }));
 
-    const usersById = new Map(users.map((user) => [user.id, user]));
+    const usersById = new Map(users.flatMap((user) => [[user.id, user] as const, ...(user.uid ? [[user.uid, user] as const] : [])]));
     const leadActivityReport = leads
       .map((lead) => {
         const leadActivities = activities
@@ -225,9 +213,9 @@ export function ReportsPage() {
     const overdueFollowUps = openLeads.filter(
       (lead) => lead.followUpDate && new Date(lead.followUpDate).getTime() < now.getTime()
     );
-    const outstandingInvoices = invoices.filter((invoice) => invoice.status !== 'paid');
+    const outstandingInvoices = invoices.filter((invoice) => ['sent', 'overdue', 'partially-paid'].includes(invoice.status));
     const outstandingRevenue = outstandingInvoices.reduce(
-      (sum, invoice) => sum + getInvoiceEffectiveTotals(invoice, projectLookup).total,
+      (sum, invoice) => sum + Math.max(0, getInvoiceEffectiveTotals(invoice, projectLookup).total - invoice.amountPaid),
       0
     );
     const paidRevenue = invoices
@@ -315,12 +303,12 @@ export function ReportsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Reports" description="Business analytics and insights">
-        <Button variant="outline" onClick={handleExportPipelineSummary} disabled={isLoading}>
+        <Button variant="outline" onClick={handleExportPipelineSummary} disabled={isLoading || Boolean(loadError)}>
           <Mail className="mr-2 h-4 w-4" />
           Export pipeline summary
         </Button>
       </PageHeader>
-
+      {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm"><p>{loadError}</p><Button variant="outline" size="sm" onClick={() => setRetryKey((key) => key + 1)}>Try again</Button></div>}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>

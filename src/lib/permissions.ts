@@ -1,5 +1,8 @@
 import { Client, Commission, Invoice, Lead, Project, User } from '@/types/models';
 
+export const matchesUserIdentity = (user: User | null | undefined, value: string | null | undefined): boolean =>
+  Boolean(user && value && (value === user.id || value === user.uid));
+
 export const isOwnerUser = (user: User | null | undefined): boolean => user?.role === 'owner';
 export const isAgentUser = (user: User | null | undefined): boolean => user?.role === 'agent';
 
@@ -23,12 +26,12 @@ export const getAgentLinkedClientIds = (
 
 export const canAccessLead = (user: User | null | undefined, lead: Lead | null | undefined): boolean => {
   if (!user || !lead) return false;
-  return isOwnerUser(user) || (lead.assignedTo === user.id || lead.assignedTo === user.uid);
+  return isOwnerUser(user) || matchesUserIdentity(user, lead.assignedTo);
 };
 
 export const canAccessProject = (user: User | null | undefined, project: Project | null | undefined): boolean => {
   if (!user || !project) return false;
-  return isOwnerUser(user) || (project.assignedTo === user.id || project.assignedTo === user.uid);
+  return isOwnerUser(user) || matchesUserIdentity(user, project.assignedTo);
 };
 
 export const canAccessClient = (
@@ -55,7 +58,7 @@ export const canAccessInvoice = (
 
   if (invoice.projectId) {
     const project = projects.find((item) => item.id === invoice.projectId);
-    if (project && (project.assignedTo === user.id || project.assignedTo === user.uid)) return true;
+    if (project && matchesUserIdentity(user, project.assignedTo)) return true;
   }
 
   return getAgentLinkedClientIds(user.id, leads, clients, projects, user.uid).has(invoice.clientId);
@@ -66,5 +69,5 @@ export const canAccessCommission = (
   commission: Commission | null | undefined
 ): boolean => {
   if (!user || !commission) return false;
-  return isOwnerUser(user) || (commission.agentId === user.id || commission.agentId === user.uid);
+  return isOwnerUser(user) || matchesUserIdentity(user, commission.agentId);
 };

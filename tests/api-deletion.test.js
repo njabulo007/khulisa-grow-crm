@@ -158,3 +158,14 @@ test('revoked shares retain failed paths and disappear from Firestore after succ
     revokedBy: 'owner', now: 'later', deleteFiles: async (media) => { assert.deepEqual(media, [b]); return { failed: 0 }; } });
   assert.equal(f.records.size, 0);
 });
+
+test('project deletion preserves client access through another assigned project', async () => {
+  const f = fixture({
+    'clients/c': { projectAccess: { agent: 'p' } },
+    'projects/p': { clientId: 'c', assignedTo: 'agent' },
+    'projects/remaining': { clientId: 'c', assignedTo: 'agent' },
+  });
+  assert.equal((await f.invoke('project', 'p')).code, 200);
+  assert.deepEqual(f.records.get('clients/c').projectAccess, { agent: 'remaining' });
+  assert.equal(f.records.has('projects/remaining'), true);
+});

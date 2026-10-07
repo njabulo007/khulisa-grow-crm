@@ -1,3 +1,4 @@
+import { saveProjectWithClientAccess } from './clientAccessService';
 import { deleteCrmRecord } from './deletionService';
 import { getPackageById, resolvePackageId } from '@/config/packages';
 import {
@@ -41,7 +42,7 @@ class FirestoreProjectService implements ProjectService {
   private normalizeProject(project: Project & { packageType?: string }): Project {
     const packageId = resolvePackageId(project.packageId ?? project.packageType);
     const pkg = getPackageById(packageId);
-    const milestones = normalizeProjectMilestones(project.milestones, packageId);
+    const milestones = Array.isArray(project.milestones) && project.milestones.length ? normalizeProjectMilestones(project.milestones, packageId) : [];
 
     return {
       ...project,
@@ -134,7 +135,7 @@ class FirestoreProjectService implements ProjectService {
     const milestones = normalizeProjectMilestones(project.milestones, packageId);
     const status = normalizeProjectStatus(project.status);
 
-    const created = await this.collection.create({
+    const nextProject: Project = {
       ...project,
       packageId,
       packageName: pkg?.name,
@@ -144,8 +145,10 @@ class FirestoreProjectService implements ProjectService {
       id: generateId(),
       createdAt: getTimestamp(),
       updatedAt: getTimestamp(),
-    });
-    const normalized = this.normalizeProject(created);
+    };
+    if (await getCurrentAuthRole() === 'owner') await saveProjectWithClientAccess(nextProject);
+    else await this.collection.create(nextProject);
+    const normalized = this.normalizeProject(nextProject);
     await this.notifyDeadline(normalized);
     return normalized;
   }
@@ -182,7 +185,11 @@ class FirestoreProjectService implements ProjectService {
       }
     }
 
-    const updated = await this.collection.update(id, normalizedUpdates);
+    let updated: Project | null;
+    if ((updates.assignedTo !== undefined || updates.clientId !== undefined) && await getCurrentAuthRole() === 'owner') {
+      updated = { ...current, ...normalizedUpdates };
+      await saveProjectWithClientAccess(updated, current.clientId, normalizedUpdates);
+    } else updated = await this.collection.update(id, normalizedUpdates);
     if (!updated) return null;
 
     const normalized = this.normalizeProject(updated);

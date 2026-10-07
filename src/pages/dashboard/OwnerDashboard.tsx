@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import { getAgentPerformance } from '@/lib/agentPerformance';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   DollarSign,
@@ -141,8 +142,8 @@ export function OwnerDashboard() {
 
     // Outstanding
     const outstanding = invoices
-      .filter((invoice) => invoice.status === 'sent' || invoice.status === 'overdue')
-      .reduce((sum, invoice) => sum + getInvoiceAmount(invoice), 0);
+      .filter((invoice) => invoice.status === 'sent' || invoice.status === 'overdue' || invoice.status === 'partially-paid')
+      .reduce((sum, invoice) => sum + Math.max(0, getInvoiceAmount(invoice) - invoice.amountPaid), 0);
 
     // Leads by stage
     const leadsByStage = leads.reduce((acc, lead) => {
@@ -157,34 +158,7 @@ export function OwnerDashboard() {
       return dueDate < now && project.status !== 'completed' && project.status !== 'delivered';
     });
 
-    // Top agents by paid invoice revenue linked to their leads/projects
-    const agentStats: AgentPerformance[] = users
-      .filter((currentUser) => currentUser.role === 'agent')
-      .map((agent) => {
-        const agentLeadIds = new Set(leads.filter((lead) => lead.assignedTo === agent.id).map((lead) => lead.id));
-        const agentProjectIds = new Set(projects.filter((project) => project.assignedTo === agent.id).map((project) => project.id));
-        const agentClientIdsFromLeads = new Set(
-          clients
-            .filter((client) => !!client.leadId && agentLeadIds.has(client.leadId))
-            .map((client) => client.id)
-        );
-
-        const revenue = paidInvoices.reduce((sum, invoice) => {
-          const linkedByProject = !!invoice.projectId && agentProjectIds.has(invoice.projectId);
-          const linkedByLeadClient = agentClientIdsFromLeads.has(invoice.clientId);
-          return linkedByProject || linkedByLeadClient ? sum + getInvoiceAmount(invoice) : sum;
-        }, 0);
-
-        const dealsWon = leads.filter((lead) => lead.assignedTo === agent.id && lead.stage === 'won').length;
-
-        return {
-          id: agent.id,
-          name: agent.name,
-          dealsWon,
-          revenue,
-        };
-      })
-      .sort((a, b) => b.revenue - a.revenue);
+    const agentStats: AgentPerformance[] = getAgentPerformance(users, leads, clients, projects, invoices);
 
     // Revenue trend (last 12 months, including months with zero values)
     const monthlyData = [];
@@ -279,7 +253,7 @@ export function OwnerDashboard() {
         <KPICard
           title="Outstanding"
           value={formatCurrency(stats.outstanding)}
-          subtitle="Sent + overdue invoices"
+          subtitle="Unpaid balances, including partial payments"
           icon={<Clock className="h-5 w-5" />}
           variant="warning"
         />
@@ -380,7 +354,8 @@ export function OwnerDashboard() {
         {/* Top Agents */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Top Performing Agents</CardTitle>
+            <CardTitle className="text-lg">Agent Performance</CardTitle>
+            <p className="text-xs text-muted-foreground">Ranked by won leads, then paid revenue</p>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">

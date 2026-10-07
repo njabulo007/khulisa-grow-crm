@@ -35,6 +35,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { getPackageById, getPackageCombinedFeatures, getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
@@ -81,8 +82,6 @@ const getComputedShareStatus = (share: ProjectShareRecord): ProjectShareStatus =
   return 'active';
 };
 
-const normalizeChecklistText = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-
 interface OwnerScopedMilestone {
   id: string;
   title: string;
@@ -94,49 +93,15 @@ interface OwnerScopedMilestone {
 
 const buildScopedMilestones = (
   milestones: ReturnType<typeof normalizeProjectMilestone>[],
-  scopeFeatures: string[],
-): OwnerScopedMilestone[] => {
-  const normalizedMilestones = milestones.map((milestone, index) => ({
-    id: milestone.id || `m-${index + 1}`,
-    title: milestone.title || milestone.name || `Milestone ${index + 1}`,
-    description: milestone.description,
-    isCompleted: milestone.isCompleted === true,
-    completedAt: milestone.completedAt,
-    key: normalizeChecklistText(milestone.title || milestone.name || ''),
-  }));
-
-  if (!scopeFeatures.length) {
-    return normalizedMilestones.map((milestone) => ({
-      id: milestone.id,
-      title: milestone.title,
-      description: milestone.description,
-      isCompleted: milestone.isCompleted,
-      completedAt: milestone.completedAt,
-      sourceMilestoneId: milestone.id,
-    }));
-  }
-
-  return scopeFeatures.map((feature, index) => {
-    const featureKey = normalizeChecklistText(feature);
-    const matchedMilestone = normalizedMilestones.find((milestone) => {
-      if (!featureKey || !milestone.key) return false;
-      return (
-        milestone.key === featureKey ||
-        milestone.key.includes(featureKey) ||
-        featureKey.includes(milestone.key)
-      );
-    });
-
-    return {
-      id: matchedMilestone?.id || `scope-${index + 1}`,
-      title: feature,
-      description: matchedMilestone?.description,
-      isCompleted: matchedMilestone?.isCompleted === true,
-      completedAt: matchedMilestone?.completedAt,
-      sourceMilestoneId: matchedMilestone?.id || null,
-    };
-  });
-};
+  _scopeFeatures: string[],
+): OwnerScopedMilestone[] => milestones.map((milestone) => ({
+  id: milestone.id,
+  title: milestone.title || milestone.name || 'Milestone',
+  description: milestone.description,
+  isCompleted: milestone.isCompleted === true,
+  completedAt: milestone.completedAt,
+  sourceMilestoneId: milestone.id,
+}));
 
 const getAutoProjectStatusFromScopedMilestones = (
   milestones: OwnerScopedMilestone[],
@@ -171,6 +136,8 @@ export function ProjectDetailPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isSavingMilestones, setIsSavingMilestones] = useState(false);
+  const [clientUpdateDraft, setClientUpdateDraft] = useState('');
+  const [isSavingClientUpdate, setIsSavingClientUpdate] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
   const [shareExpiryDate, setShareExpiryDate] = useState(() =>
     new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
@@ -216,6 +183,8 @@ export function ProjectDetailPage() {
       isMounted = false;
     };
   }, [id]);
+
+  useEffect(() => { setClientUpdateDraft(project?.clientUpdate || ''); }, [project?.id, project?.clientUpdate]);
 
   const loadPortalShares = React.useCallback(
     async (projectId: string) => {
@@ -749,6 +718,21 @@ export function ProjectDetailPage() {
             </CardContent>
           </Card>
 
+          {isOwner && <Card>
+            <CardHeader><CardTitle className="text-lg">Client update</CardTitle><p className="text-sm text-muted-foreground">Publish a short update to the client portal. CRM notes remain private.</p></CardHeader>
+            <CardContent className="space-y-4">
+              <Textarea aria-label="Client portal update" placeholder="What should your client know?" maxLength={4000} value={clientUpdateDraft} onChange={(event) => setClientUpdateDraft(event.target.value)} />
+              <Button disabled={isSavingClientUpdate || clientUpdateDraft === (project.clientUpdate || '')} onClick={async () => {
+                setIsSavingClientUpdate(true);
+                try {
+                  const updated = await projectService.update(project.id, { clientUpdate: clientUpdateDraft.trim() });
+                  if (!updated) throw new Error('Project could not be updated.');
+                  syncProjectState(updated); toast.success('Client update published.');
+                } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not publish the update.'); }
+                finally { setIsSavingClientUpdate(false); }
+              }}>{isSavingClientUpdate ? 'Publishing…' : 'Publish update'}</Button>
+            </CardContent>
+          </Card>}
           {project.notes && (
             <Card>
               <CardHeader>
