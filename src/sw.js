@@ -105,7 +105,7 @@ const buildNotificationFromPayload = (payload) => {
     "/images/khulisa-logo-icon.png";
   const badge =
     (typeof notification.badge === "string" && notification.badge) ||
-    "/images/khulisa-logo-icon.png";
+    "/images/khulisa-notification-badge.png";
   const tag =
     (typeof notification.tag === "string" && notification.tag) ||
     (typeof data.notificationId === "string" && `khulisa-notification-${data.notificationId}`) ||

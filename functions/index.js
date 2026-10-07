@@ -612,7 +612,7 @@ exports.sendWebPushOnNotificationCreate = onDocumentCreated('notifications/{noti
         title,
         body,
         icon: '/images/khulisa-logo-icon.png',
-        badge: '/images/khulisa-logo-icon.png',
+        badge: '/images/khulisa-notification-badge.png',
         tag: `khulisa-${event.params.notificationId}`,
         renotify: true,
         requireInteraction: true,

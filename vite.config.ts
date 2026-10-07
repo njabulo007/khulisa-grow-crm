@@ -29,6 +29,7 @@ export default defineConfig(() => ({
       includeAssets: [
         "images/khulisa-logo.png",
         "images/khulisa-logo-icon.png",
+        "images/khulisa-notification-badge.png",
         "sounds/notification.wav",
         "manifest.webmanifest",
       ],
