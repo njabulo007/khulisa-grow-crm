@@ -1,4 +1,7 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import { ClientActivityPanel } from '@/components/common/ClientActivityPanel';
+import { Checkbox } from '@/components/ui/checkbox';
+import { toast } from 'sonner';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -50,6 +53,7 @@ export function ClientDetailPage() {
   const [client, setClient] = useState<Client | undefined>(undefined);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentsByInvoice, setPaymentsByInvoice] = useState<Record<string, Payment[]>>({});
+  const [isSavingOnboarding, setIsSavingOnboarding] = useState(false);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
@@ -199,14 +203,15 @@ export function ClientDetailPage() {
           description={`${client.ownerName} | ${clientStatus}`}
           className="mb-0 flex-1"
         >
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => navigate(`/clients?edit=${encodeURIComponent(client.id)}`)}>Edit client details</Button>
             <Button size="sm" className="transition-all hover:shadow-md" onClick={() => navigate(`/projects?client=${client.id}`)}>
               <FolderKanban className="mr-1 h-4 w-4" />
               Create Project
             </Button>
             <Button size="sm" variant="outline" className="transition-all hover:shadow-md" onClick={() => navigate(`/invoices?client=${client.id}`)}>
               <FileText className="mr-1 h-4 w-4" />
-              Create Invoice
+              {isOwner ? 'Create Invoice' : 'View Invoices'}
             </Button>
           </div>
         </PageHeader>
@@ -263,6 +268,7 @@ export function ClientDetailPage() {
             </CardContent>
           </Card>
 
+          <ClientActivityPanel key={client.id} clientId={client.id} />
           {/* Associated Leads */}
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
@@ -491,8 +497,16 @@ export function ClientDetailPage() {
                 <span className={`font-medium ${client.contractSigned ? 'text-success' : 'text-muted-foreground'}`}>Contract Signed</span>
               </div>
               <div className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${client.onboardingCompleted ? 'bg-success/5 border-success/30' : 'bg-muted/30 border-border/40'}`}>
-                {client.onboardingCompleted ? <CheckCircle className="h-5 w-5 text-success flex-shrink-0" /> : <XCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
-                <span className={`font-medium ${client.onboardingCompleted ? 'text-success' : 'text-muted-foreground'}`}>Onboarding Completed</span>
+                <Checkbox id="client-onboarding-complete" checked={client.onboardingCompleted} disabled={isSavingOnboarding} onCheckedChange={async (checked) => {
+                  setIsSavingOnboarding(true);
+                  try {
+                    const updated = await clientService.update(client.id, { onboardingCompleted: checked === true });
+                    if (!updated) throw new Error('Client could not be updated.');
+                    setClient((current) => current?.id === updated.id ? updated : current); toast.success('Onboarding status updated.');
+                  } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update onboarding.'); }
+                  finally { setIsSavingOnboarding(false); }
+                }} />
+                <label htmlFor="client-onboarding-complete" className={`font-medium ${client.onboardingCompleted ? 'text-success' : 'text-muted-foreground'}`}>Onboarding Completed</label>
               </div>
             </CardContent>
           </Card>

@@ -169,3 +169,10 @@ test('project deletion preserves client access through another assigned project'
   assert.deepEqual(f.records.get('clients/c').projectAccess, { agent: 'remaining' });
   assert.equal(f.records.has('projects/remaining'), true);
 });
+
+test('removing the acquisition lead keeps client-success access through an agent-created project', async () => {
+  const f = fixture({ 'leads/l': { assignedTo: 'agent' }, 'clients/c': { leadId: 'l' }, 'projects/p': { clientId: 'c', assignedTo: 'agent' } });
+  assert.equal((await f.invoke('lead', 'l', 'agent')).code, 200);
+  assert.deepEqual(f.records.get('clients/c').projectAccess, { agent: 'p' });
+  assert.equal(f.records.get('clients/c').leadId, undefined);
+});

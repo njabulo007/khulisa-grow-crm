@@ -196,8 +196,12 @@ export function AgentDashboard() {
     <div className="space-y-6 animate-fade-in">
       <PageHeader
         title={`Hello, ${user?.name?.split(' ')[0] || 'Agent'}!`}
-        description="Track your leads, commissions, and performance."
-      />
+        description="Acquire clients, follow up, and keep assigned projects moving."
+      >
+        <Button onClick={() => navigate('/leads')}>Manage leads</Button>
+        <Button variant="outline" onClick={() => navigate('/clients')}>Client success</Button>
+        <Button variant="outline" onClick={() => navigate('/projects')}>Delivery</Button>
+      </PageHeader>
 
       {/* Commission KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

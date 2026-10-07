@@ -218,6 +218,12 @@ export class FirestoreCollection<T extends { id: string }> {
     return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
   }
 
+  async getAllWhereFields(fields: Record<string, unknown>): Promise<T[]> {
+    const snapshot = await getDocs(query(this.collectionRef,
+      ...Object.entries(fields).map(([field, value]) => where(field, '==', value))));
+    return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
+  }
+
   async getAllWhereIn(field: string, values: string[]): Promise<T[]> {
     const normalizedValues = Array.from(new Set(values.filter((value) => value.trim())));
     if (normalizedValues.length === 0) return [];

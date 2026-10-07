@@ -71,7 +71,16 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
       if (type === 'lead' || type === 'client') {
         updates.length = 0;
         const linked = await query(type === 'lead' ? 'clients' : 'leads', type === 'lead' ? 'leadId' : 'clientId', id);
-        linked.forEach((doc) => updates.push({ doc, data: { [type === 'lead' ? 'leadId' : 'clientId']: deleteField(), updatedAt: new Date().toISOString() } }));
+        for (const doc of linked) {
+          const data = { [type === 'lead' ? 'leadId' : 'clientId']: deleteField(), updatedAt: new Date().toISOString() };
+          if (type === 'lead') {
+            const projects = await query('projects', 'clientId', doc.id);
+            data.projectAccess = Object.fromEntries(projects
+              .filter((entry) => !entry.data()._deleting && validId(entry.data().assignedTo))
+              .map((entry) => [entry.data().assignedTo, entry.id]));
+          }
+          updates.push({ doc, data });
+        }
       }
       if (type === 'project' && root.exists && validId(root.data().clientId)) {
         const clientId = root.data().clientId;

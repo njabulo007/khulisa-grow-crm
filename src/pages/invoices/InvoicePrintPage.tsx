@@ -16,7 +16,7 @@ const sanitizeFilenameSegment = (value: string): string =>
 export function InvoicePrintPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user, isOwner } = useAuth();
+  const { user } = useAuth();
 
   const [isLoading, setIsLoading] = useState(true);
   const [invoice, setInvoice] = useState<Invoice | undefined>(undefined);
@@ -113,7 +113,7 @@ export function InvoicePrintPage() {
   }, [client?.businessName, invoice]);
 
   useEffect(() => {
-    if (!isOwner || !invoice || !canViewInvoice || hasAutoPrinted.current) return;
+    if (!invoice || !canViewInvoice || hasAutoPrinted.current) return;
 
     const timeout = window.setTimeout(() => {
       hasAutoPrinted.current = true;
@@ -121,7 +121,7 @@ export function InvoicePrintPage() {
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [canViewInvoice, invoice, isOwner]);
+  }, [canViewInvoice, invoice]);
 
   if (isLoading) {
     return (
@@ -173,9 +173,9 @@ export function InvoicePrintPage() {
       client={client}
       project={project}
       payments={payments}
-      isOwner={isOwner}
+      showAmounts={canViewInvoice}
       onBack={() => navigate(`/invoices/${invoice.id}`)}
-      onPrint={isOwner ? () => window.print() : undefined}
+      onPrint={() => window.print()}
     />
   );
 }

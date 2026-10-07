@@ -29,7 +29,7 @@ interface InvoicePrintViewProps {
   client: Client | null;
   project: Project | null;
   payments: Payment[];
-  isOwner: boolean;
+  showAmounts: boolean;
   onBack: () => void;
   onPrint?: () => void;
 }
@@ -39,7 +39,7 @@ export function InvoicePrintView({
   client,
   project,
   payments,
-  isOwner,
+  showAmounts,
   onBack,
   onPrint,
 }: InvoicePrintViewProps) {
@@ -58,7 +58,7 @@ export function InvoicePrintView({
         <Button variant="outline" onClick={onBack}>
           Back to Invoice
         </Button>
-        {isOwner && onPrint && <Button onClick={onPrint}>Print Invoice</Button>}
+        {onPrint && <Button onClick={onPrint}>Print Invoice</Button>}
       </div>
 
       <article className="invoice-print-document mx-auto w-full max-w-5xl rounded-xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm md:p-10">
@@ -144,18 +144,18 @@ export function InvoicePrintView({
             <thead className="bg-slate-100 text-slate-700">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Description</th>
-                {isOwner && <th className="px-4 py-3 text-right font-semibold">Quantity</th>}
-                {isOwner && <th className="px-4 py-3 text-right font-semibold">Unit Price</th>}
-                {isOwner && <th className="px-4 py-3 text-right font-semibold">Line Total</th>}
+                {showAmounts && <th className="px-4 py-3 text-right font-semibold">Quantity</th>}
+                {showAmounts && <th className="px-4 py-3 text-right font-semibold">Unit Price</th>}
+                {showAmounts && <th className="px-4 py-3 text-right font-semibold">Line Total</th>}
               </tr>
             </thead>
             <tbody>
               {invoice.items.map((item) => (
                 <tr key={item.id} className="border-t border-slate-200">
                   <td className="px-4 py-3">{item.description}</td>
-                  {isOwner && <td className="px-4 py-3 text-right">{item.quantity}</td>}
-                  {isOwner && <td className="px-4 py-3 text-right">{formatCurrency(item.unitPrice)}</td>}
-                  {isOwner && <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.total)}</td>}
+                  {showAmounts && <td className="px-4 py-3 text-right">{item.quantity}</td>}
+                  {showAmounts && <td className="px-4 py-3 text-right">{formatCurrency(item.unitPrice)}</td>}
+                  {showAmounts && <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.total)}</td>}
                 </tr>
               ))}
             </tbody>
@@ -181,7 +181,7 @@ export function InvoicePrintView({
                 <ul className="mt-2 space-y-1 text-sm text-slate-700">
                   {payments.map((payment) => (
                     <li key={payment.id}>
-                      {formatDate(payment.paidAt)} | {payment.method.toUpperCase()} | {isOwner ? formatCurrency(payment.amount) : 'Amount hidden'}
+                      {formatDate(payment.paidAt)} | {payment.method.toUpperCase()} | {showAmounts ? formatCurrency(payment.amount) : 'Amount hidden'}
                     </li>
                   ))}
                 </ul>
@@ -191,7 +191,7 @@ export function InvoicePrintView({
 
           <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</h3>
-            {isOwner ? (
+            {showAmounts ? (
               <dl className="mt-3 space-y-2 text-sm">
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-slate-600">Subtotal</dt>
@@ -215,7 +215,7 @@ export function InvoicePrintView({
                 Monetary fields are restricted for agent accounts. Please contact an owner for billing totals.
               </p>
             )}
-            {isOwner && payments.length > 0 && (
+            {showAmounts && payments.length > 0 && (
               <p className="mt-3 text-xs text-slate-500">
                 Total payments recorded: {formatCurrency(totalPayments)}
               </p>

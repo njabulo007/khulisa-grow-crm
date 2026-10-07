@@ -69,7 +69,9 @@ service cloud.firestore {
         && data.dueDate is string
         && data.startDate is string
         && data.assignedTo is string
-        && data.createdBy is string;
+        && data.createdBy is string
+        && data.get('clientUpdate', '') is string
+        && data.get('clientUpdate', '').size() <= 4000;
     }
 
     function validInvoiceData(data) {
@@ -206,7 +208,12 @@ service cloud.firestore {
         && (isOwner()
         || (sameUser(resource.data.assignedTo)
           && sameUser(request.resource.data.assignedTo)
-          && request.resource.data.diff(resource.data).affectedKeys().hasNone(['clientId', 'createdBy'])));
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['milestones', 'status', 'notes', 'clientUpdate', 'updatedAt'])
+          && (request.resource.data.status == resource.data.status
+            || (!(resource.data.status in ['completed', 'delivered'])
+              && request.resource.data.status in ['not-started', 'in-progress', 'on-hold', 'waiting-client']))
+          && (!(resource.data.status in ['completed', 'delivered'])
+            || !request.resource.data.diff(resource.data).affectedKeys().hasAny(['milestones']))));
       allow delete: if false;
     }
 

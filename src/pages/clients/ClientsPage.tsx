@@ -1,6 +1,6 @@
 import { repairClientProjectAccess } from '@/services/clientAccessService';
-import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
   RefreshCw,
@@ -55,6 +55,8 @@ import { getAgentLinkedClientIds } from '@/lib/permissions';
 
 export function ClientsPage() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const editClientId = searchParams.get('edit');
   const { user, isOwner } = useAuth();
   const { clients: allClients, isLoading: isClientsLoading, error: clientsError, refresh: refreshClients, createClient, updateClient, removeClient } = useClients();
   const [searchQuery, setSearchQuery] = useState('');
@@ -257,7 +259,7 @@ export function ClientsPage() {
     setSelectedClient(null);
   };
 
-  const openEditDialog = (client: Client) => {
+  const openEditDialog = useCallback((client: Client) => {
     if (!accessibleClientIds.has(client.id)) {
       toast.error('You do not have permission to edit this client');
       return;
@@ -274,7 +276,15 @@ export function ClientsPage() {
       onboardingCompleted: client.onboardingCompleted,
     });
     setShowAddDialog(true);
-  };
+  }, [accessibleClientIds]);
+
+  useEffect(() => {
+    if (!editClientId || isClientsLoading || isRelatedDataLoading) return;
+    const client = allClients.find((item) => item.id === editClientId);
+    if (client && accessibleClientIds.has(client.id)) openEditDialog(client);
+    const next = new URLSearchParams(searchParams); next.delete('edit');
+    setSearchParams(next, { replace: true });
+  }, [editClientId, isClientsLoading, isRelatedDataLoading, allClients, accessibleClientIds, openEditDialog, searchParams, setSearchParams]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-ZA', {
@@ -443,13 +453,13 @@ export function ClientsPage() {
                                 View Invoices
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
-                              <DropdownMenuItem
+                              {isOwner && <DropdownMenuItem
                                 onClick={() => setDeleteConfirm(client.id)}
                                 className="text-destructive"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Delete
-                              </DropdownMenuItem>
+                              </DropdownMenuItem>}
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </TableCell>

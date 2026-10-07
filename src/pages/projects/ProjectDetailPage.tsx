@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import { AGENT_DELIVERY_STATUSES, canChangeProjectDeliveryStatus, canEditProjectMilestones, resolveDeliveryStatus } from '@/lib/projectDeliveryPermissions';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRef } from 'react';
 import {
@@ -53,7 +54,7 @@ import { canAccessProject } from '@/lib/permissions';
 import { Client, Invoice, Project, ProjectStatus, PROJECT_STATUSES } from '@/types/models';
 import { toast } from 'sonner';
 
-const OWNER_EDITABLE_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'completed', 'on-hold'];
+const OWNER_EDITABLE_STATUSES: ProjectStatus[] = ['not-started', 'in-progress', 'waiting-client', 'completed', 'on-hold'];
 const MAX_PARALLEL_PORTAL_UPLOADS = 2;
 const MAX_PORTAL_MEDIA_FILE_BYTES = 4 * 1024 * 1024;
 
@@ -275,8 +276,8 @@ export function ProjectDetailPage() {
   };
 
   const handleStatusChange = async (nextStatus: ProjectStatus) => {
-    if (!isOwner) {
-      toast.error('Only owners can change project status.');
+    if (!canChangeProjectDeliveryStatus(user, project, nextStatus)) {
+      toast.error('You cannot change this project status.');
       return;
     }
 
@@ -289,14 +290,14 @@ export function ProjectDetailPage() {
       }
       syncProjectState(updated);
       toast.success('Project status updated.');
-    } finally {
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update project status.'); } finally {
       setIsSavingStatus(false);
     }
   };
 
   const handleMilestoneToggle = async (milestone: OwnerScopedMilestone, isCompleted: boolean) => {
-    if (!isOwner) {
-      toast.error('Only owners can update milestones.');
+    if (!canEditProjectMilestones(user, project)) {
+      toast.error('You cannot update this project checklist.');
       return;
     }
 
@@ -328,7 +329,8 @@ export function ProjectDetailPage() {
     }
 
     const nextScopedMilestones = buildScopedMilestones(nextMilestones, scopeFeatures);
-    const nextStatus = getAutoProjectStatusFromScopedMilestones(nextScopedMilestones, project.status);
+    const calculatedStatus = getAutoProjectStatusFromScopedMilestones(nextScopedMilestones, project.status);
+    const nextStatus = resolveDeliveryStatus(calculatedStatus, project.status, isOwner ? 'owner' : 'agent');
 
     setIsSavingMilestones(true);
     try {
@@ -342,7 +344,7 @@ export function ProjectDetailPage() {
       }
       syncProjectState(updated);
       toast.success('Milestone updated.');
-    } finally {
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update the milestone.'); } finally {
       setIsSavingMilestones(false);
     }
   };
@@ -677,7 +679,7 @@ export function ProjectDetailPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {!isOwner && (
-                <p className="text-xs text-muted-foreground">Only owners can mark milestones as completed.</p>
+                <p className="text-xs text-muted-foreground">Update your delivery checklist. The owner confirms final project completion.</p>
               )}
               {ownerScopedMilestones.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No milestones added yet.</p>
@@ -685,8 +687,9 @@ export function ProjectDetailPage() {
                 ownerScopedMilestones.map((milestone) => (
                   <div key={milestone.id} className="flex items-start gap-3 rounded-lg border p-3">
                     <div className="pt-0.5">
-                      {isOwner ? (
+                      {canEditProjectMilestones(user, project) ? (
                         <Checkbox
+                          aria-label={`Complete ${milestone.title}`}
                           checked={milestone.isCompleted}
                           disabled={isSavingMilestones}
                           onCheckedChange={(checked) => {
@@ -718,7 +721,7 @@ export function ProjectDetailPage() {
             </CardContent>
           </Card>
 
-          {isOwner && <Card>
+          {canAccessProject(user, project) && <Card>
             <CardHeader><CardTitle className="text-lg">Client update</CardTitle><p className="text-sm text-muted-foreground">Publish a short update to the client portal. CRM notes remain private.</p></CardHeader>
             <CardContent className="space-y-4">
               <Textarea aria-label="Client portal update" placeholder="What should your client know?" maxLength={4000} value={clientUpdateDraft} onChange={(event) => setClientUpdateDraft(event.target.value)} />
@@ -753,13 +756,13 @@ export function ProjectDetailPage() {
             <CardContent className="space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground">Status</p>
-                {isOwner ? (
+                {isOwner || !['completed', 'delivered'].includes(project.status) ? (
                   <Select value={project.status} onValueChange={(value) => void handleStatusChange(value as ProjectStatus)}>
                     <SelectTrigger disabled={isSavingStatus}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {OWNER_EDITABLE_STATUSES.map((status) => (
+                      {(isOwner ? OWNER_EDITABLE_STATUSES : AGENT_DELIVERY_STATUSES).map((status) => (
                         <SelectItem key={status} value={status}>
                           {PROJECT_STATUSES[status].label}
                         </SelectItem>

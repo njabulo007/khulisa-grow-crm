@@ -104,16 +104,15 @@ const PACKAGE_MILESTONE_TEMPLATES: Record<PackageId, Array<{ title: string; desc
 };
 
 const LEGACY_TO_CURRENT_STATUS: Partial<Record<ProjectStatus, ProjectStatus>> = {
-  'waiting-client': 'in-progress',
   delivered: 'completed',
 };
 
 export const normalizeProjectStatus = (status: ProjectStatus | string | null | undefined): ProjectStatus => {
   if (!status) return 'not-started';
-  if (status === 'not-started' || status === 'in-progress' || status === 'completed' || status === 'on-hold') {
+  if (status === 'not-started' || status === 'in-progress' || status === 'completed' || status === 'on-hold' || status === 'waiting-client') {
     return status;
   }
-  if (status === 'waiting-client' || status === 'delivered') {
+  if (status === 'delivered') {
     return LEGACY_TO_CURRENT_STATUS[status] || 'not-started';
   }
   return 'not-started';

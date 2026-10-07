@@ -177,11 +177,11 @@ export function InvoicesPage() {
   }, [allPayments]);
 
   useEffect(() => {
-    if (!presetClientId || openedFromPreset || !accessibleClientIds.has(presetClientId)) return;
+    if (!isOwner || !presetClientId || openedFromPreset || !accessibleClientIds.has(presetClientId)) return;
     setFormData((prev) => ({ ...prev, clientId: presetClientId }));
     setShowAddDialog(true);
     setOpenedFromPreset(true);
-  }, [accessibleClientIds, openedFromPreset, presetClientId]);
+  }, [accessibleClientIds, openedFromPreset, presetClientId, isOwner]);
 
   const resetForm = () => {
     setFormData({
@@ -211,7 +211,7 @@ export function InvoicesPage() {
 
   const handleCreate = async () => {
     if (isCreating) return;
-    if (!user) return;
+    if (!user || !isOwner) { toast.error('Only owners can issue invoices.'); return; }
     const selectedProject = accessibleProjects.find((project) => project.id === formData.projectId);
     const selectedPackage = getPackageById(selectedProject?.packageId);
     const isPackageBackedInvoice = Boolean(selectedPackage);
@@ -335,7 +335,7 @@ export function InvoicesPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Invoices" description="Manage billing and payments">
-        <Button
+        {isOwner && <Button
           onClick={() => {
             resetForm();
             setShowAddDialog(true);
@@ -343,7 +343,7 @@ export function InvoicesPage() {
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Invoice
-        </Button>
+        </Button>}
       </PageHeader>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -403,9 +403,9 @@ export function InvoicesPage() {
                   <TableHead>Package</TableHead>
                   <TableHead>Issue Date</TableHead>
                   <TableHead>Due Date</TableHead>
-                  {isOwner && <TableHead className="text-right">Total</TableHead>}
-                  {isOwner && <TableHead className="text-right">Amount Paid</TableHead>}
-                  {isOwner && <TableHead className="text-right">Outstanding</TableHead>}
+                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Amount Paid</TableHead>
+                  <TableHead className="text-right">Outstanding</TableHead>
                   <TableHead>Status</TableHead>
                   {isOwner && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
@@ -430,9 +430,9 @@ export function InvoicesPage() {
                       <TableCell>{packageName}</TableCell>
                       <TableCell>{new Date(invoice.issuedDate).toLocaleDateString('en-ZA')}</TableCell>
                       <TableCell>{new Date(invoice.dueDate).toLocaleDateString('en-ZA')}</TableCell>
-                      {isOwner && <TableCell className="text-right font-semibold">{formatCurrency(effectiveTotals.total)}</TableCell>}
-                      {isOwner && <TableCell className="text-right">{formatCurrency(amountPaid)}</TableCell>}
-                      {isOwner && <TableCell className="text-right">{formatCurrency(outstanding)}</TableCell>}
+                      <TableCell className="text-right font-semibold">{formatCurrency(effectiveTotals.total)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(amountPaid)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(outstanding)}</TableCell>
                       <TableCell>
                         <StatusBadge status={invoice.status} type="invoice" />
                       </TableCell>

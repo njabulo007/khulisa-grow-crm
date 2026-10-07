@@ -107,7 +107,7 @@ class FirestoreActivityService implements ActivityService {
   }
 
   async getByEntity(entityType: string, entityId: string): Promise<Activity[]> {
-    const activities = await this.collection.getAllWhere('entityId', entityId);
+    const activities = await this.collection.getAllWhereFields({ entityType, entityId });
     return activities
       .filter((activity) => activity.entityType === entityType && activity.entityId === entityId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());

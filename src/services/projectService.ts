@@ -1,3 +1,4 @@
+import { resolveDeliveryStatus } from '@/lib/projectDeliveryPermissions';
 import { saveProjectWithClientAccess } from './clientAccessService';
 import { deleteCrmRecord } from './deletionService';
 import { getPackageById, resolvePackageId } from '@/config/packages';
@@ -178,10 +179,8 @@ class FirestoreProjectService implements ProjectService {
       const normalizedMilestones = normalizeProjectMilestones(updates.milestones, nextPackageId);
       normalizedUpdates.milestones = normalizedMilestones;
       if (!updates.status) {
-        normalizedUpdates.status = getAutoProjectStatusFromMilestones(
-          normalizedMilestones,
-          normalizeProjectStatus(current.status),
-        );
+        const nextStatus = getAutoProjectStatusFromMilestones(normalizedMilestones, normalizeProjectStatus(current.status));
+        normalizedUpdates.status = resolveDeliveryStatus(nextStatus, current.status, await getCurrentAuthRole());
       }
     }
 

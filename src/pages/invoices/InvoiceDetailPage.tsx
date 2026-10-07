@@ -384,7 +384,7 @@ export function InvoiceDetailPage() {
                 Edit Invoice
               </Button>
             )}
-            {isOwner && (
+            {canViewInvoice && (
               <Button
                 variant="outline"
                 size="sm"
@@ -471,11 +471,9 @@ export function InvoiceDetailPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="font-medium">{item.description}</p>
-                      {isOwner ? (
-                        <p className="text-sm text-muted-foreground">Qty {item.quantity}</p>
-                      ) : null}
+                      <p className="text-sm text-muted-foreground">Qty {item.quantity}</p>
                     </div>
-                    {isOwner && <p className="font-semibold">{formatCurrency(item.total)}</p>}
+                    <p className="font-semibold">{formatCurrency(item.total)}</p>
                   </div>
                 </div>
               ))}
@@ -495,7 +493,7 @@ export function InvoiceDetailPage() {
         </div>
 
         <div className="space-y-6">
-          {isOwner && (
+          {canViewInvoice && (
             <Card>
               <CardHeader>
                 <CardTitle>Amounts</CardTitle>
@@ -515,14 +513,14 @@ export function InvoiceDetailPage() {
                     {formatCurrency(balance)}
                   </p>
                 </div>
-                <div className="grid gap-2">
+                {isOwner && <div className="grid gap-2">
                   <Button onClick={() => void handleRecordPayment()} disabled={balance <= 0}>
                     Record Payment
                   </Button>
                   <Button variant="outline" onClick={() => void handleMarkRemainingPaid()} disabled={balance <= 0}>
                     Mark Remaining as Paid
                   </Button>
-                </div>
+                </div>}
               </CardContent>
             </Card>
           )}
@@ -539,7 +537,7 @@ export function InvoiceDetailPage() {
                   <div key={payment.id} className="rounded-lg border p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        {isOwner && <p className="text-sm font-medium">{formatCurrency(payment.amount)}</p>}
+                        <p className="text-sm font-medium">{formatCurrency(payment.amount)}</p>
                         <p className="text-xs text-muted-foreground uppercase">
                           {payment.method} {payment.reference ? `| ${payment.reference}` : ''}
                         </p>

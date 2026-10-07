@@ -200,7 +200,7 @@ export const PROJECT_STATUSES: Record<ProjectStatus, { label: string; color: str
   'in-progress': { label: 'In Progress', color: 'info' },
   completed: { label: 'Completed', color: 'success' },
   'on-hold': { label: 'On Hold', color: 'destructive' },
-  'waiting-client': { label: 'In Progress', color: 'info' },
+  'waiting-client': { label: 'Waiting for Client', color: 'info' },
   delivered: { label: 'Completed', color: 'success' },
 };
 
