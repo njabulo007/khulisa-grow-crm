@@ -1,3 +1,4 @@
+import { InvoiceBankDetails } from '@/components/invoices/InvoiceBankDetails';
 import { PaymentFollowUps } from '@/components/common/PaymentFollowUps';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -527,6 +528,11 @@ export function InvoiceDetailPage() {
               </CardContent>
             </Card>
           )}
+
+          <Card>
+            <CardHeader><CardTitle>Account Details</CardTitle></CardHeader>
+            <CardContent><InvoiceBankDetails invoiceNumber={invoice.invoiceNumber} /></CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

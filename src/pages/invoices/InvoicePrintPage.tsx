@@ -113,7 +113,7 @@ export function InvoicePrintPage() {
   }, [client?.businessName, invoice]);
 
   useEffect(() => {
-    if (!invoice || !canViewInvoice || hasAutoPrinted.current) return;
+    if (isLoading || loadError || !invoice || !canViewInvoice || hasAutoPrinted.current) return;
 
     const timeout = window.setTimeout(() => {
       hasAutoPrinted.current = true;
@@ -121,7 +121,7 @@ export function InvoicePrintPage() {
     }, 350);
 
     return () => window.clearTimeout(timeout);
-  }, [canViewInvoice, invoice]);
+  }, [canViewInvoice, invoice, isLoading, loadError]);
 
   if (isLoading) {
     return (

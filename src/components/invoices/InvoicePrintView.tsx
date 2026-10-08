@@ -1,3 +1,4 @@
+import { InvoiceBankDetails } from './InvoiceBankDetails';
 import { Button } from '@/components/ui/button';
 import { getPackageNameById } from '@/config/packages';
 import { buildProjectLookup, getInvoiceEffectiveTotals } from '@/lib/invoiceTotals';
@@ -5,7 +6,6 @@ import { INVOICE_STATUSES, Client, Invoice, Payment, Project } from '@/types/mod
 
 const KHULISA_IDENTITY_LINE = 'Khulisa Media | Reg No: 2025/855572/07 | POPIA Registration No.: 2025-065968';
 const KHULISA_CONTACT_LINE = 'info@khulisamedia.co.za | www.khulisamedia.co.za | 063 031 0393';
-const KHULISA_BANK_DETAILS_LINE = 'Capitec account number: 1055 0119 86 | Branch code: 470010';
 const KHULISA_TAGLINE = 'Serve with care. Create with strategy. Grow with purpose.';
 const CONFIDENTIALITY_NOTICE = 'This document is confidential and prepared exclusively for the intended recipient.';
 
@@ -13,7 +13,8 @@ const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-ZA', {
     style: 'currency',
     currency: 'ZAR',
-    minimumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 };
 
@@ -64,7 +65,7 @@ export function InvoicePrintView({
       <article className="invoice-print-document mx-auto w-full max-w-5xl rounded-xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm md:p-10">
         <header className="border-b border-slate-200 pb-6">
           <div className="flex flex-wrap items-start justify-between gap-6">
-            <div className="min-w-[240px] flex-1">
+            <div className="min-w-0 flex-1 basis-[240px]">
               <img
                 src="/images/khulisa-logo.png"
                 alt="Khulisa Media logo"
@@ -72,8 +73,8 @@ export function InvoicePrintView({
               />
               <p className="text-xs font-medium uppercase tracking-wide text-slate-600">{KHULISA_IDENTITY_LINE}</p>
             </div>
-            <div className="min-w-[260px] text-sm text-slate-700 md:text-right">
-              <p className="font-semibold text-slate-900">Khulisa Media</p>
+            <div className="min-w-0 basis-[260px] text-sm text-slate-700 md:text-right">
+              <p className="font-semibold text-slate-900">KHULISA MEDIA (PTY) LTD</p>
               <p className="mt-1">{KHULISA_CONTACT_LINE}</p>
             </div>
           </div>
@@ -81,13 +82,8 @@ export function InvoicePrintView({
         </header>
 
         <section className="mt-8 grid gap-6 md:grid-cols-[1fr_auto]">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 p-4">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">From</p>
-              <h2 className="mt-1 text-base font-semibold text-slate-900">Khulisa Media</h2>
-              <p className="mt-2 text-sm text-slate-700">{KHULISA_CONTACT_LINE}</p>
-              <p className="mt-1 text-xs text-slate-500">{KHULISA_IDENTITY_LINE}</p>
-            </div>
+          <div className="grid gap-4">
+
             <div className="rounded-lg border border-slate-200 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Bill To</p>
               <h2 className="mt-1 text-base font-semibold text-slate-900">{client?.businessName || 'Unknown client'}</h2>
@@ -121,15 +117,13 @@ export function InvoicePrintView({
           </div>
         </section>
 
-        <section className="mt-6 rounded-lg border border-slate-200 p-4">
+        {(project || invoice.packageName || invoice.packageId) && <section className="mt-6 rounded-lg border border-slate-200 p-4">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Project Information</h3>
           <div className="mt-3 grid gap-3 text-sm text-slate-700 sm:grid-cols-2">
             <p>
               <span className="font-semibold text-slate-900">Project Name:</span> {project?.name || 'Unlinked'}
             </p>
-            <p>
-              <span className="font-semibold text-slate-900">Project Reference:</span> {project?.id || 'N/A'}
-            </p>
+
             <p>
               <span className="font-semibold text-slate-900">Service / Package:</span> {packageName || 'N/A'}
             </p>
@@ -137,40 +131,40 @@ export function InvoicePrintView({
               <span className="font-semibold text-slate-900">Project Start:</span> {formatDate(project?.startDate)}
             </p>
           </div>
-        </section>
+        </section>}
 
         <section className="mt-6 overflow-hidden rounded-lg border border-slate-200">
           <table className="w-full border-collapse text-sm">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Description</th>
-                {showAmounts && <th className="px-4 py-3 text-right font-semibold">Quantity</th>}
-                {showAmounts && <th className="px-4 py-3 text-right font-semibold">Unit Price</th>}
-                {showAmounts && <th className="px-4 py-3 text-right font-semibold">Line Total</th>}
+                <th className="px-2 py-3 sm:px-4 text-left font-semibold">Description</th>
+                {showAmounts && <th className="px-2 py-3 sm:px-4 text-right font-semibold">Quantity</th>}
+                {showAmounts && <th className="px-2 py-3 sm:px-4 text-right font-semibold">Unit Price</th>}
+                {showAmounts && <th className="px-2 py-3 sm:px-4 text-right font-semibold">Line Total</th>}
               </tr>
             </thead>
             <tbody>
               {invoice.items.map((item) => (
                 <tr key={item.id} className="border-t border-slate-200">
-                  <td className="px-4 py-3">{item.description}</td>
-                  {showAmounts && <td className="px-4 py-3 text-right">{item.quantity}</td>}
-                  {showAmounts && <td className="px-4 py-3 text-right">{formatCurrency(item.unitPrice)}</td>}
-                  {showAmounts && <td className="px-4 py-3 text-right font-medium">{formatCurrency(item.total)}</td>}
+                  <td className="px-2 py-3 sm:px-4">{item.description}</td>
+                  {showAmounts && <td className="px-2 py-3 sm:px-4 text-right">{item.quantity}</td>}
+                  {showAmounts && <td className="px-2 py-3 sm:px-4 text-right">{formatCurrency(item.unitPrice)}</td>}
+                  {showAmounts && <td className="px-2 py-3 sm:px-4 text-right font-medium">{formatCurrency(item.total)}</td>}
                 </tr>
               ))}
             </tbody>
           </table>
         </section>
 
-        <section className="mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
+        <section className="invoice-payment-layout mt-6 grid gap-6 lg:grid-cols-[1fr_300px]">
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes / Payment Instructions</h3>
-              <p className="mt-2 text-sm text-slate-700">
-                Please use <span className="font-semibold">{invoice.invoiceNumber}</span> as your payment reference.
-              </p>
-              <p className="mt-2 text-sm text-slate-700">{KHULISA_BANK_DETAILS_LINE}</p>
-              {invoice.notes && <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{invoice.notes}</p>}
+              <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-slate-500">Account Details</h3>
+              <InvoiceBankDetails invoiceNumber={invoice.invoiceNumber} />
+              {invoice.notes && <div className="mt-4 border-t border-slate-200 pt-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Notes / Payment Terms</h4>
+                <p className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{invoice.notes}</p>
+              </div>}
             </div>
 
             <div className="rounded-lg border border-slate-200 p-4">
@@ -189,7 +183,7 @@ export function InvoicePrintView({
             </div>
           </div>
 
-          <aside className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <aside className="invoice-summary rounded-lg border border-slate-200 bg-slate-50 p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Summary</h3>
             {showAmounts ? (
               <dl className="mt-3 space-y-2 text-sm">
@@ -212,7 +206,7 @@ export function InvoicePrintView({
               </dl>
             ) : (
               <p className="mt-3 text-sm text-slate-600">
-                Monetary fields are restricted for agent accounts. Please contact an owner for billing totals.
+                Monetary fields are hidden for this view.
               </p>
             )}
             {showAmounts && payments.length > 0 && (
