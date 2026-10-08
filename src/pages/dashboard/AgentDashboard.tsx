@@ -1,4 +1,6 @@
-﻿import React, { useEffect, useState } from 'react';
+import { loadAgentDashboardData, agentDashboardErrorMessage } from '@/services/agentDashboardService';
+import { paymentFollowUpToday } from '@/services/paymentFollowUpService';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Wallet,
@@ -15,13 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  clientService,
-  commissionService,
-  leadService,
-  projectService,
-  syncCommissionsFromInvoices,
-} from '@/services';
+import type { leadService, projectService } from '@/services';
 import { LEAD_STAGES } from '@/types/models';
 import { getScopedProjectMilestoneCounts } from '@/lib/projectMilestoneCounts';
 
@@ -40,6 +36,7 @@ export function AgentDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const latestLoadRef = React.useRef(0);
+  const [clientDetailsUnavailable, setClientDetailsUnavailable] = useState(false);
   const [clientsById, setClientsById] = useState<Record<string, string>>({});
   const [stats, setStats] = useState<{
     activeLeads: Awaited<ReturnType<typeof leadService.getByAgent>>;
@@ -70,25 +67,15 @@ export function AgentDashboard() {
       }
 
       try {
-        const now = new Date();
-        await syncCommissionsFromInvoices();
-        const [visibleLeads, visibleProjects, visibleCommissions, allClients] = await Promise.all([
-          leadService.getAll(),
-          projectService.getAll(),
-          commissionService.getAll(),
-          clientService.getAll(),
-        ]);
-
-        const myLeads = visibleLeads.filter((lead) => lead.assignedTo === user.id || lead.assignedTo === user.uid);
-        const myProjects = visibleProjects.filter((project) => project.assignedTo === user.id || project.assignedTo === user.uid);
-        const myCommissions = visibleCommissions.filter((commission) => commission.agentId === user.id || commission.agentId === user.uid);
+        const today = paymentFollowUpToday();
+        const { myLeads, myProjects, myCommissions, clientsById: nextClientsById, clientDetailsUnavailable: nextClientDetailsUnavailable } = await loadAgentDashboardData(user);
 
         const activeLeads = myLeads.filter((lead) => lead.stage !== 'won' && lead.stage !== 'lost');
         const wonLeads = myLeads.filter((lead) => lead.stage === 'won');
         const lostLeads = myLeads.filter((lead) => lead.stage === 'lost');
         const overdueFollowUps = myLeads.filter((lead) => {
           if (!lead.followUpDate || lead.stage === 'won' || lead.stage === 'lost') return false;
-          return new Date(lead.followUpDate) < now;
+          return lead.followUpDate.slice(0, 10) < today;
         });
 
         const totalClosedLeads = wonLeads.length + lostLeads.length;
@@ -111,12 +98,8 @@ export function AgentDashboard() {
         }, {} as Record<string, number>);
 
         if (!isMounted || loadId !== latestLoadRef.current) return;
-        setClientsById(
-          allClients.reduce<Record<string, string>>((acc, client) => {
-            acc[client.id] = client.businessName;
-            return acc;
-          }, {})
-        );
+        setClientsById(nextClientsById);
+        setClientDetailsUnavailable(nextClientDetailsUnavailable);
         setStats({
           activeLeads,
           wonLeads,
@@ -136,7 +119,7 @@ export function AgentDashboard() {
         console.error('[AgentDashboard] Failed to load dashboard data.', loadError);
         if (isMounted && loadId === latestLoadRef.current) {
           setStats(null);
-          setError('Unable to load your dashboard. Check your connection and try again.');
+          setError(agentDashboardErrorMessage(loadError));
         }
       } finally {
         if (isMounted && loadId === latestLoadRef.current) {
@@ -194,6 +177,10 @@ export function AgentDashboard() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {clientDetailsUnavailable && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-100">
+        Some linked client details could not be loaded. Your leads, projects and commissions are available. If client access is still missing after retrying, ask the owner to use Clients → Repair assignments.
+        <Button variant="link" onClick={() => setRetryKey(current => current + 1)}>Retry client details</Button>
+      </p>}
       <PageHeader
         title={`Hello, ${user?.name?.split(' ')[0] || 'Agent'}!`}
         description="Acquire clients, follow up, and keep assigned projects moving."
@@ -382,7 +369,7 @@ export function AgentDashboard() {
             ) : (
               <div className="space-y-3">
                 {stats.activeProjects.slice(0, 4).map((project) => {
-                  const clientName = clientsById[project.clientId];
+                  const clientName = clientsById[project.clientId] || 'Client details unavailable';
                   const milestoneCounts = getScopedProjectMilestoneCounts(project.milestones, project.packageId);
                   const isOverdue = new Date(project.dueDate) < new Date() && project.status !== 'completed' && project.status !== 'delivered';
                   
@@ -395,7 +382,7 @@ export function AgentDashboard() {
                       <div className="flex items-start justify-between mb-2">
                         <div>
                           <p className="font-medium">{project.name}</p>
-                          <p className="text-sm text-muted-foreground">{clientName || 'Unknown client'}</p>
+                          <p className="text-sm text-muted-foreground">{clientName}</p>
                         </div>
                         <StatusBadge status={project.status} type="project" />
                       </div>

@@ -1,4 +1,5 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { loadGlobalSearchData } from '@/services/globalSearchService';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -28,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { canAccessInvoice, getAgentLinkedClientIds } from '@/lib/permissions';
-import { clientService, invoiceService, leadService, projectService, notificationService } from '@/services';
+import { notificationService } from '@/services';
 import { toast } from 'sonner';
 import { Client, Invoice, Lead, Project } from '@/types/models';
 
@@ -112,6 +113,8 @@ export function Topbar({ onSearch }: TopbarProps) {
     } finally { setIsSendingTestPush(false); }
   };
   const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchUnavailable, setSearchUnavailable] = useState<string[]>([]);
+  const [searchRetry, setSearchRetry] = useState(0);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
@@ -123,23 +126,20 @@ export function Topbar({ onSearch }: TopbarProps) {
   useEffect(() => {
     let isMounted = true;
     const loadSearchData = async () => {
-      const [leads, clients, projects, invoices] = await Promise.all([
-        leadService.getAll(),
-        clientService.getAll(),
-        projectService.getAll(),
-        invoiceService.getAll(),
-      ]);
+      setAllLeads([]); setAllClients([]); setAllProjects([]); setAllInvoices([]); setSearchUnavailable([]);
+      const { leads, clients, projects, invoices, unavailable } = await loadGlobalSearchData();
       if (!isMounted) return;
       setAllLeads(leads);
       setAllClients(clients);
       setAllProjects(projects);
       setAllInvoices(invoices);
+      setSearchUnavailable(unavailable);
     };
     void loadSearchData();
     return () => {
       isMounted = false;
     };
-  }, [user?.id, isOwner]);
+  }, [user?.id, user?.uid, isOwner, searchRetry]);
 
   useEffect(() => {
     const handleCommandShortcut = (event: KeyboardEvent) => {
@@ -372,6 +372,10 @@ export function Topbar({ onSearch }: TopbarProps) {
           />
           {showDropdown && (
             <div className="absolute left-0 right-0 top-full z-40 mt-2 overflow-hidden rounded-md border bg-popover shadow-lg">
+              {searchUnavailable.length > 0 && <div role="status" className="border-b px-3 py-2 text-xs text-muted-foreground">
+                Search is incomplete: {searchUnavailable.join(', ')} could not be loaded.
+                <Button type="button" variant="link" size="sm" onMouseDown={event => event.preventDefault()} onClick={() => setSearchRetry(current => current + 1)}>Retry search</Button>
+              </div>}
               {totalResults === 0 ? (
                 <div className="px-3 py-3 text-sm text-muted-foreground">No matching results.</div>
               ) : (
