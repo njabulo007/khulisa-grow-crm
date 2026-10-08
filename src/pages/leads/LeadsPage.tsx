@@ -40,7 +40,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
+import { NoteEditor } from '@/components/common/NoteEditor';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DEFAULT_PACKAGE_ID, KHULISA_PACKAGES, type PackageId } from '@/config/packages';
 import { useAuth } from '@/contexts/AuthContext';
@@ -634,7 +634,7 @@ export function LeadsPage() {
 
       {/* Add/Edit Lead Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-h-[92dvh] w-[calc(100%_-_1rem)] max-w-2xl overflow-y-auto rounded-xl">
           <DialogHeader>
             <DialogTitle>{selectedLead ? 'Edit Lead' : 'Add New Lead'}</DialogTitle>
             <DialogDescription>
@@ -777,10 +777,12 @@ export function LeadsPage() {
             )}
             <div className="grid gap-2">
               <Label htmlFor="notes">Notes</Label>
-              <Textarea
-                id="notes"
+              <NoteEditor
+                id="notes" label="Lead notes"
                 value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                onChange={(notes) => setFormData({ ...formData, notes })}
+                placeholder="Background, requirements, and next steps…"
+                disabled={isSaving}
               />
             </div>
           </div>

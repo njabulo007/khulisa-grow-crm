@@ -18,7 +18,8 @@ import {
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
+import { NoteEditor } from '@/components/common/NoteEditor';
+import { NoteContent } from '@/components/common/NoteContent';
 import {
   Select,
   SelectContent,
@@ -63,6 +64,7 @@ export function LeadDetailPage() {
   const [isAddingActivity, setIsAddingActivity] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activityHistoryUnavailable, setActivityHistoryUnavailable] = useState(false);
+  const [visibleActivityCount, setVisibleActivityCount] = useState(10);
   const latestLoad = useRef(0);
   const invalidateLoads = useCallback(() => { latestLoad.current++; }, []);
 
@@ -94,6 +96,8 @@ export function LeadDetailPage() {
   useEffect(() => {
     setLead(undefined);
     setActivities([]);
+    setNewNote('');
+    setVisibleActivityCount(10);
     setLoadError(null);
     setIsLoading(true);
     void refreshLead();
@@ -258,13 +262,24 @@ export function LeadDetailPage() {
             </CardContent>
           </Card>
 
+          {lead.notes && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <NoteContent text={lead.notes} />
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader>
               <CardTitle>Activity Timeline</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="mb-6 space-y-3">
-                <div className="flex gap-2">
+                <div className="space-y-3">
                   <Select value={noteType} onValueChange={(value) => setNoteType(value as ActivityType)}>
                     <SelectTrigger className="w-[140px]">
                       <SelectValue />
@@ -277,11 +292,12 @@ export function LeadDetailPage() {
                       <SelectItem value="meeting">Meeting</SelectItem>
                     </SelectContent>
                   </Select>
-                  <Textarea
+                  <NoteEditor
+                    label="Lead activity notes"
                     placeholder="Add a note about this lead..."
                     value={newNote}
-                    onChange={(event) => setNewNote(event.target.value)}
-                    className="flex-1 min-h-[80px]"
+                    onChange={setNewNote}
+                    disabled={isAddingActivity}
                   />
                 </div>
                 <Button
@@ -301,7 +317,7 @@ export function LeadDetailPage() {
                     {activityHistoryUnavailable ? 'Activity history is unavailable.' : 'No activities yet'}
                   </p>
                 ) : (
-                  activities.map((activity) => {
+                  activities.slice(0, visibleActivityCount).map((activity) => {
                     const activityUser = usersById[activity.createdBy];
                     return (
                       <div key={activity.id} className="flex gap-3">
@@ -309,7 +325,7 @@ export function LeadDetailPage() {
                           {ACTIVITY_ICONS[activity.type]}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="whitespace-pre-wrap break-words text-sm">{activity.description}</p>
+                          <NoteContent text={activity.description} />
                           <p className="mt-1 text-xs text-muted-foreground">
                             {activityUser?.name || 'Unknown user'} |{' '}
                             {new Date(activity.createdAt).toLocaleDateString('en-ZA', {
@@ -325,6 +341,11 @@ export function LeadDetailPage() {
                   })
                 )}
               </div>
+              {activities.length > visibleActivityCount && (
+                <Button className="mt-4" variant="outline" onClick={() => setVisibleActivityCount((count) => count + 10)}>
+                  Show older activities ({activities.length - visibleActivityCount} remaining)
+                </Button>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -403,16 +424,7 @@ export function LeadDetailPage() {
             </CardContent>
           </Card>
 
-          {lead.notes && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Notes</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="whitespace-pre-wrap text-sm text-muted-foreground">{lead.notes}</p>
-              </CardContent>
-            </Card>
-          )}
+
         </div>
       </div>
     </div>

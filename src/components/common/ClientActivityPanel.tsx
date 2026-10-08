@@ -4,7 +4,8 @@ import { activityService } from "@/services";
 import type { Activity, ActivityType } from "@/types/models";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import { NoteEditor } from './NoteEditor';
+import { NoteContent } from './NoteContent';
 import {
   Select,
   SelectContent,
@@ -31,12 +32,17 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [retryKey, setRetryKey] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(10);
+
+  useEffect(() => {
+    setDescription('');
+    setVisibleCount(10);
+  }, [clientId, user?.uid]);
 
   useEffect(() => {
     let active = true;
     setIsLoading(true);
     setActivities([]);
-    setDescription("");
     activityService
       .getByEntity("client", clientId)
       .then((next) => {
@@ -109,12 +115,13 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
               ))}
             </SelectContent>
           </Select>
-          <Textarea
-            aria-label="Client interaction notes"
+          <NoteEditor
+            label="Client interaction notes"
             maxLength={4000}
             placeholder="What happened, and what happens next?"
             value={description}
-            onChange={(event) => setDescription(event.target.value)}
+            onChange={setDescription}
+            disabled={isSaving}
           />
           <Button
             onClick={() => void save()}
@@ -148,8 +155,8 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
             No client interactions recorded yet.
           </p>
         ) : (
-          <ol className="max-h-96 space-y-3 overflow-y-auto">
-            {activities.map((activity) => (
+          <ol className="space-y-3">
+            {activities.slice(0, visibleCount).map((activity) => (
               <li key={activity.id} className="rounded-xl border p-4">
                 <div className="mb-2 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
                   <span className="capitalize">{activity.type}</span>
@@ -157,12 +164,15 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
                     {new Date(activity.createdAt).toLocaleString("en-ZA")}
                   </time>
                 </div>
-                <p className="whitespace-pre-wrap break-words text-sm leading-6">
-                  {activity.description}
-                </p>
+                <NoteContent text={activity.description} />
               </li>
             ))}
           </ol>
+        )}
+        {!error && activities.length > visibleCount && (
+          <Button variant="outline" onClick={() => setVisibleCount((count) => count + 10)}>
+            Show older interactions ({activities.length - visibleCount} remaining)
+          </Button>
         )}
       </CardContent>
     </Card>
