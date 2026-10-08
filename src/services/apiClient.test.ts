@@ -4,6 +4,7 @@ const session = vi.hoisted(() => ({ currentUser: { getIdToken: vi.fn() } }));
 vi.mock('@/lib/firebase', () => ({ auth: session }));
 import { authenticatedPost } from './apiClient';
 import { leadConversionService } from './leadConversionService';
+import { leadFollowUpService } from './leadFollowUpService';
 import { paymentFollowUpService } from './paymentFollowUpService';
 
 describe('authenticated Vercel requests', () => {
@@ -28,6 +29,16 @@ describe('authenticated Vercel requests', () => {
     expect(fetch).toHaveBeenCalledWith('/api/notifications/push', expect.objectContaining({
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
       body: JSON.stringify({ kind: 'payment-follow-up', action: 'save', invoiceId: 'invoice-one', followUpDate: '2026-10-09', notes: '**Call** client' }),
+    }));
+  });
+
+  it('records a lead outcome and optional next date in one authenticated request', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ followUpCount: 3 }) });
+    vi.stubGlobal('fetch', fetch);
+    await leadFollowUpService.complete('lead-one', 'call', '**Interested**\n\nCall later', '', 'retry-id');
+    expect(fetch).toHaveBeenCalledWith('/api/notifications/push', expect.objectContaining({
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
+      body: JSON.stringify({ kind: 'lead-follow-up', action: 'complete', leadId: 'lead-one', type: 'call', description: '**Interested**\n\nCall later', nextFollowUpDate: '', requestId: 'retry-id' }),
     }));
   });
 

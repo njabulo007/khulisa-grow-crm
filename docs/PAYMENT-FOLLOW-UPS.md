@@ -12,6 +12,8 @@ Each owner or assigned agent schedules their own reminders. They cannot edit fin
 4. Open **Settings → Cron Jobs** and confirm the `/api/notifications/push` job is present with schedule `0 7 * * *`.
 5. Register push notifications on each receiving device through the CRM bell menu, as with the existing push test.
 
+The same job also processes [lead follow-ups](LEAD-FOLLOW-UPS.md); it needs no second cron job or secret.
+
 The production job runs daily around **09:00 South African time (07:00 UTC)**. Vercel Hobby scheduling can run within the scheduled hour; this is not an exact-minute alarm. Scheduled reminders are checked from their follow-up date and repeat daily while the balance remains unpaid. The CRM also checks the signed-in user's due reminders when opened or brought into focus, throttled to once every five minutes. Saving a reminder for today starts a check immediately.
 
 There is no Firebase Functions deployment, Blaze upgrade, new API function, or Firestore rules change. The server keeps the reminder collection private and uses the existing Firebase Admin and FCM configuration. Ordinary Firestore, Vercel compute, and push quotas still apply. Vercel's separate commercial-use plan policy still applies.

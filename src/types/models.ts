@@ -32,6 +32,8 @@ export interface Lead {
   assignedTo: string; // User ID
   notes: string;
   followUpDate?: string;
+  followUpCount?: number;
+  followUpRevision?: string;
   estimatedValue: number;
   clientId?: string;
   createdAt: string;

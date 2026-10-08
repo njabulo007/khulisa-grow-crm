@@ -12,7 +12,8 @@ const positive = value => Math.max(Number.isFinite(Number(value)) ? Number(value
 const money = value => Math.round((positive(value) + Number.EPSILON) * 100) / 100;
 
 export function createPaymentFollowUpHandler({ db, auth, authenticate, requireOwner, sendPush,
-  now = () => Date.now(), getIdentityConfig = readIdentityConfig, cronSecret = () => process.env.CRON_SECRET }) {
+  now = () => Date.now(), getIdentityConfig = readIdentityConfig, cronSecret = () => process.env.CRON_SECRET,
+  runLeadFollowUps = async () => ({ notified: 0, stopped: 0, failed: 0 }) }) {
   const refFor = (invoiceId, uid) => db.collection('payment_follow_ups').doc(digest(`${invoiceId}:${uid}`));
   const configuredAlias = uid => Object.hasOwn(getIdentityConfig().legacyIds, uid) ? getIdentityConfig().legacyIds[uid] : undefined;
 
@@ -112,21 +113,32 @@ export function createPaymentFollowUpHandler({ db, auth, authenticate, requireOw
     return { notified, stopped, failed };
   };
 
+  const checkAll = async identity => {
+    const payments = await runDue(identity);
+    let leads;
+    try { leads = await runLeadFollowUps(identity); } catch (error) {
+      console.error('[Lead reminder check]', { code: error.code || 'unknown' });
+      leads = { notified: 0, stopped: 0, failed: 1 };
+    }
+    return { notified: payments.notified + leads.notified, stopped: payments.stopped + leads.stopped,
+      failed: payments.failed + leads.failed, payments, leads };
+  };
+
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     try {
       if (req.method === 'GET') {
         const secret = cronSecret();
-        if (!secret) throw createHttpError(503, 'Background payment reminders need CRON_SECRET in Vercel.');
+        if (!secret) throw createHttpError(503, 'Background reminders need CRON_SECRET in Vercel.');
         if (req.headers?.authorization !== `Bearer ${secret}`) throw createHttpError(401, 'Unauthorized scheduler request.');
-        const result = await runDue();
+        const result = await checkAll();
         return json(res, result.failed ? 503 : 200, result);
       }
       if (req.method !== 'POST') return methodNotAllowed(res, ['GET', 'POST']);
       const identity = await authenticate(req);
       if (identity.role === 'owner') await requireOwner(req);
       const payload = parseBody(req);
-      if (payload.action === 'check') return json(res, 200, await runDue(identity));
+      if (payload.action === 'check') return json(res, 200, await checkAll(identity));
       if (!['list', 'save', 'cancel'].includes(payload.action)) throw createHttpError(400, 'Invalid payment follow-up action.');
       if (payload.action === 'list') {
         if (payload.invoiceId !== undefined && !validId(payload.invoiceId)) throw createHttpError(400, 'Invalid invoice ID.');

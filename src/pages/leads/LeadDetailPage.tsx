@@ -1,3 +1,4 @@
+import { paymentFollowUpToday } from '@/services/paymentFollowUpService';
 import { loadLeadDetail } from '@/services/leadDetailService';
 import { changeLeadStage, leadStageErrorMessage } from '@/services/leadStageService';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -19,6 +20,7 @@ import { PageHeader, StatusBadge } from '@/components/common';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { NoteEditor } from '@/components/common/NoteEditor';
+import { LeadFollowUpPanel } from '@/components/common/LeadFollowUpPanel';
 import { NoteContent } from '@/components/common/NoteContent';
 import {
   Select,
@@ -189,7 +191,7 @@ export function LeadDetailPage() {
   };
 
   const agent = usersById[lead.assignedTo];
-  const isOverdue = lead.followUpDate && new Date(lead.followUpDate) < new Date();
+  const isOverdue = !['won', 'lost'].includes(lead.stage) && lead.followUpDate && lead.followUpDate.slice(0, 10) < paymentFollowUpToday();
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -273,6 +275,8 @@ export function LeadDetailPage() {
             </Card>
           )}
 
+          <LeadFollowUpPanel key={lead.id} lead={lead} onSaved={refreshLead} />
+
           <Card>
             <CardHeader>
               <CardTitle>Activity Timeline</CardTitle>
@@ -325,6 +329,9 @@ export function LeadDetailPage() {
                           {ACTIVITY_ICONS[activity.type]}
                         </div>
                         <div className="min-w-0 flex-1">
+                          {activity.metadata?.followUpCompleted === true && <p className="mb-2 text-sm font-medium text-primary">
+                            Follow-up #{String(activity.metadata.followUpNumber)} completed · {activity.metadata.nextFollowUpDate ? `Next: ${String(activity.metadata.nextFollowUpDate)}` : 'No further follow-up scheduled'}
+                          </p>}
                           <NoteContent text={activity.description} />
                           <p className="mt-1 text-xs text-muted-foreground">
                             {activityUser?.name || 'Unknown user'} |{' '}

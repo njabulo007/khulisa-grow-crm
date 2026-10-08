@@ -1,3 +1,4 @@
+import { paymentFollowUpToday } from '@/services/paymentFollowUpService';
 import { validateLead } from '@/lib/domainValidation';
 import { canAccessLead } from '@/lib/permissions';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -69,6 +70,7 @@ export function LeadsPage() {
   const { leads, isLoading: isLeadsLoading, error: leadsError, refresh: refreshLeads, createLead, updateLead, removeLead, getById: getLeadById } = useLeads();
   const [searchQuery, setSearchQuery] = useState('');
   const [stageFilter, setStageFilter] = useState<string>('all');
+  const [followUpFilter, setFollowUpFilter] = useState('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showConvertDialog, setShowConvertDialog] = useState(false);
@@ -217,9 +219,15 @@ export function LeadsPage() {
       const matchesStage = stageFilter === 'all' || lead.stage === stageFilter;
       const matchesSource = sourceFilter === 'all' || lead.source === sourceFilter;
 
-      return matchesSearch && matchesStage && matchesSource;
+      const date = lead.followUpDate?.slice(0, 10);
+      const active = !['won', 'lost'].includes(lead.stage);
+      const matchesFollowUp = followUpFilter === 'all' || (active && (
+        followUpFilter === 'due' ? !!date && date <= paymentFollowUpToday() :
+        followUpFilter === 'upcoming' ? !!date && date > paymentFollowUpToday() : !date
+      ));
+      return matchesSearch && matchesStage && matchesSource && matchesFollowUp;
     });
-  }, [allLeads, searchQuery, stageFilter, sourceFilter]);
+  }, [allLeads, searchQuery, stageFilter, sourceFilter, followUpFilter]);
 
   // Group leads by stage for Kanban view
   const leadsByStage = useMemo(() => {
@@ -488,6 +496,15 @@ export function LeadsPage() {
             ))}
           </SelectContent>
         </Select>
+        <Select value={followUpFilter} onValueChange={setFollowUpFilter}>
+          <SelectTrigger className="w-[200px]"><SelectValue placeholder="Follow-ups" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All follow-ups</SelectItem>
+            <SelectItem value="due">Due / overdue</SelectItem>
+            <SelectItem value="upcoming">Upcoming follow-ups</SelectItem>
+            <SelectItem value="none">No follow-up date</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Kanban Board */}
@@ -524,7 +541,7 @@ export function LeadsPage() {
               <div className="space-y-2 min-h-[200px]">
                 {leadsByStage[stageKey as LeadStage].map((lead) => {
                   const agent = authService.getById(lead.assignedTo) || agentsById.get(lead.assignedTo);
-                  const isOverdue = lead.followUpDate && new Date(lead.followUpDate) < new Date();
+                  const isOverdue = !['won', 'lost'].includes(lead.stage) && lead.followUpDate && lead.followUpDate.slice(0, 10) < paymentFollowUpToday();
                   
                   return (
                     <Card
