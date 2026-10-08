@@ -14,7 +14,8 @@ function fixture(initial = {}, configuration = { owners: new Set(), legacyIds: {
     uid, email: `${uid}@example.com`, customClaims: { role: uid === 'owner' ? 'owner' : 'agent', extra: 'keep' },
   }]));
   const tokens = new Map([...users].map(([uid, user]) => [uid, { uid, ...user.customClaims }]));
-  const calls = { claims: [], revoked: [], writes: 0 };
+  const calls = { claims: [], revoked: [], writes: 0, created: [], links: [], deleted: [] };
+  const failures = {};
   const snapshot = (ref) => ({ ref, id: ref.id, exists: records.has(ref.path), data: () => clone(records.get(ref.path)) });
   const query = (name, conditions = [], maximum = Infinity) => ({
     kind: 'query', name, conditions, maximum,
@@ -50,6 +51,21 @@ function fixture(initial = {}, configuration = { owners: new Set(), legacyIds: {
   const auth = {
     async verifyIdToken(token, revoked) { assert.equal(revoked, true); if (!tokens.has(token)) throw new Error('Invalid token'); return clone(tokens.get(token)); },
     async getUser(uid) { if (!users.has(uid)) throw Object.assign(new Error('User not found'), { code: 'auth/user-not-found' }); return clone(users.get(uid)); },
+    async getUserByEmail(email) {
+      const user = [...users.values()].find(user => user.email === email);
+      if (!user) throw Object.assign(new Error('Missing'), { code: 'auth/user-not-found' });
+      return clone(user);
+    },
+    async createUser(payload) {
+      if (failures.create) throw failures.create;
+      calls.created.push(clone(payload));
+      const user = { ...payload, uid: 'invited-user', customClaims: {} }; users.set(user.uid, user); return clone(user);
+    },
+    async generatePasswordResetLink(email) {
+      if (failures.link) throw new Error('Internal link service failure');
+      calls.links.push(email); return 'https://example.firebaseapp.com/__/auth/action?mode=resetPassword&oobCode=private-test-code';
+    },
+    async deleteUser(uid) { calls.deleted.push(uid); users.delete(uid); },
     async setCustomUserClaims(uid, claims) { calls.claims.push([uid, claims]); users.get(uid).customClaims = clone(claims); },
     async revokeRefreshTokens(uid) { calls.revoked.push(uid); },
   };
@@ -59,7 +75,7 @@ function fixture(initial = {}, configuration = { owners: new Set(), legacyIds: {
     await handlers[operation]({ method, headers: token ? { authorization: `Bearer ${token}` } : {}, body }, res);
     return res;
   };
-  return { records, users, tokens, calls, auth, db, handlers, invoke };
+  return { records, users, tokens, calls, failures, auth, db, handlers, invoke };
 }
 
 test('missing/invalid credentials and wrong methods cannot mutate data', async () => {
@@ -259,4 +275,87 @@ test('recovery with project creation keeps existing access and links the new pro
   assert.equal(response.body.clientId, 'gone');
   assert.equal(f.records.get('projects/' + response.body.projectId).clientId, 'gone');
   assert.deepEqual(f.records.get('clients/gone').projectAccess, { other: 'surviving', agent: response.body.projectId });
+});
+
+test('uninvited Firebase account cannot recover a role or authenticate into any CRM endpoint', async () => {
+  const f = fixture(); f.users.get('other').customClaims = {}; f.tokens.set('other', { uid: 'other' });
+  const response = await f.invoke('ensureRole', 'other', { role: 'owner', appUserId: 'owner' });
+  assert.equal(response.statusCode, 403); assert.match(response.body.error, /invitation-only/);
+  assert.equal(f.records.has('users/other'), false); assert.equal(f.calls.claims.length, 0);
+  await assert.rejects(f.handlers.authenticate({ headers: { authorization: 'Bearer other' } }), { status: 403 });
+  assert.equal((await f.invoke('convertLead', 'other', { leadId: 'lead-one' })).statusCode, 403);
+});
+
+test('existing profile without claims and configured recovery owner without profile still sign in', async () => {
+  const f = fixture(); f.users.get('agent').customClaims = {};
+  assert.equal((await f.invoke('ensureRole', 'agent')).statusCode, 200);
+  const recovery = fixture({}, { owners: new Set(['other']), legacyIds: {} }); recovery.users.get('other').customClaims = {};
+  assert.equal((await recovery.invoke('ensureRole', 'other')).body.role, 'owner');
+});
+
+test('only an owner can create an invitation, always as an agent with an undisclosed random password', async () => {
+  const f = fixture();
+  const body = { action: 'invite', email: ' New.Agent@Example.com ', displayName: 'New Agent', role: 'owner' };
+  assert.equal((await f.invoke('ensureRole', 'agent', body)).statusCode, 403);
+  const result = await f.invoke('ensureRole', 'owner', body);
+  assert.equal(result.statusCode, 200); assert.equal(result.body.role, 'agent');
+  assert.match(result.body.setupLink, /resetPassword/); assert.equal(result.body.email, 'new.agent@example.com');
+  assert.equal(result.body.password, undefined); assert.equal(f.calls.created[0].password.length, 64);
+  const profile = f.records.get('users/invited-user'); assert.equal(profile.invitationPending, true); assert.equal(profile.invitedBy, 'owner');
+  assert.equal(f.users.get('invited-user').customClaims.role, 'agent');
+  f.tokens.set('invited-user', { uid: 'invited-user', role: 'agent' });
+  assert.equal((await f.invoke('ensureRole', 'invited-user')).statusCode, 200);
+  assert.equal(f.records.get('users/invited-user').invitationPending, false);
+});
+
+test('pending invitation can regenerate a setup link without creating duplicate accounts', async () => {
+  const f = fixture(); const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
+  await f.invoke('ensureRole', 'owner', body); await f.invoke('ensureRole', 'owner', body);
+  assert.equal(f.calls.created.length, 1); assert.equal(f.calls.links.length, 2);
+});
+
+test('existing members and attacker pre-registered email accounts cannot be silently reset or admitted', async () => {
+  const f = fixture(); f.users.get('other').customClaims = {};
+  for (const email of ['agent@example.com', 'owner@example.com', 'other@example.com']) {
+    assert.equal((await f.invoke('ensureRole', 'owner', { action: 'invite', email, displayName: 'Existing' })).statusCode, 409);
+  }
+  assert.equal(f.calls.links.length, 0); assert.equal(f.records.has('users/other'), false);
+});
+
+test('invalid invitations and disabled accounts cannot create access', async () => {
+  const f = fixture();
+  for (const body of [{ email: 'bad', displayName: 'Name' }, { email: 'valid@example.com', displayName: '' }, { email: 'valid@example.com', displayName: 'x'.repeat(121) }]) {
+    assert.equal((await f.invoke('ensureRole', 'owner', { action: 'invite', ...body })).statusCode, 400);
+  }
+  f.users.get('agent').disabled = true;
+  assert.equal((await f.invoke('ensureRole', 'agent')).statusCode, 403);
+  assert.equal(f.calls.created.length, 0);
+});
+
+test('failed setup link generation remains retryable and never leaks private internal errors', async () => {
+  const f = fixture(); const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
+  f.failures.link = true;
+  const result = await f.invoke('ensureRole', 'owner', body); assert.equal(result.statusCode, 500);
+  assert.doesNotMatch(result.body.error, /Internal link/);
+  f.failures.link = false; assert.equal((await f.invoke('ensureRole', 'owner', body)).statusCode, 200);
+  assert.equal(f.calls.created.length, 1);
+});
+
+test('an invitation profile failure removes only the newly created unused Auth account', async () => {
+  const f = fixture(); f.db.runTransaction = async () => { throw new Error('Database unavailable'); };
+  const result = await f.invoke('ensureRole', 'owner', { action: 'invite', email: 'new@example.com', displayName: 'New' });
+  assert.equal(result.statusCode, 500); assert.deepEqual(f.calls.deleted, ['invited-user']);
+  assert.equal(f.users.has('owner'), true); assert.equal(f.users.has('agent'), true);
+  assert.equal(f.records.has('users/invited-user'), false); assert.equal(f.calls.links.length, 0);
+});
+
+test('an interrupted claim update keeps a pending invitation that the owner can safely retry', async () => {
+  const f = fixture(); const original = f.auth.setCustomUserClaims;
+  const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
+  f.auth.setCustomUserClaims = async () => { throw new Error('Auth unavailable'); };
+  assert.equal((await f.invoke('ensureRole', 'owner', body)).statusCode, 500);
+  assert.equal(f.records.get('users/invited-user').invitationPending, true);
+  f.auth.setCustomUserClaims = original;
+  assert.equal((await f.invoke('ensureRole', 'owner', body)).statusCode, 200);
+  assert.equal(f.calls.created.length, 1);
 });

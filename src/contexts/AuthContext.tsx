@@ -17,7 +17,6 @@ interface AuthContextType {
   isOwner: boolean;
   isAgent: boolean;
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => void;
 }
 
@@ -247,25 +246,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, password: string, displayName?: string): Promise<void> => {
-    const firebaseUser = await AuthService.signupWithPassword(email, password, displayName);
-    const mapped = upsertUserFromFirebase({
-      id: firebaseUser.id,
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      displayName: firebaseUser.displayName,
-      role: firebaseUser.role,
-    });
-    if (!mapped) {
-      throw new Error('Registered user has no valid email.');
-    }
-    setUser(mapped);
-    if (mapped.role === 'owner') {
-      await syncUsersFromFirebaseProfiles();
-      refreshCurrentUserFromCache();
-    }
-  };
-
   const logout = () => {
     AuthService.logout().catch(() => undefined);
     authService.clearCurrentUser();
@@ -282,7 +262,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isOwner: user?.role === 'owner',
         isAgent: user?.role === 'agent',
         login,
-        signup,
         logout,
       }}
     >

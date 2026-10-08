@@ -10,13 +10,10 @@ import { useAuth } from '@/contexts/AuthContext';
 export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login, signup, isAuthenticated, authError } = useAuth();
+  const { login, isAuthenticated, authError } = useAuth();
 
-  const [mode, setMode] = useState<'login' | 'signup'>('login');
-  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,21 +29,7 @@ export function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      if (mode === 'signup') {
-        if (password.length < 6) {
-          setError('Password must be at least 6 characters.');
-          setIsSubmitting(false);
-          return;
-        }
-        if (password !== confirmPassword) {
-          setError('Passwords do not match.');
-          setIsSubmitting(false);
-          return;
-        }
-        await signup(email, password, displayName);
-      } else {
-        await login(email, password);
-      }
+      await login(email, password);
       navigate(redirectTo, { replace: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Login failed.';
@@ -77,27 +60,13 @@ export function LoginPage() {
 
         <Card className="border-border/80 shadow-lg">
           <CardHeader>
-            <CardTitle className="text-2xl">{mode === 'signup' ? 'Create account' : 'Welcome back'}</CardTitle>
+            <CardTitle className="text-2xl">Welcome back</CardTitle>
             <CardDescription>
-              {mode === 'signup' ? 'Create your Khulisa CRM account' : 'Log in with your Khulisa CRM account'}
+              Log in with your Khulisa CRM account
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-5">
             <form onSubmit={handleSubmit} className="space-y-4">
-              {mode === 'signup' && (
-                <div className="space-y-2">
-                  <Label htmlFor="displayName">Full name</Label>
-                  <Input
-                    id="displayName"
-                    type="text"
-                    autoComplete="name"
-                    placeholder="Your full name"
-                    value={displayName}
-                    onChange={(event) => setDisplayName(event.target.value)}
-                  />
-                </div>
-              )}
-
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <div className="relative">
@@ -122,7 +91,7 @@ export function LoginPage() {
                   <Input
                     id="password"
                     type="password"
-                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                    autoComplete="current-password"
                     placeholder="Your password"
                     className="pl-9"
                     value={password}
@@ -132,44 +101,15 @@ export function LoginPage() {
                 </div>
               </div>
 
-              {mode === 'signup' && (
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    autoComplete="new-password"
-                    placeholder="Confirm your password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    required
-                  />
-                </div>
-              )}
-
               {(error || authError) && <p role="alert" className="text-sm text-destructive">{error || authError}</p>}
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? (mode === 'signup' ? 'Creating account...' : 'Signing in...') : mode === 'signup' ? 'Sign Up' : 'Log In'}
+                {isSubmitting ? 'Signing in...' : 'Log In'}
                 {!isSubmitting && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
             </form>
 
-            <div className="text-center text-sm text-muted-foreground">
-              {mode === 'signup' ? 'Already have an account?' : 'Need an account?'}{' '}
-              <button
-                type="button"
-                className="font-semibold text-foreground underline underline-offset-4"
-                onClick={() => {
-                  setMode((current) => (current === 'signup' ? 'login' : 'signup'));
-                  setError('');
-                  setPassword('');
-                  setConfirmPassword('');
-                }}
-              >
-                {mode === 'signup' ? 'Log in' : 'Sign up'}
-              </button>
-            </div>
+            <p className="text-center text-sm text-muted-foreground">Access is invitation-only. Contact the owner for an invitation.</p>
           </CardContent>
         </Card>
       </div>

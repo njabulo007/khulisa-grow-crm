@@ -1,3 +1,4 @@
+import { InviteAgent } from '@/components/auth/InviteAgent';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '@/components/common';
@@ -239,6 +240,7 @@ export function SettingsPage() {
 
               <div className="space-y-2">
                 <h3 className="text-sm font-medium">Team & Access</h3>
+                <InviteAgent />
                 <p className="text-xs text-muted-foreground">Archived agents leave the rankings and assignment menus. Their records and sign-in accounts are retained; archiving does not revoke access.</p>
                 <Table>
                   <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Roster</TableHead></TableRow></TableHeader>

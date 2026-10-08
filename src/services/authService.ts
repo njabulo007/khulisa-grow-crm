@@ -2,11 +2,9 @@ import { User, UserRole } from '@/types/models';
 import { auth, db } from '@/lib/firebase';
 import { authenticatedPost } from './apiClient';
 import {
-  createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
-  updateProfile,
   User as FirebaseUser,
 } from 'firebase/auth';
 import { collection, doc, getDocs, setDoc } from 'firebase/firestore';
@@ -110,24 +108,6 @@ function mapUser(firebaseUser: FirebaseUser | null): Promise<AppUser | null> {
 }
 
 export const AuthService = {
-  async signupWithPassword(email: string, password: string, displayName?: string): Promise<AppUser> {
-    try {
-      const normalizedEmail = email.trim().toLowerCase();
-      const cred = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
-      const trimmedDisplayName = displayName?.trim();
-      if (trimmedDisplayName) {
-        await updateProfile(cred.user, { displayName: trimmedDisplayName });
-      }
-
-      const user = await mapUser(cred.user);
-      if (!user) throw new Error('Could not map user');
-      return user;
-    } catch (error) {
-      if (error instanceof Error && !('code' in error)) throw error;
-      throw new Error(getFirebaseAuthErrorMessage(error));
-    }
-  },
-
   async loginWithPassword(email: string, password: string): Promise<AppUser> {
     try {
       const cred = await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
@@ -220,6 +200,10 @@ export const AuthService = {
     authService.getAll().filter((user) => user.uid === targetUid || user.id === targetUid)
       .forEach((user) => authService.update(user.id, { isActive }));
     window.dispatchEvent(new CustomEvent('crm:data-changed'));
+  },
+
+  async inviteAgent(email: string, displayName: string): Promise<{ email: string; setupLink: string; uid: string }> {
+    return authenticatedPost('/api/auth/ensure-role', { action: 'invite', email: email.trim().toLowerCase(), displayName: displayName.trim() });
   },
 
   async updateUserRole(uid: string, role: Role): Promise<void> {

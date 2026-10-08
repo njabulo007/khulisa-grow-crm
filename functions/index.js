@@ -9,12 +9,8 @@ admin.initializeApp();
 
 const db = admin.firestore();
 const messaging = admin.messaging();
-// Bootstrap owners are still required to recover access when a custom claim is stale.
-// Keep this list small and change it only through a reviewed backend deployment.
-const OWNER_EMAILS = new Set([
-  'njabulod007@gmail.com',
-  'njabulo@khulisamedia.co.za',
-]);
+// Owner recovery uses server-configured UIDs, never an unverified email.
+const OWNER_UIDS = new Set((process.env.CRM_OWNER_UIDS || '').split(',').map(uid => uid.trim()).filter(Boolean));
 const PROJECT_SHARES_COLLECTION = 'project_shares';
 const PROJECTS_COLLECTION = 'projects';
 const CLIENTS_COLLECTION = 'clients';
@@ -67,18 +63,13 @@ const findUserProfile = async (uid) => {
 };
 
 const deriveRoleForUser = async (uid) => {
-  try {
-    const authUser = await admin.auth().getUser(uid);
-    const normalizedEmail = typeof authUser.email === 'string' ? authUser.email.trim().toLowerCase() : '';
-    if (OWNER_EMAILS.has(normalizedEmail)) return 'owner';
-
-    const profile = await findUserProfile(uid);
-    const role = getRoleFromUserDoc(profile?.data);
-    if (role) return role;
-  } catch (error) {
-    logger.warn('Failed to resolve user profile when deriving role.', { uid, error: String(error) });
-  }
-  return 'agent';
+  const authUser = await admin.auth().getUser(uid);
+  if (authUser.disabled) throw new HttpsError('permission-denied', 'CRM access is unavailable.');
+  if (OWNER_UIDS.has(uid)) return 'owner';
+  const profile = await db.collection('users').doc(uid).get();
+  const role = getRoleFromUserDoc(profile.data()) || getRoleFromUserDoc(authUser.customClaims);
+  if (role) return role;
+  throw new HttpsError('permission-denied', 'CRM access is invitation-only. Ask the owner for an invitation.');
 };
 
 const requireOwner = async (request) => {

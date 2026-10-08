@@ -28,14 +28,22 @@ export const readIdentityConfig = (env = process.env) => {
 };
 
 export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIdentityConfig }) => {
+  const knownRole = value => ['owner', 'agent'].includes(value);
+  const admitted = (uid, profile, claims, config) => knownRole(profile?.role) || knownRole(claims?.role) || config.owners.has(uid);
   const authenticate = async (req) => {
     const header = req.headers?.authorization;
     if (typeof header !== 'string' || !/^Bearer\s+\S+$/i.test(header)) throw createHttpError(401, 'Please sign in again.');
+    let decoded;
     try {
-      const decoded = await auth.verifyIdToken(header.replace(/^Bearer\s+/i, ''), true);
+      decoded = await auth.verifyIdToken(header.replace(/^Bearer\s+/i, ''), true);
       if (!validId(decoded.uid)) throw new Error('Invalid UID');
-      return decoded;
     } catch { throw createHttpError(401, 'Your session is invalid. Please sign in again.'); }
+    const profile = await db.collection('users').doc(decoded.uid).get();
+    const authUser = await auth.getUser(decoded.uid);
+    if (authUser.disabled || !admitted(decoded.uid, profile.data(), authUser.customClaims, getIdentityConfig())) {
+      throw createHttpError(403, 'CRM access is invitation-only. Ask the owner for an invitation.');
+    }
+    return decoded;
   };
   const ownerAuthorized = (uid, profile, config) => config.owners.has(uid) || roleOf(profile) === 'owner';
   const requireOwner = async (req) => {
@@ -53,6 +61,9 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
   };
 
   const ensureRole = async (req) => {
+    const action = parseBody(req).action;
+    if (action === 'invite') return inviteUser(req);
+    if (action !== undefined) throw createHttpError(400, 'Invalid account action.');
     const decoded = await authenticate(req);
     const authUser = await auth.getUser(decoded.uid);
     const config = getIdentityConfig();
@@ -61,11 +72,12 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
     const profile = await db.runTransaction(async (transaction) => {
       const snapshot = await transaction.get(ref);
       const current = snapshot.data() || {};
+      if (!admitted(decoded.uid, current, authUser.customClaims, config)) throw createHttpError(403, 'CRM access is invitation-only.');
       const role = config.owners.has(decoded.uid) ? 'owner' : snapshot.exists
         ? roleOf(current) : authUser.customClaims?.role === 'owner' ? 'owner' : 'agent';
       const displayName = authUser.displayName || current.displayName || current.name || null;
       const now = new Date().toISOString();
-      const next = { uid: decoded.uid, appUserId, email: authUser.email || null, displayName, role };
+      const next = { uid: decoded.uid, appUserId, email: authUser.email || null, displayName, role, ...(current.invitationPending === true ? { invitationPending: false } : {}) };
       if (!snapshot.exists || Object.entries(next).some(([key, value]) => current[key] !== value)) {
         transaction.set(ref, { ...next, ...(!snapshot.exists ? { createdAt: now } : {}), updatedAt: now }, { merge: true });
       }
@@ -75,6 +87,57 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
       await auth.setCustomUserClaims(decoded.uid, { ...(authUser.customClaims || {}), role: profile.role, appUserId });
     }
     return profile;
+  };
+
+  const inviteUser = async req => {
+    const actor = await requireOwner(req);
+    const payload = parseBody(req);
+    const email = text(payload.email, 254).toLowerCase();
+    const displayName = text(payload.displayName, 120);
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName) throw createHttpError(400, 'Enter a valid email and full name.');
+    let target;
+    let created = false;
+    try { target = await auth.getUserByEmail(email); } catch (error) {
+      if (error.code !== 'auth/user-not-found') throw error;
+    }
+    if (target) {
+      const existing = await db.collection('users').doc(target.uid).get();
+      // Never turn an arbitrary pre-registered account into a member: someone
+      // else may know its password. Only retry a server-created pending invite.
+      if (target.disabled || existing.data()?.invitationPending !== true || existing.data()?.role !== 'agent') {
+        throw createHttpError(409, 'This email already has an account. Existing members should log in; ask the owner to review any unapproved Firebase account.');
+      }
+    } else {
+      try {
+        target = await auth.createUser({ email, displayName, password: crypto.randomBytes(48).toString('base64url'), emailVerified: false });
+        created = true;
+      } catch (error) {
+        if (error.code === 'auth/email-already-exists') throw createHttpError(409, 'This email already has an account. Refresh before trying again.');
+        throw error;
+      }
+    }
+    const config = getIdentityConfig();
+    const ref = db.collection('users').doc(target.uid);
+    try {
+      await db.runTransaction(async transaction => {
+        const owner = await transaction.get(db.collection('users').doc(actor.uid));
+        const existing = await transaction.get(ref);
+        await transaction.get(db.collection('_role_control').doc('changes'));
+        if (!ownerAuthorized(actor.uid, owner.data(), config)) throw createHttpError(403, 'Your owner access has changed.');
+        if (existing.exists && (existing.data()?.invitationPending !== true || existing.data()?.role !== 'agent')) throw createHttpError(409, 'This account already has access.');
+        const now = new Date().toISOString();
+        transaction.set(ref, { uid: target.uid, appUserId: appIdFor(target.uid, target, config), email, displayName: target.displayName || displayName,
+          role: 'agent', isActive: true, invitationPending: true, invitedBy: actor.uid,
+          ...(!existing.exists ? { createdAt: now } : {}), updatedAt: now }, { merge: true });
+      });
+    } catch (error) {
+      // No invitation has been granted or link disclosed before this point.
+      if (created) await auth.deleteUser(target.uid).catch(() => {});
+      throw error;
+    }
+    await auth.setCustomUserClaims(target.uid, { ...(target.customClaims || {}), role: 'agent', appUserId: appIdFor(target.uid, target, config) });
+    const setupLink = await auth.generatePasswordResetLink(email);
+    return { uid: target.uid, email, setupLink, role: 'agent' };
   };
 
   const setRole = async (req) => {
