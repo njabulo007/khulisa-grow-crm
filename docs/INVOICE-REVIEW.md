@@ -14,7 +14,7 @@ Reviewed the invoice detail page and printable/PDF template. This is a template 
 
 ## Improvements implemented
 
-Replaced the old Capitec payment instructions with the owner's first supplied details: Standard Bank; branch code 4806; account holder KHULISA MEDIA (PTY) LTD; account number 10 28 786 999 5; account type CURRENT. No branch name or additional account-holder wording from the later message is used.
+Replaced the old Capitec payment instructions with the owner's first supplied details: Standard Bank; universal branch code 051001 (updated at the owner's request); account holder KHULISA MEDIA (PTY) LTD; account number 10 28 786 999 5; account type CURRENT. No branch name or additional account-holder wording from the later message is used.
 
 The invoice detail and printed/PDF view share one account-details component and configuration. Payment reference is shown with the bank details. Printed currency uses two decimal places. Empty project information and internal project IDs are removed from customer-facing output. Print styling keeps the payment summary alongside the banking section and reduces awkward page breaks. The automatic print dialog now waits until client and payment records have finished loading.
 
