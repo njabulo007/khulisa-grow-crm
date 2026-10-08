@@ -4,6 +4,7 @@ const session = vi.hoisted(() => ({ currentUser: { getIdToken: vi.fn() } }));
 vi.mock('@/lib/firebase', () => ({ auth: session }));
 import { authenticatedPost } from './apiClient';
 import { leadConversionService } from './leadConversionService';
+import { paymentFollowUpService } from './paymentFollowUpService';
 
 describe('authenticated Vercel requests', () => {
   beforeEach(() => { session.currentUser.getIdToken.mockResolvedValue('signed-token'); });
@@ -17,6 +18,16 @@ describe('authenticated Vercel requests', () => {
     expect(fetch).toHaveBeenCalledWith('/api/leads/convert', expect.objectContaining({
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
       body: JSON.stringify(payload),
+    }));
+  });
+
+  it('schedules a personal payment follow-up through the existing authenticated endpoint', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ followUp: { id: 'reminder' } }) });
+    vi.stubGlobal('fetch', fetch);
+    await paymentFollowUpService.save('invoice-one', '2026-10-09', '**Call** client');
+    expect(fetch).toHaveBeenCalledWith('/api/notifications/push', expect.objectContaining({
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
+      body: JSON.stringify({ kind: 'payment-follow-up', action: 'save', invoiceId: 'invoice-one', followUpDate: '2026-10-09', notes: '**Call** client' }),
     }));
   });
 

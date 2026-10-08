@@ -1,3 +1,4 @@
+import { PaymentFollowUps } from '@/components/common/PaymentFollowUps';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Plus, Search, Trash2 } from 'lucide-react';
@@ -345,6 +346,8 @@ export function InvoicesPage() {
           Add Invoice
         </Button>}
       </PageHeader>
+
+      <PaymentFollowUps />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <div className="relative flex-1">

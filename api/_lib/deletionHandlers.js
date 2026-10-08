@@ -41,6 +41,7 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
           throw createHttpError(409, 'This invoice has payments or commissions. Confirm force deletion to remove them too.');
         }
         add(payments); add(commissions);
+        add(await query('payment_follow_ups', 'invoiceId', id));
       }
 
       // Block new browser writes into a parent being cleaned up. A failed
@@ -62,7 +63,7 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
       } else if (type === 'invoice') {
         const [payments, commissions] = await Promise.all([query('payments', 'invoiceId', id), query('commissions', 'invoiceId', id)]);
         blocked = !forceLinked && (payments.length > 0 || commissions.length > 0);
-        if (!blocked) { add(payments); add(commissions); }
+        if (!blocked) { add(payments); add(commissions); add(await query('payment_follow_ups', 'invoiceId', id)); }
       }
       if (blocked) {
         if (root.exists) await root.ref.update({ _deleting: deleteField() }, { lastUpdateTime: rootVersion });
@@ -100,6 +101,7 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
       ]);
       add(activities.filter((entry) => entry.data().entityType === type));
       add(notifications); add(type === 'lead' ? linkedActivities.filter((entry) => entry.data().entityType === 'lead') : linkedActivities);
+      if (type === 'client') add(await query('payment_follow_ups', 'clientId', id));
       if (type === 'client' || type === 'project') {
         const shares = await query('project_shares', field, id);
         // Preserve every reference if any external deletion fails. Missing files

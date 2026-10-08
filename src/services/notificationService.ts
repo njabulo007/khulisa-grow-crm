@@ -91,6 +91,7 @@ class FirestoreNotificationService implements NotificationService {
     const type =
       data.type === 'invoice_paid' ||
       data.type === 'invoice_due' ||
+      data.type === 'payment_follow_up' ||
       data.type === 'activity' ||
       data.type === 'project_deadline' ||
       data.type === 'lead_follow_up' ||

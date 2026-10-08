@@ -351,10 +351,10 @@ export function ClientDetailPage() {
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50 flex flex-row items-center justify-between">
               <CardTitle className="text-primary">Invoices + Payments</CardTitle>
-              <Button size="sm" className="transition-all hover:shadow-md" onClick={() => navigate(`/invoices?client=${client.id}`)}>
+              {isOwner && <Button size="sm" className="transition-all hover:shadow-md" onClick={() => navigate(`/invoices?client=${client.id}`)}>
                 <Plus className="mr-1 h-4 w-4" />
                 New Invoice
-              </Button>
+              </Button>}
             </CardHeader>
             <CardContent className="pt-6">
               {visibleInvoices.length === 0 ? (
@@ -408,6 +408,9 @@ export function ClientDetailPage() {
                           ))
                         )}
                       </div>
+                      {invoice.status !== 'draft' && totals.total > invoice.amountPaid && (
+                        <Button variant="outline" size="sm" className="mt-3" onClick={() => navigate(`/invoices/${invoice.id}#payment-follow-up`)}>Payment follow-up</Button>
+                      )}
                     </div>
                     );
                   })}

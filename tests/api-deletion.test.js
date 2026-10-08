@@ -77,9 +77,10 @@ test('projects and clients with linked business/financial records are protected 
 });
 test('invoice deletion requires explicit financial override and removes all owned dependants', async () => {
   const f = fixture({ 'invoices/i': {}, 'payments/p': { invoiceId: 'i' }, 'commissions/c': { invoiceId: 'i' },
-    'activities/a': { entityType: 'invoice', entityId: 'i' }, 'notifications/n': { invoiceId: 'i' } });
+    'activities/a': { entityType: 'invoice', entityId: 'i' }, 'notifications/n': { invoiceId: 'i' },
+    'payment_follow_ups/reminder': { invoiceId: 'i', clientId: 'client' } });
   assert.equal((await f.invoke('invoice', 'i')).code, 409);
-  assert.equal(f.records.size, 5);
+  assert.equal(f.records.size, 6);
   assert.equal((await f.invoke('invoice', 'i', 'owner', { forceLinked: true })).code, 200);
   assert.equal(f.records.size, 0);
 });

@@ -1,4 +1,5 @@
-﻿import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { PaymentFollowUps } from '@/components/common/PaymentFollowUps';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Building2, Calendar, FolderKanban, Pencil, Printer, Trash2 } from 'lucide-react';
 import { PageHeader, StatusBadge } from '@/components/common';
@@ -460,6 +461,8 @@ export function InvoiceDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          <PaymentFollowUps invoiceId={invoice.id} clientId={invoice.clientId} payable={balance > 0 && effectiveStatus !== 'draft' && effectiveStatus !== 'paid'} />
 
           <Card>
             <CardHeader>

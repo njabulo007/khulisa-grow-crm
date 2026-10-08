@@ -5,6 +5,7 @@ import { pushService } from '@/services/pushService';
 import type { PushRegistrationResult } from '@/services/pushService';
 import { toast } from 'sonner';
 import { Notification } from '@/types/notification';
+import { paymentFollowUpService } from '@/services/paymentFollowUpService';
 
 export type DesktopNotificationPermission = NotificationPermission | 'unsupported';
 
@@ -38,6 +39,19 @@ export function useNotifications(): UseNotificationsResult {
     if (user?.id) void pushService.registerForUser(user.id, false).then((status) => { if (active) setPushStatus(status); });
     return () => { active = false; };
   }, [user?.id]);
+  useEffect(() => {
+    if (!user?.id || pushStatus === null) return;
+    let lastCheck = 0;
+    const check = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 300_000) return;
+      lastCheck = Date.now();
+      void paymentFollowUpService.check().catch(error => console.error('[Payment follow-up] Due check failed.', error));
+    };
+    check();
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => { window.removeEventListener('focus', check); document.removeEventListener('visibilitychange', check); };
+  }, [user?.id, user?.uid, pushStatus]);
   const hasHydratedRef = useRef(false);
   const previousUnreadIdsRef = useRef<Set<string>>(new Set());
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
