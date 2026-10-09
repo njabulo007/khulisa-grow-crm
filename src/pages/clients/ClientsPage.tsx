@@ -170,9 +170,9 @@ export function ClientsPage() {
   };
 
   const getStatusClassName = (status: 'Prospect' | 'Onboarding' | 'Contract'): string => {
-    if (status === 'Contract') return 'bg-success/10 text-success border-success/20';
-    if (status === 'Onboarding') return 'bg-warning/10 text-warning border-warning/20';
-    return 'bg-info/10 text-info border-info/20';
+    if (status === 'Contract') return 'bg-success/10 text-success-text border-success/20';
+    if (status === 'Onboarding') return 'bg-warning/10 text-warning-text border-warning/20';
+    return 'bg-info/10 text-info-text border-info/20';
   };
 
   const handleSubmit = async () => {
@@ -322,7 +322,7 @@ export function ClientsPage() {
         ].map(({ label, value, icon: Icon }) => (
           <Card key={label}><CardContent className="flex items-center justify-between p-5">
             <div><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</p><p className="mt-2 text-3xl font-semibold tracking-tight">{isClientsLoading ? '—' : value}</p></div>
-            <span className="rounded-xl bg-primary/5 p-3 text-primary"><Icon className="h-5 w-5" /></span>
+            <span className="rounded-xl bg-primary/5 p-3 text-primary-text"><Icon className="h-5 w-5" /></span>
           </CardContent></Card>
         ))}
       </div>
@@ -372,12 +372,12 @@ export function ClientsPage() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gradient-to-r from-primary/5 to-accent/5 hover:bg-gradient-to-r hover:from-primary/5 hover:to-accent/5">
-                    <TableHead className="font-semibold text-primary">Business</TableHead>
-                    <TableHead className="font-semibold text-primary">Contact</TableHead>
-                    <TableHead className="font-semibold text-primary">Location</TableHead>
-                    <TableHead className="font-semibold text-primary">Status</TableHead>
-                    <TableHead className="text-right font-semibold text-primary">Projects</TableHead>
-                    {isOwner && <TableHead className="text-right font-semibold text-primary">Total Spent</TableHead>}
+                    <TableHead className="font-semibold text-primary-text">Business</TableHead>
+                    <TableHead className="font-semibold text-primary-text">Contact</TableHead>
+                    <TableHead className="font-semibold text-primary-text">Location</TableHead>
+                    <TableHead className="font-semibold text-primary-text">Status</TableHead>
+                    <TableHead className="text-right font-semibold text-primary-text">Projects</TableHead>
+                    {isOwner && <TableHead className="text-right font-semibold text-primary-text">Total Spent</TableHead>}
                     <TableHead className="w-[50px]"></TableHead>
                   </TableRow>
                 </TableHeader>
@@ -393,14 +393,14 @@ export function ClientsPage() {
                       >
                         <TableCell className="py-4">
                           <div className="space-y-1">
-                            <p className="font-semibold text-foreground group-hover:text-primary transition-colors">{client.businessName}</p>
+                            <p className="font-semibold text-foreground group-hover:text-primary-text transition-colors">{client.businessName}</p>
                             <p className="text-xs text-muted-foreground uppercase tracking-wide">{client.industry || 'N/A'}</p>
                           </div>
                         </TableCell>
                         <TableCell className="py-4">
                           <div className="space-y-1.5">
                             <p className="font-medium text-sm text-foreground">{client.ownerName}</p>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary transition-colors">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground hover:text-primary-text transition-colors">
                               <Phone className="h-3 w-3 flex-shrink-0" />
                               <span className="truncate">{client.phone}</span>
                             </div>
@@ -408,7 +408,7 @@ export function ClientsPage() {
                         </TableCell>
                         <TableCell className="py-4">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <MapPin className="h-4 w-4 flex-shrink-0 text-accent" />
+                            <MapPin className="h-4 w-4 flex-shrink-0 text-accent-text" />
                             <span>{client.location || 'Not specified'}</span>
                           </div>
                         </TableCell>
@@ -419,13 +419,13 @@ export function ClientsPage() {
                         </TableCell>
                         <TableCell className="py-4 text-right">
                           <div className="space-y-1">
-                            <p className="font-bold text-primary text-base">{stats.projectCount}</p>
+                            <p className="font-bold text-primary-text text-base">{stats.projectCount}</p>
                             <p className="text-xs text-muted-foreground font-medium">{stats.activeProjects} active</p>
                           </div>
                         </TableCell>
                         {isOwner && (
                           <TableCell className="py-4 text-right">
-                            <p className="font-bold text-accent text-base">{formatCurrency(stats.totalSpent)}</p>
+                            <p className="font-bold text-accent-text text-base">{formatCurrency(stats.totalSpent)}</p>
                           </TableCell>
                         )}
                         <TableCell className="py-4" onClick={(e) => e.stopPropagation()}>
@@ -455,7 +455,7 @@ export function ClientsPage() {
                               <DropdownMenuSeparator />
                               {isOwner && <DropdownMenuItem
                                 onClick={() => setDeleteConfirm(client.id)}
-                                className="text-destructive"
+                                className="text-destructive-text"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Delete

@@ -10,7 +10,16 @@
 */
 
 @layer base {
-  :root {
+  :root,
+  .theme-light {
+    color-scheme: light;
+    /* Text on neutral/tinted surfaces uses separate colors from solid fills. */
+    --primary-text: 210 52% 24%;
+    --accent-text: 38 80% 28%;
+    --success-text: 142 65% 27%;
+    --warning-text: 32 90% 28%;
+    --info-text: 199 85% 30%;
+    --destructive-text: 0 72% 40%;
     /* Base colors - Light Mode */
     --background: 0 0% 98%;
     --foreground: 222 47% 11%;
@@ -31,14 +40,14 @@
 
     /* Muted */
     --muted: 210 20% 96%;
-    --muted-foreground: 215 16% 47%;
+    --muted-foreground: 215 16% 40%;
 
     /* Accent - Gold */
     --accent: 43 74% 52%;
     --accent-foreground: 0 0% 9%;
 
     /* Destructive */
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 45%;
     --destructive-foreground: 0 0% 100%;
 
     /* Success */
@@ -91,6 +100,18 @@
   }
 
   .dark {
+    color-scheme: dark;
+    --primary-text: 210 80% 75%;
+    --accent-text: 43 85% 70%;
+    --success-text: 142 65% 65%;
+    --warning-text: 38 90% 70%;
+    --info-text: 199 80% 70%;
+    --destructive-text: 0 85% 75%;
+    --chart-1: 210 80% 70%;
+    --chart-2: 43 85% 70%;
+    --chart-3: 142 65% 65%;
+    --chart-4: 199 80% 70%;
+    --chart-5: 38 90% 70%;
     /* Base colors - Dark Mode (Charcoal) */
     --background: 240 6% 10%;
     --foreground: 0 0% 95%;
@@ -102,7 +123,7 @@
     --popover-foreground: 0 0% 95%;
 
     /* Primary - Lighter Blue for dark mode */
-    --primary: 210 60% 50%;
+    --primary: 210 60% 42%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary */
@@ -111,7 +132,7 @@
 
     /* Muted */
     --muted: 240 4% 18%;
-    --muted-foreground: 240 5% 65%;
+    --muted-foreground: 240 5% 72%;
 
     /* Accent - Gold (stays vibrant) */
     --accent: 43 74% 52%;
@@ -276,39 +297,39 @@
   }
 
   .status-new {
-    @apply bg-info/10 text-info border-info/30 hover:bg-info/20;
+    @apply bg-info/10 text-info-text border-info/30 hover:bg-info/20;
   }
 
   .status-contacted {
-    @apply bg-primary/10 text-primary border-primary/30 hover:bg-primary/20;
+    @apply bg-primary/10 text-primary-text border-primary/30 hover:bg-primary/20;
   }
 
   .status-proposal {
-    @apply bg-warning/10 text-warning border-warning/30 hover:bg-warning/20;
+    @apply bg-warning/10 text-warning-text border-warning/30 hover:bg-warning/20;
   }
 
   .status-negotiation {
-    @apply bg-accent/10 text-accent-foreground border-accent/30 hover:bg-accent/20;
+    @apply bg-accent/10 text-accent-text border-accent/30 hover:bg-accent/20;
   }
 
   .status-won {
-    @apply bg-success/10 text-success border-success/30 hover:bg-success/20;
+    @apply bg-success/10 text-success-text border-success/30 hover:bg-success/20;
   }
 
   .status-lost {
-    @apply bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20;
+    @apply bg-destructive/10 text-destructive-text border-destructive/30 hover:bg-destructive/20;
   }
 
   .status-paid {
-    @apply bg-success/10 text-success border-success/30 hover:bg-success/20;
+    @apply bg-success/10 text-success-text border-success/30 hover:bg-success/20;
   }
 
   .status-pending {
-    @apply bg-warning/10 text-warning border-warning/30 hover:bg-warning/20;
+    @apply bg-warning/10 text-warning-text border-warning/30 hover:bg-warning/20;
   }
 
   .status-overdue {
-    @apply bg-destructive/10 text-destructive border-destructive/30 hover:bg-destructive/20;
+    @apply bg-destructive/10 text-destructive-text border-destructive/30 hover:bg-destructive/20;
   }
 
   .status-draft {
@@ -428,6 +449,18 @@
 @page {
   size: A4;
   margin: 12mm;
+}
+
+/* The invoice document remains a white sheet even when the CRM is dark. */
+.invoice-print-document {
+  color-scheme: light;
+  --primary-text: 210 52% 24%;
+  --accent-text: 38 80% 28%;
+  --success-text: 142 65% 27%;
+  --warning-text: 32 90% 28%;
+  --info-text: 199 85% 30%;
+  --destructive-text: 0 72% 40%;
+  --muted-foreground: 215 16% 40%;
 }
 
 @media print {

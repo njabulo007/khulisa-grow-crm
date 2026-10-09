@@ -578,7 +578,7 @@ export function LeadsPage() {
                               <DropdownMenuSeparator />
                               <DropdownMenuItem
                                 onClick={() => setDeleteConfirm(lead.id)}
-                                className="text-destructive"
+                                className="text-destructive-text"
                               >
                                 <Trash2 className="mr-2 h-4 w-4" />
                                 Delete
@@ -589,14 +589,14 @@ export function LeadsPage() {
                         
                         {isOwner && (
                           <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="font-medium text-accent">
+                            <span className="font-medium text-accent-text">
                               {formatCurrency(lead.estimatedValue)}
                             </span>
                           </div>
                         )}
 
                         {lead.followUpDate && (
-                          <div className={`mt-2 flex items-center gap-1 text-xs ${isOverdue ? 'text-destructive' : 'text-muted-foreground'}`}>
+                          <div className={`mt-2 flex items-center gap-1 text-xs ${isOverdue ? 'text-destructive-text' : 'text-muted-foreground'}`}>
                             {isOverdue && <AlertCircle className="h-3 w-3" />}
                             <Calendar className="h-3 w-3" />
                             <span>

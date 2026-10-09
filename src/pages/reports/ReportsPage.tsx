@@ -326,8 +326,11 @@ export function ReportsPage() {
                     tickFormatter={(value) => `R${Math.round(value / 1000)}k`}
                   />
                   <Tooltip
+                    itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--card-foreground))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
@@ -335,9 +338,9 @@ export function ReportsPage() {
                       name === 'revenue' ? [formatCurrency(value), 'Revenue'] : [value, 'Paid Invoices']
                     }
                   />
-                  <Legend />
+                  <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
                   <Line type="monotone" dataKey="revenue" name="revenue" stroke="hsl(var(--accent))" strokeWidth={3} />
-                  <Line type="monotone" dataKey="invoiceCount" name="invoiceCount" stroke="hsl(var(--primary))" strokeWidth={2} />
+                  <Line type="monotone" dataKey="invoiceCount" name="invoiceCount" stroke="hsl(var(--chart-1))" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -360,8 +363,11 @@ export function ReportsPage() {
                     tickFormatter={(value) => `R${Math.round(value / 1000)}k`}
                   />
                   <Tooltip
+                    itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--card-foreground))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
@@ -369,7 +375,7 @@ export function ReportsPage() {
                       name === 'revenue' ? [formatCurrency(value), 'Revenue'] : [value, 'Paid Invoices']
                     }
                   />
-                  <Legend />
+                  <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
                   <Bar dataKey="revenue" name="revenue" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -387,11 +393,11 @@ export function ReportsPage() {
             <div className="mb-4 grid gap-3 sm:grid-cols-2">
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">Win Rate</p>
-                <p className="text-xl font-bold text-success">{reportData.winRate}%</p>
+                <p className="text-xl font-bold text-success-text">{reportData.winRate}%</p>
               </div>
               <div className="rounded-lg border p-3">
                 <p className="text-xs text-muted-foreground">Loss Rate</p>
-                <p className="text-xl font-bold text-destructive">{reportData.lossRate}%</p>
+                <p className="text-xl font-bold text-destructive-text">{reportData.lossRate}%</p>
               </div>
             </div>
             <div className="h-72">
@@ -401,14 +407,17 @@ export function ReportsPage() {
                   <XAxis dataKey="stage" stroke="hsl(var(--muted-foreground))" fontSize={11} />
                   <YAxis stroke="hsl(var(--muted-foreground))" fontSize={12} allowDecimals={false} />
                   <Tooltip
+                    itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--card-foreground))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
                     formatter={(value: number) => [value, 'Leads']}
                   />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -440,8 +449,11 @@ export function ReportsPage() {
                     allowDecimals={false}
                   />
                   <Tooltip
+                    itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--card-foreground))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
@@ -449,9 +461,9 @@ export function ReportsPage() {
                       name === 'revenue' ? [formatCurrency(value), 'Revenue'] : [value, 'Deals Won']
                     }
                   />
-                  <Legend />
+                  <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
                   <Bar yAxisId="revenue" dataKey="revenue" name="revenue" fill="hsl(var(--accent))" radius={[4, 4, 0, 0]} />
-                  <Bar yAxisId="deals" dataKey="dealsWon" name="dealsWon" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar yAxisId="deals" dataKey="dealsWon" name="dealsWon" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

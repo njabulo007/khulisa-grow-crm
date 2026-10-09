@@ -77,7 +77,7 @@ export function PaymentFollowUps({ invoiceId, clientId, payable = true }: { invo
         <p className="text-sm text-muted-foreground">Reminders for your unpaid invoices. Paid invoices stop generating reminders automatically.</p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+        {error && <p role="alert" className="text-sm text-destructive-text">{error}</p>}
         {!loading && !backgroundConfigured && <p className="rounded-lg border p-3 text-sm text-muted-foreground">Daily background reminders are awaiting owner setup. The CRM also checks your due follow-ups when you open it.</p>}
         {loading ? <p className="text-sm text-muted-foreground">Loading follow-ups…</p> : invoiceId ? (
           payable ? <div className="space-y-3">
@@ -99,7 +99,7 @@ export function PaymentFollowUps({ invoiceId, clientId, payable = true }: { invo
             {records.map(record => <li key={record.id} className="rounded-xl border p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div><p className="font-medium">{record.clientName} · {record.invoiceNumber}</p>
-                  <p className={`text-sm ${record.followUpDate <= paymentFollowUpToday() ? 'text-destructive' : 'text-muted-foreground'}`}>{record.followUpDate <= paymentFollowUpToday() ? 'Due now' : 'Upcoming'} · {record.followUpDate} · R {record.balance.toFixed(2)} outstanding</p>
+                  <p className={`text-sm ${record.followUpDate <= paymentFollowUpToday() ? 'text-destructive-text' : 'text-muted-foreground'}`}>{record.followUpDate <= paymentFollowUpToday() ? 'Due now' : 'Upcoming'} · {record.followUpDate} · R {record.balance.toFixed(2)} outstanding</p>
                 </div>
                 <Button asChild size="sm" variant="outline"><Link to={`/invoices/${encodeURIComponent(record.invoiceId)}#payment-follow-up`}>Open follow-up</Link></Button>
               </div>

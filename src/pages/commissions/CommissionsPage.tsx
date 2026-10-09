@@ -255,7 +255,7 @@ export function CommissionsPage() {
             <CardTitle className="text-sm text-muted-foreground">Total Earned</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-accent">{formatCurrency(groupedSummary.earned)}</p>
+            <p className="text-2xl font-bold text-accent-text">{formatCurrency(groupedSummary.earned)}</p>
             <p className="text-xs text-muted-foreground">Paid Out + Earned</p>
           </CardContent>
         </Card>
@@ -264,7 +264,7 @@ export function CommissionsPage() {
             <CardTitle className="text-sm text-muted-foreground">Pending</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-warning">{formatCurrency(groupedSummary.pending)}</p>
+            <p className="text-2xl font-bold text-warning-text">{formatCurrency(groupedSummary.pending)}</p>
             <p className="text-xs text-muted-foreground">Awaiting invoice payment</p>
           </CardContent>
         </Card>
@@ -273,7 +273,7 @@ export function CommissionsPage() {
             <CardTitle className="text-sm text-muted-foreground">Ready for Payout</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-primary">{formatCurrency(groupedSummary.readyForPayout)}</p>
+            <p className="text-2xl font-bold text-primary-text">{formatCurrency(groupedSummary.readyForPayout)}</p>
             <p className="text-xs text-muted-foreground">Paid invoices not paid out</p>
           </CardContent>
         </Card>
@@ -282,7 +282,7 @@ export function CommissionsPage() {
             <CardTitle className="text-sm text-muted-foreground">Paid Out</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-2xl font-bold text-success">{formatCurrency(groupedSummary.paidOut)}</p>
+            <p className="text-2xl font-bold text-success-text">{formatCurrency(groupedSummary.paidOut)}</p>
             <p className="text-xs text-muted-foreground">Completed payouts</p>
           </CardContent>
         </Card>
@@ -343,7 +343,7 @@ export function CommissionsPage() {
               <Card key={group.agentId}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle>{`${group.agentName} - ${ownerPeriodLabel}`}</CardTitle>
-                  <p className="text-xl font-bold text-accent">{formatCurrency(group.total)}</p>
+                  <p className="text-xl font-bold text-accent-text">{formatCurrency(group.total)}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {group.entries.map((commission) => (
@@ -393,7 +393,7 @@ export function CommissionsPage() {
               <Card key={group.key}>
                 <CardHeader className="flex flex-row items-center justify-between space-y-0">
                   <CardTitle>{group.label}</CardTitle>
-                  <p className="text-xl font-bold text-accent">{formatCurrency(group.total)}</p>
+                  <p className="text-xl font-bold text-accent-text">{formatCurrency(group.total)}</p>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {group.entries.map((commission) => (

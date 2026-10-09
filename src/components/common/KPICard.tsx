@@ -25,8 +25,8 @@ export function KPICard({
   className,
 }: KPICardProps) {
   const accentClass = {
-    default: 'bg-muted text-muted-foreground', gold: 'bg-accent/10 text-accent',
-    blue: 'bg-primary/10 text-primary', success: 'bg-success/10 text-success', warning: 'bg-warning/10 text-warning',
+    default: 'bg-muted text-muted-foreground', gold: 'bg-accent/10 text-accent-text',
+    blue: 'bg-primary/10 text-primary-text', success: 'bg-success/10 text-success-text', warning: 'bg-warning/10 text-warning-text',
   }[variant];
 
   const getTrendIcon = () => {
@@ -38,7 +38,7 @@ export function KPICard({
 
   const getTrendColor = () => {
     if (!trend) return '';
-    return trend.value > 0 ? 'text-success' : trend.value < 0 ? 'text-destructive' : 'text-muted-foreground';
+    return trend.value > 0 ? 'text-success-text' : trend.value < 0 ? 'text-destructive-text' : 'text-muted-foreground';
   };
 
   return (

@@ -1,7 +1,6 @@
 import React, {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -61,21 +60,6 @@ export function ProjectPortalPage() {
   >("all");
   const generation = useRef(0);
   const pending = useRef(false);
-
-  useLayoutEffect(() => {
-    const root = document.documentElement;
-    const hadDark = root.classList.contains("dark");
-    const hadLight = root.classList.contains("light");
-    const previousColorScheme = root.style.colorScheme;
-    root.classList.remove("dark");
-    root.classList.add("light");
-    root.style.colorScheme = "light";
-    return () => {
-      root.classList.toggle("dark", hadDark);
-      root.classList.toggle("light", hadLight);
-      root.style.colorScheme = previousColorScheme;
-    };
-  }, []);
 
   const loadPortal = useCallback(
     async (initial = false) => {
@@ -155,7 +139,7 @@ export function ProjectPortalPage() {
 
   if (isLoading || !data)
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-50 px-5">
+      <main className="theme-light flex min-h-screen items-center justify-center bg-slate-50 px-5 text-slate-900">
         <Card className="w-full max-w-md">
           <CardHeader>
             <img
@@ -210,7 +194,7 @@ export function ProjectPortalPage() {
             : `${summary.remaining} milestone${summary.remaining === 1 ? "" : "s"} still to complete.`;
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="theme-light min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div className="flex items-center gap-3">
@@ -221,7 +205,7 @@ export function ProjectPortalPage() {
             />
             <div>
               <p className="text-sm font-semibold">Khulisa Media</p>
-              <p className="text-xs text-slate-500">Client workspace</p>
+              <p className="text-xs text-slate-600">Client workspace</p>
             </div>
           </div>
           <Button
@@ -253,7 +237,7 @@ export function ProjectPortalPage() {
                 </p>
               )}
             </div>
-            <StatusBadge status={data.project.status} type="project" />
+            <StatusBadge status={data.project.status} type="project" className="bg-card" />
           </div>
           <div className="mt-7 grid gap-6 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
@@ -344,7 +328,7 @@ export function ProjectPortalPage() {
               </CardHeader>
               <CardContent className="pt-4">
                 {!filteredMilestones.length ? (
-                  <p className="py-5 text-sm text-slate-500">
+                  <p className="py-5 text-sm text-slate-600">
                     {!milestones.length
                       ? "Your delivery milestones will appear here when the team adds them."
                       : "No milestones in this view."}
@@ -364,18 +348,18 @@ export function ProjectPortalPage() {
                               {milestone.title}
                             </p>
                             <span
-                              className={`text-xs ${milestone.isCompleted ? "text-emerald-700" : "text-slate-500"}`}
+                              className={`text-xs ${milestone.isCompleted ? "text-emerald-700" : "text-slate-600"}`}
                             >
                               {milestone.isCompleted ? "Complete" : "Pending"}
                             </span>
                           </div>
                           {milestone.description && (
-                            <p className="mt-2 break-words text-sm leading-6 text-slate-500">
+                            <p className="mt-2 break-words text-sm leading-6 text-slate-600">
                               {milestone.description}
                             </p>
                           )}
                           {milestone.isCompleted && milestone.completedAt && (
-                            <p className="mt-2 text-xs text-slate-400">
+                            <p className="mt-2 text-xs text-slate-600">
                               Completed {formatDate(milestone.completedAt)}
                             </p>
                           )}
@@ -391,13 +375,13 @@ export function ProjectPortalPage() {
               <CardHeader className="gap-4">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="text-lg">Shared files</CardTitle>
-                  <span className="text-xs text-slate-500">
+                  <span className="text-xs text-slate-600">
                     {files.length} file{files.length === 1 ? "" : "s"}
                   </span>
                 </div>
                 {files.length > 0 && (
                   <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-600" />
                     <Input
                       aria-label="Search shared files"
                       placeholder="Find a file…"
@@ -410,7 +394,7 @@ export function ProjectPortalPage() {
               </CardHeader>
               <CardContent>
                 {!filteredFiles.length ? (
-                  <p className="py-5 text-sm text-slate-500">
+                  <p className="py-5 text-sm text-slate-600">
                     {fileSearch
                       ? "No files match your search."
                       : "Your team will share previews and final deliverables here."}
@@ -434,7 +418,7 @@ export function ProjectPortalPage() {
                           />
                         ) : (
                           <div className="flex h-24 items-center justify-center bg-slate-50">
-                            <FileText className="h-8 w-8 text-slate-400" />
+                            <FileText className="h-8 w-8 text-slate-600" />
                           </div>
                         )}
                         <div className="p-4">
@@ -442,14 +426,14 @@ export function ProjectPortalPage() {
                             <p className="break-all text-sm font-medium">
                               {file.name}
                             </p>
-                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-400" />
+                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-600" />
                           </div>
-                          <p className="mt-2 text-xs text-slate-500">
+                          <p className="mt-2 text-xs text-slate-600">
                             {formatSize(file.sizeBytes)}
                             {file.sizeBytes ? " · " : ""}Added{" "}
                             {formatDate(file.createdAt)}
                           </p>
-                          <p className="mt-3 text-xs font-medium text-primary">
+                          <p className="mt-3 text-xs font-medium text-primary-text">
                             Open file
                           </p>
                         </div>
@@ -478,11 +462,11 @@ export function ProjectPortalPage() {
                   },
                 ].map((item) => (
                   <div key={item.label}>
-                    <p className="text-xs uppercase tracking-wider text-slate-500">
+                    <p className="text-xs uppercase tracking-wider text-slate-600">
                       {item.label}
                     </p>
                     <p className="mt-2 flex items-center gap-2 text-sm font-medium">
-                      <Calendar className="h-4 w-4 text-slate-400" />
+                      <Calendar className="h-4 w-4 text-slate-600" />
                       {item.value}
                     </p>
                   </div>
@@ -526,7 +510,7 @@ export function ProjectPortalPage() {
                 </CardContent>
               </Card>
             )}
-            <div className="space-y-3 px-1 text-xs leading-5 text-slate-500">
+            <div className="space-y-3 px-1 text-xs leading-5 text-slate-600">
               <p>Project updated {formatDate(data.project.updatedAt, true)}</p>
               <p>
                 Last checked {formatDate(lastSyncedAt, true)}. Refreshes every
@@ -541,7 +525,7 @@ export function ProjectPortalPage() {
             </div>
           </aside>
         </div>
-        <footer className="border-t border-slate-200 py-5 text-xs text-slate-400">
+        <footer className="border-t border-slate-200 py-5 text-xs text-slate-600">
           Khulisa Media · Your project, clearly connected.
         </footer>
       </main>

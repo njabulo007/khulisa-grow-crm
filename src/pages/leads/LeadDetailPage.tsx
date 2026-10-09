@@ -117,7 +117,7 @@ export function LeadDetailPage() {
   if (loadError) {
     return (
       <div className="flex flex-col items-center gap-3 py-12">
-        <p role="alert" className="text-destructive">{loadError}</p>
+        <p role="alert" className="text-destructive-text">{loadError}</p>
         <Button onClick={() => { void refreshLead(); }}>Retry</Button>
         <Button variant="link" onClick={() => navigate('/leads')}>Back to Leads</Button>
       </div>
@@ -245,7 +245,7 @@ export function LeadDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Phone</p>
-                  <a href={`tel:${lead.phone}`} className="font-medium text-primary hover:underline">
+                  <a href={`tel:${lead.phone}`} className="font-medium text-primary-text hover:underline">
                     {lead.phone}
                   </a>
                 </div>
@@ -256,7 +256,7 @@ export function LeadDetailPage() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Email</p>
-                  <a href={`mailto:${lead.email}`} className="font-medium text-primary hover:underline">
+                  <a href={`mailto:${lead.email}`} className="font-medium text-primary-text hover:underline">
                     {lead.email}
                   </a>
                 </div>
@@ -329,7 +329,7 @@ export function LeadDetailPage() {
                           {ACTIVITY_ICONS[activity.type]}
                         </div>
                         <div className="min-w-0 flex-1">
-                          {activity.metadata?.followUpCompleted === true && <p className="mb-2 text-sm font-medium text-primary">
+                          {activity.metadata?.followUpCompleted === true && <p className="mb-2 text-sm font-medium text-primary-text">
                             Follow-up #{String(activity.metadata.followUpNumber)} completed · {activity.metadata.nextFollowUpDate ? `Next: ${String(activity.metadata.nextFollowUpDate)}` : 'No further follow-up scheduled'}
                           </p>}
                           <NoteContent text={activity.description} />
@@ -392,7 +392,7 @@ export function LeadDetailPage() {
               {isOwner && (
                 <div>
                   <p className="text-sm text-muted-foreground">Estimated Value</p>
-                  <p className="text-xl font-bold text-accent">{formatCurrency(lead.estimatedValue)}</p>
+                  <p className="text-xl font-bold text-accent-text">{formatCurrency(lead.estimatedValue)}</p>
                 </div>
               )}
               <div>
@@ -402,7 +402,7 @@ export function LeadDetailPage() {
               {lead.followUpDate && (
                 <div>
                   <p className="text-sm text-muted-foreground">Follow-up Date</p>
-                  <p className={`font-medium ${isOverdue ? 'text-destructive' : ''}`}>
+                  <p className={`font-medium ${isOverdue ? 'text-destructive-text' : ''}`}>
                     {new Date(lead.followUpDate).toLocaleDateString('en-ZA', {
                       day: 'numeric',
                       month: 'long',

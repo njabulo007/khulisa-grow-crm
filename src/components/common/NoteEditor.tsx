@@ -102,7 +102,7 @@ export function NoteEditor({ id, label, value, onChange, placeholder, maxLength,
         <span>Use the toolbar or paste Markdown. Line breaks are preserved.</span>
         <span>{value.length.toLocaleString()}{maxLength ? ` / ${maxLength.toLocaleString()}` : ''} characters</span>
       </div>
-      {formatError && <p role="alert" className="px-4 pb-3 text-sm text-destructive">{formatError}</p>}
+      {formatError && <p role="alert" className="px-4 pb-3 text-sm text-destructive-text">{formatError}</p>}
     </div>
   );
 

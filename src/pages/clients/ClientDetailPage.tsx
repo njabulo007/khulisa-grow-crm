@@ -166,7 +166,7 @@ export function ClientDetailPage() {
   }
 
   if (loadError) return <div className="space-y-3 py-12 text-center">
-    <p role="alert" className="text-destructive">{loadError}</p>
+    <p role="alert" className="text-destructive-text">{loadError}</p>
     <Button variant="outline" onClick={() => setRetryKey(key => key + 1)}>Retry client</Button>
     <Button variant="link" onClick={() => navigate('/clients')}>Back to Clients</Button>
   </div>;
@@ -241,7 +241,7 @@ export function ClientDetailPage() {
         <div className="space-y-6 lg:col-span-2">
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
-              <CardTitle className="text-primary">Contact Information</CardTitle>
+              <CardTitle className="text-primary-text">Contact Information</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 grid gap-5 sm:grid-cols-2">
               <div className="flex items-start gap-4 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
@@ -268,7 +268,7 @@ export function ClientDetailPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Phone</p>
-                  <a href={`tel:${client.phone}`} className="font-semibold text-primary hover:underline mt-1 block truncate">
+                  <a href={`tel:${client.phone}`} className="font-semibold text-primary-text hover:underline mt-1 block truncate">
                     {client.phone}
                   </a>
                 </div>
@@ -279,7 +279,7 @@ export function ClientDetailPage() {
                 </div>
                 <div className="min-w-0">
                   <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Email</p>
-                  <a href={`mailto:${client.email}`} className="font-semibold text-primary hover:underline mt-1 block truncate">
+                  <a href={`mailto:${client.email}`} className="font-semibold text-primary-text hover:underline mt-1 block truncate">
                     {client.email}
                   </a>
                 </div>
@@ -291,7 +291,7 @@ export function ClientDetailPage() {
           {/* Associated Leads */}
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
-              <CardTitle className="text-primary">Associated Leads</CardTitle>
+              <CardTitle className="text-primary-text">Associated Leads</CardTitle>
             </CardHeader>
             <CardContent className="pt-6">
               {linkedLeads.length === 0 ? (
@@ -311,10 +311,10 @@ export function ClientDetailPage() {
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex-shrink-0">
-                            <User2 className="h-5 w-5 text-primary" />
+                            <User2 className="h-5 w-5 text-primary-text" />
                           </div>
                           <div className="min-w-0">
-                            <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">{lead.businessName}</p>
+                            <p className="font-semibold text-foreground group-hover:text-primary-text transition-colors truncate">{lead.businessName}</p>
                             <p className="text-sm text-muted-foreground truncate">
                               {lead.contactName} {leadOwner ? ` • ${leadOwner.name}` : ''}
                             </p>
@@ -332,7 +332,7 @@ export function ClientDetailPage() {
           {/* Projects */}
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50 flex flex-row items-center justify-between">
-              <CardTitle className="text-primary">Projects</CardTitle>
+              <CardTitle className="text-primary-text">Projects</CardTitle>
               <Button size="sm" className="transition-all hover:shadow-md" onClick={() => navigate(`/projects?client=${client.id}`)}>
                 <Plus className="mr-1 h-4 w-4" />
                 New Project
@@ -351,10 +351,10 @@ export function ClientDetailPage() {
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex-shrink-0">
-                          <FolderKanban className="h-5 w-5 text-primary" />
+                          <FolderKanban className="h-5 w-5 text-primary-text" />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-foreground group-hover:text-primary transition-colors truncate">{project.name}</p>
+                          <p className="font-semibold text-foreground group-hover:text-primary-text transition-colors truncate">{project.name}</p>
                           <p className="text-sm text-muted-foreground">{getPackageNameById(project.packageId)}</p>
                         </div>
                       </div>
@@ -369,7 +369,7 @@ export function ClientDetailPage() {
           {/* Invoices */}
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50 flex flex-row items-center justify-between">
-              <CardTitle className="text-primary">Invoices + Payments</CardTitle>
+              <CardTitle className="text-primary-text">Invoices + Payments</CardTitle>
               {isOwner && <Button size="sm" className="transition-all hover:shadow-md" onClick={() => navigate(`/invoices?client=${client.id}`)}>
                 <Plus className="mr-1 h-4 w-4" />
                 New Invoice
@@ -391,7 +391,7 @@ export function ClientDetailPage() {
                       >
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex-shrink-0">
-                            <FileText className="h-5 w-5 text-primary" />
+                            <FileText className="h-5 w-5 text-primary-text" />
                           </div>
                           <div className="min-w-0">
                             <p className="font-semibold text-foreground">{invoice.invoiceNumber}</p>
@@ -404,7 +404,7 @@ export function ClientDetailPage() {
                           </div>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          {isOwner && <p className="font-bold text-accent">{formatCurrency(totals.total)}</p>}
+                          {isOwner && <p className="font-bold text-accent-text">{formatCurrency(totals.total)}</p>}
                           <StatusBadge status={invoice.status} type="invoice" />
                         </div>
                       </div>
@@ -416,8 +416,8 @@ export function ClientDetailPage() {
                           (paymentsByInvoice[invoice.id] || []).map((payment) => (
                             <div key={payment.id} className="flex items-center justify-between rounded-md bg-gradient-to-r from-success/5 to-success/10 px-3 py-2">
                               <div className="flex items-center gap-2 text-sm">
-                                <Receipt className="h-4 w-4 text-success flex-shrink-0" />
-                                {isOwner && <span className="font-medium text-success">{formatCurrency(payment.amount)}</span>}
+                                <Receipt className="h-4 w-4 text-success-text flex-shrink-0" />
+                                {isOwner && <span className="font-medium text-success-text">{formatCurrency(payment.amount)}</span>}
                                 <span className="text-xs uppercase font-semibold text-muted-foreground">{payment.method}</span>
                               </div>
                               <span className="text-xs text-muted-foreground">
@@ -441,7 +441,7 @@ export function ClientDetailPage() {
           {isOwner && (
             <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
               <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
-                <CardTitle className="text-primary">Billing / Payments</CardTitle>
+                <CardTitle className="text-primary-text">Billing / Payments</CardTitle>
               </CardHeader>
               <CardContent className="pt-6 space-y-4">
                 {visibleInvoices.length === 0 ? (
@@ -476,8 +476,8 @@ export function ClientDetailPage() {
                                 <StatusBadge status={invoice.status} type="invoice" />
                               </TableCell>
                               <TableCell className="text-right font-bold">{formatCurrency(totals.total)}</TableCell>
-                              <TableCell className="text-right font-bold text-success">{formatCurrency(amountPaid)}</TableCell>
-                              <TableCell className={`text-right font-bold ${invoiceOutstanding > 0 ? 'text-destructive' : 'text-success'}`}>{formatCurrency(invoiceOutstanding)}</TableCell>
+                              <TableCell className="text-right font-bold text-success-text">{formatCurrency(amountPaid)}</TableCell>
+                              <TableCell className={`text-right font-bold ${invoiceOutstanding > 0 ? 'text-destructive-text' : 'text-success-text'}`}>{formatCurrency(invoiceOutstanding)}</TableCell>
                             </TableRow>
                           );
                         })}
@@ -489,15 +489,15 @@ export function ClientDetailPage() {
                 <div className="grid gap-4 sm:grid-cols-3 pt-2">
                   <div className="rounded-xl border border-border/50 p-4 bg-gradient-to-br from-primary/5 to-primary/2 hover:shadow-md transition-all">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Billed</p>
-                    <p className="text-2xl font-bold text-primary mt-2">{formatCurrency(ownerBillingSummary.totalBilled)}</p>
+                    <p className="text-2xl font-bold text-primary-text mt-2">{formatCurrency(ownerBillingSummary.totalBilled)}</p>
                   </div>
                   <div className="rounded-xl border border-border/50 p-4 bg-gradient-to-br from-success/5 to-success/2 hover:shadow-md transition-all">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Received</p>
-                    <p className="text-2xl font-bold text-success mt-2">{formatCurrency(ownerBillingSummary.totalReceived)}</p>
+                    <p className="text-2xl font-bold text-success-text mt-2">{formatCurrency(ownerBillingSummary.totalReceived)}</p>
                   </div>
                   <div className={`rounded-xl border border-border/50 p-4 bg-gradient-to-br ${ownerBillingSummary.totalOutstanding > 0 ? 'from-destructive/5 to-destructive/2' : 'from-success/5 to-success/2'} hover:shadow-md transition-all`}>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Outstanding</p>
-                    <p className={`text-2xl font-bold mt-2 ${ownerBillingSummary.totalOutstanding > 0 ? 'text-destructive' : 'text-success'}`}>
+                    <p className={`text-2xl font-bold mt-2 ${ownerBillingSummary.totalOutstanding > 0 ? 'text-destructive-text' : 'text-success-text'}`}>
                       {formatCurrency(ownerBillingSummary.totalOutstanding)}
                     </p>
                   </div>
@@ -511,12 +511,12 @@ export function ClientDetailPage() {
         <div className="space-y-6">
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
-              <CardTitle className="text-primary">Trust Signals</CardTitle>
+              <CardTitle className="text-primary-text">Trust Signals</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
               <div className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${client.contractSigned ? 'bg-success/5 border-success/30' : 'bg-muted/30 border-border/40'}`}>
-                {client.contractSigned ? <CheckCircle className="h-5 w-5 text-success flex-shrink-0" /> : <XCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
-                <span className={`font-medium ${client.contractSigned ? 'text-success' : 'text-muted-foreground'}`}>Contract Signed</span>
+                {client.contractSigned ? <CheckCircle className="h-5 w-5 text-success-text flex-shrink-0" /> : <XCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />}
+                <span className={`font-medium ${client.contractSigned ? 'text-success-text' : 'text-muted-foreground'}`}>Contract Signed</span>
               </div>
               <div className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${client.onboardingCompleted ? 'bg-success/5 border-success/30' : 'bg-muted/30 border-border/40'}`}>
                 <Checkbox id="client-onboarding-complete" checked={client.onboardingCompleted} disabled={isSavingOnboarding} onCheckedChange={async (checked) => {
@@ -528,25 +528,25 @@ export function ClientDetailPage() {
                   } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update onboarding.'); }
                   finally { setIsSavingOnboarding(false); }
                 }} />
-                <label htmlFor="client-onboarding-complete" className={`font-medium ${client.onboardingCompleted ? 'text-success' : 'text-muted-foreground'}`}>Onboarding Completed</label>
+                <label htmlFor="client-onboarding-complete" className={`font-medium ${client.onboardingCompleted ? 'text-success-text' : 'text-muted-foreground'}`}>Onboarding Completed</label>
               </div>
             </CardContent>
           </Card>
 
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">
-              <CardTitle className="text-primary">{isOwner ? 'Financials' : 'Overview'}</CardTitle>
+              <CardTitle className="text-primary-text">{isOwner ? 'Financials' : 'Overview'}</CardTitle>
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
               {isOwner && (
                 <>
                   <div className="rounded-lg bg-gradient-to-br from-accent/10 to-accent/5 p-4 border border-accent/30">
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Spent</p>
-                    <p className="text-3xl font-bold text-accent mt-2">{formatCurrency(totalSpent)}</p>
+                    <p className="text-3xl font-bold text-accent-text mt-2">{formatCurrency(totalSpent)}</p>
                   </div>
                   <div className={`rounded-lg bg-gradient-to-br ${outstanding > 0 ? 'from-destructive/10 to-destructive/5' : 'from-success/10 to-success/5'} p-4 border ${outstanding > 0 ? 'border-destructive/30' : 'border-success/30'}`}>
                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Outstanding</p>
-                    <p className={`text-2xl font-bold mt-2 ${outstanding > 0 ? 'text-destructive' : 'text-success'}`}>
+                    <p className={`text-2xl font-bold mt-2 ${outstanding > 0 ? 'text-destructive-text' : 'text-success-text'}`}>
                       {formatCurrency(outstanding)}
                     </p>
                   </div>

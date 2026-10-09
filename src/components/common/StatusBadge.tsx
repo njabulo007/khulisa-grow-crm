@@ -36,12 +36,12 @@ export function StatusBadge({ status, type, className }: StatusBadgeProps) {
   const config = getConfig();
 
   const colorClasses: Record<string, string> = {
-    info: 'bg-info/10 text-info border-info/20',
-    primary: 'bg-primary/10 text-primary border-primary/20',
-    warning: 'bg-warning/10 text-warning border-warning/20',
-    accent: 'bg-accent/20 text-accent-foreground border-accent/30',
-    success: 'bg-success/10 text-success border-success/20',
-    destructive: 'bg-destructive/10 text-destructive border-destructive/20',
+    info: 'bg-info/10 text-info-text border-info/20',
+    primary: 'bg-primary/10 text-primary-text border-primary/20',
+    warning: 'bg-warning/10 text-warning-text border-warning/20',
+    accent: 'bg-accent/20 text-accent-text border-accent/30',
+    success: 'bg-success/10 text-success-text border-success/20',
+    destructive: 'bg-destructive/10 text-destructive-text border-destructive/20',
     muted: 'bg-muted text-muted-foreground border-border',
   };
 

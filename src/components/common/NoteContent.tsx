@@ -13,7 +13,7 @@ export function NoteContent({ text, className }: { text: string; className?: str
       '[&_hr]:my-4 [&_th]:border [&_th]:p-2 [&_th]:text-left [&_td]:border [&_td]:p-2 [&_input]:mr-2', className,
     )}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} skipHtml components={{
-        a: ({ children, href }) => href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-4">{children}</a> : <span>{children}</span>,
+        a: ({ children, href }) => href ? <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary-text underline underline-offset-4">{children}</a> : <span>{children}</span>,
         img: ({ alt }) => <span className="text-muted-foreground">{alt || 'Image'}</span>,
         table: ({ children }) => <div className="my-3 overflow-x-auto"><table className="w-full border-collapse">{children}</table></div>,
       }}>{text}</ReactMarkdown>

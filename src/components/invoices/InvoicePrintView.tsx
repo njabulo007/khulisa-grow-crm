@@ -95,7 +95,7 @@ export function InvoicePrintView({
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 md:min-w-[220px]">
-            <p className="text-3xl font-bold tracking-tight text-primary">INVOICE</p>
+            <p className="text-3xl font-bold tracking-tight text-primary-text">INVOICE</p>
             <dl className="mt-3 space-y-1 text-sm">
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">Number</dt>
@@ -111,7 +111,7 @@ export function InvoicePrintView({
               </div>
               <div className="flex items-center justify-between gap-3">
                 <dt className="text-slate-500">Status</dt>
-                <dd className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{statusLabel}</dd>
+                <dd className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary-text">{statusLabel}</dd>
               </div>
             </dl>
           </div>
@@ -201,7 +201,7 @@ export function InvoicePrintView({
                 </div>
                 <div className="flex items-center justify-between gap-3">
                   <dt className="text-slate-600">Balance Due</dt>
-                  <dd className="font-semibold text-destructive">{formatCurrency(balanceDue)}</dd>
+                  <dd className="font-semibold text-destructive-text">{formatCurrency(balanceDue)}</dd>
                 </div>
               </dl>
             ) : (

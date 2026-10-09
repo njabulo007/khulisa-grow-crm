@@ -227,7 +227,7 @@ export function AgentDashboard() {
         <Card className="border-warning/50 bg-warning/5">
           <CardContent className="flex items-center gap-4 py-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10">
-              <AlertTriangle className="h-5 w-5 text-warning" />
+              <AlertTriangle className="h-5 w-5 text-warning-text" />
             </div>
             <div className="flex-1">
               <p className="font-medium text-foreground">
@@ -304,7 +304,7 @@ export function AgentDashboard() {
                         <p className="text-sm text-muted-foreground">{lead.contactName}</p>
                       </div>
                       <div className="text-right">
-                        <p className={`text-sm font-medium ${isOverdue ? 'text-destructive' : ''}`}>
+                        <p className={`text-sm font-medium ${isOverdue ? 'text-destructive-text' : ''}`}>
                           {new Date(lead.followUpDate!).toLocaleDateString('en-ZA', {
                             day: 'numeric',
                             month: 'short',
@@ -335,7 +335,7 @@ export function AgentDashboard() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Deals Won</span>
-              <span className="font-semibold text-success">{stats.wonLeads.length}</span>
+              <span className="font-semibold text-success-text">{stats.wonLeads.length}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-muted-foreground">Conversion Rate</span>
@@ -348,7 +348,7 @@ export function AgentDashboard() {
             <div className="h-px bg-border" />
             <div className="flex items-center justify-between">
               <span className="font-medium">Total Earned</span>
-              <span className="font-bold text-accent">{formatCurrency(stats.earnedAmount + stats.paidOutAmount)}</span>
+              <span className="font-bold text-accent-text">{formatCurrency(stats.earnedAmount + stats.paidOutAmount)}</span>
             </div>
           </CardContent>
         </Card>
@@ -389,7 +389,7 @@ export function AgentDashboard() {
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>{milestoneCounts.completed}/{milestoneCounts.total} deliverables</span>
-                          <span className={isOverdue ? 'text-destructive' : ''}>
+                          <span className={isOverdue ? 'text-destructive-text' : ''}>
                             Due: {new Date(project.dueDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
                           </span>
                         </div>

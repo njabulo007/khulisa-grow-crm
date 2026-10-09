@@ -337,7 +337,7 @@ export function InvoicesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
-      {invoicesError && <p role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{invoicesError} <Button variant="link" onClick={() => void refreshInvoices()}>Retry invoices</Button></p>}
+      {invoicesError && <p role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive-text">{invoicesError} <Button variant="link" onClick={() => void refreshInvoices()}>Retry invoices</Button></p>}
       <PageHeader title="Invoices" description="Manage billing and payments">
         {isOwner && <Button
           onClick={() => {
@@ -448,7 +448,7 @@ export function InvoicesPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            className="h-8 w-8 text-destructive-text hover:text-destructive-text"
                             onClick={(event) => {
                               event.stopPropagation();
                               requestDeleteInvoice(invoice);

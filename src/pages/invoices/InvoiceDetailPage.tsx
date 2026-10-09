@@ -505,15 +505,15 @@ export function InvoiceDetailPage() {
               <CardContent className="space-y-4">
                 <div>
                   <p className="text-sm text-muted-foreground">Total</p>
-                  <p className="text-2xl font-bold text-accent">{formatCurrency(effectiveTotals.total)}</p>
+                  <p className="text-2xl font-bold text-accent-text">{formatCurrency(effectiveTotals.total)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Amount Paid</p>
-                  <p className="font-semibold text-success">{formatCurrency(amountPaid)}</p>
+                  <p className="font-semibold text-success-text">{formatCurrency(amountPaid)}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Balance</p>
-                  <p className={`font-semibold ${balance > 0 ? 'text-destructive' : 'text-success'}`}>
+                  <p className={`font-semibold ${balance > 0 ? 'text-destructive-text' : 'text-success-text'}`}>
                     {formatCurrency(balance)}
                   </p>
                 </div>

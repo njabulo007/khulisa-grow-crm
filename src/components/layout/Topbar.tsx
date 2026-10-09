@@ -546,7 +546,7 @@ export function Topbar({ onSearch }: TopbarProps) {
               </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={logout} className="text-destructive focus:text-destructive">
+            <DropdownMenuItem onClick={logout} className="text-destructive-text focus:text-destructive-text">
               <LogOut className="mr-2 h-4 w-4" />
               Logout
             </DropdownMenuItem>

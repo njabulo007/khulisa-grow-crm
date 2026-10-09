@@ -314,7 +314,7 @@ export function ProjectsPage() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            className="h-8 w-8 text-destructive-text hover:text-destructive-text"
                             onClick={(event) => {
                               event.stopPropagation();
                               requestDeleteProject(project);

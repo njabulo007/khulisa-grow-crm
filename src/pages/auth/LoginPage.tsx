@@ -101,7 +101,7 @@ export function LoginPage() {
                 </div>
               </div>
 
-              {(error || authError) && <p role="alert" className="text-sm text-destructive">{error || authError}</p>}
+              {(error || authError) && <p role="alert" className="text-sm text-destructive-text">{error || authError}</p>}
 
               <Button type="submit" className="w-full" disabled={isSubmitting}>
                 {isSubmitting ? 'Signing in...' : 'Log In'}

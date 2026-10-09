@@ -278,28 +278,31 @@ export function OwnerDashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={stats.monthlyData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-                  <XAxis 
-                    dataKey="month" 
+                  <XAxis
+                    dataKey="month"
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                   />
-                  <YAxis 
+                  <YAxis
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                     tickFormatter={(value) => `R${value / 1000}k`}
                   />
-                  <Tooltip 
+                  <Tooltip
+                    itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--card-foreground))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
                     formatter={(value: number) => [formatCurrency(value), 'Revenue']}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="revenue" 
-                    stroke="hsl(var(--accent))" 
+                  <Line
+                    type="monotone"
+                    dataKey="revenue"
+                    stroke="hsl(var(--accent))"
                     strokeWidth={3}
                     dot={{ fill: 'hsl(var(--accent))', strokeWidth: 2 }}
                   />
@@ -323,23 +326,26 @@ export function OwnerDashboard() {
                 <BarChart data={pipelineData} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-                  <YAxis 
-                    type="category" 
-                    dataKey="name" 
+                  <YAxis
+                    type="category"
+                    dataKey="name"
                     stroke="hsl(var(--muted-foreground))"
                     fontSize={12}
                     width={100}
                   />
-                  <Tooltip 
+                  <Tooltip
+                    itemStyle={{ color: 'hsl(var(--card-foreground))' }}
+                    labelStyle={{ color: 'hsl(var(--card-foreground))' }}
                     contentStyle={{
                       backgroundColor: 'hsl(var(--card))',
+                      color: 'hsl(var(--card-foreground))',
                       border: '1px solid hsl(var(--border))',
                       borderRadius: '8px',
                     }}
                   />
-                  <Bar 
-                    dataKey="count" 
-                    fill="hsl(var(--primary))" 
+                  <Bar
+                    dataKey="count"
+                    fill="hsl(var(--chart-1))"
                     radius={[0, 4, 4, 0]}
                   />
                 </BarChart>
@@ -378,7 +384,7 @@ export function OwnerDashboard() {
                       <p className="text-sm text-muted-foreground">{agent.dealsWon} deals won</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-semibold text-accent">{formatCurrency(agent.revenue)}</p>
+                      <p className="font-semibold text-accent-text">{formatCurrency(agent.revenue)}</p>
                       <p className="text-xs text-muted-foreground">paid revenue</p>
                     </div>
                   </div>

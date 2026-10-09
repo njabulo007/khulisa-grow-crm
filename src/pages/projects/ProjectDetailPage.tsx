@@ -697,7 +697,7 @@ export function ProjectDetailPage() {
                           }}
                         />
                       ) : milestone.isCompleted ? (
-                        <CheckCircle2 className="h-4 w-4 text-success" />
+                        <CheckCircle2 className="h-4 w-4 text-success-text" />
                       ) : (
                         <Circle className="h-4 w-4 text-muted-foreground" />
                       )}
@@ -775,7 +775,7 @@ export function ProjectDetailPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Milestones Completed</p>
-                <p className="text-2xl font-bold text-accent">
+                <p className="text-2xl font-bold text-accent-text">
                   {completedMilestones}/{ownerScopedMilestones.length}
                 </p>
               </div>
@@ -807,7 +807,7 @@ export function ProjectDetailPage() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Total Paid</p>
-                    <p className="font-semibold text-success">{formatCurrency(totalPaid)}</p>
+                    <p className="font-semibold text-success-text">{formatCurrency(totalPaid)}</p>
                   </div>
                 </>
               )}
@@ -853,7 +853,7 @@ export function ProjectDetailPage() {
                 )}
 
                 {portalSharesError ? (
-                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+                  <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive-text">
                     {portalSharesError}
                   </div>
                 ) : isLoadingShares ? (
@@ -938,9 +938,9 @@ export function ProjectDetailPage() {
                                       <span
                                         className={`text-[11px] font-semibold ${
                                         item.state === 'done'
-                                          ? 'text-success'
+                                          ? 'text-success-text'
                                           : item.state === 'error'
-                                            ? 'text-destructive'
+                                            ? 'text-destructive-text'
                                             : 'text-amber-600'
                                         }`}
                                       >
@@ -1011,9 +1011,9 @@ export function ProjectDetailPage() {
                                 <span
                                   className={`text-xs font-medium uppercase ${
                                     computedStatus === 'active'
-                                      ? 'text-success'
+                                      ? 'text-success-text'
                                       : computedStatus === 'revoked'
-                                        ? 'text-destructive'
+                                        ? 'text-destructive-text'
                                         : 'text-muted-foreground'
                                   }`}
                                 >
@@ -1064,7 +1064,7 @@ export function ProjectDetailPage() {
                   href={project.driveLink}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 text-sm font-medium text-primary hover:underline"
+                  className="inline-flex items-center gap-2 text-sm font-medium text-primary-text hover:underline"
                 >
                   <LinkIcon className="h-4 w-4" />
                   Open Project Folder
