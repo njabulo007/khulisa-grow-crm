@@ -32,13 +32,14 @@ class FirestoreClientService implements ClientService {
       this.leads.getAllWhereIn('assignedTo', authKeys),
       this.projects.getAllWhereIn('assignedTo', authKeys),
     ]);
-    const leadClients = await this.collection.getAllWhereIn(
-      'leadId',
-      assignedLeads.map((lead) => lead.id),
-    );
-    const visibleProjectClients = await this.collection.getByIds(
-      assignedProjects.map((project) => project.clientId || ''),
-    );
+    // Each query has one known lead; related-document rule reads then stay
+    // inside Firestore's per-query access-call budget even for large portfolios.
+    const leadClients = (await Promise.all(assignedLeads.map(lead =>
+      this.collection.getAllWhere('leadId', lead.id),
+    ))).flat();
+    const projectClientIds = [...new Set(assignedProjects.map(project => project.clientId).filter(Boolean))] as string[];
+    const visibleProjectClients = (await Promise.all(projectClientIds.map(id => this.collection.getById(id))))
+      .filter((client): client is Client => !!client);
 
     const byId = new Map<string, Client>();
     [...leadClients, ...visibleProjectClients].forEach((client) => byId.set(client.id, client));

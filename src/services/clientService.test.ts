@@ -7,7 +7,8 @@ vi.mock('./storage', () => ({
     constructor(private name: string) {}
     getAll() { return mocks.all(this.name); }
     getAllWhereIn(field: string, values: string[]) { return mocks.query(this.name, field, values); }
-    getByIds(values: string[]) { return mocks.ids(this.name, values); }
+    getById(id: string) { return mocks.ids(this.name, id); }
+    getAllWhere(field: string, value: string) { return mocks.query(this.name, field, value); }
   },
 }));
 import { clientService } from './clientService';
@@ -23,11 +24,14 @@ describe('client visibility queries', () => {
   });
   it('returns only clients linked to assigned leads or projects, deduplicating shared links', async () => {
     mocks.role.mockResolvedValue('agent');
-    mocks.query.mockImplementation(async (name) => name === 'leads' ? [{ id: 'lead' }] : name === 'projects' ? [{ id: 'project', clientId: 'shared' }] : [{ id: 'shared' }, { id: 'lead-client' }]);
-    mocks.ids.mockResolvedValue([{ id: 'shared' }, { id: 'project-client' }]);
+    mocks.query.mockImplementation(async (name) => name === 'leads' ? [{ id: 'lead' }] : name === 'projects' ? [{ id: 'project', clientId: 'shared' }, { id: 'second-project', clientId: 'project-client' }, { id: 'duplicate', clientId: 'shared' }] : [{ id: 'shared' }, { id: 'lead-client' }]);
+    mocks.ids.mockImplementation(async (_name, id) => ({ id }));
     expect((await clientService.getAll()).map((client) => client.id)).toEqual(['shared', 'lead-client', 'project-client']);
     expect(mocks.query).toHaveBeenCalledWith('leads', 'assignedTo', ['uid', 'legacy']);
     expect(mocks.query).toHaveBeenCalledWith('projects', 'assignedTo', ['uid', 'legacy']);
+    expect(mocks.query).toHaveBeenCalledWith('clients', 'leadId', 'lead');
+    expect(mocks.ids).toHaveBeenCalledWith('clients', 'shared');
+    expect(mocks.ids).toHaveBeenCalledTimes(2);
     expect(mocks.query.mock.calls.every((call) => call[1] !== 'createdBy')).toBe(true);
   });
   it('reports authentication failure instead of showing an incomplete agent-scoped owner list', async () => {
@@ -35,4 +39,20 @@ describe('client visibility queries', () => {
     await expect(clientService.getAll()).rejects.toThrow('Session expired');
     expect(mocks.query).not.toHaveBeenCalled();
   });
+});
+
+it('keeps related-document checks bounded with more than ten assigned leads and projects', async () => {
+  mocks.role.mockResolvedValue('agent');
+  const leads = Array.from({ length: 15 }, (_, i) => ({ id: `lead-${i}` }));
+  const projects = Array.from({ length: 15 }, (_, i) => ({ id: `project-${i}`, clientId: `project-client-${i}` }));
+  mocks.query.mockImplementation(async (name, field, value) => {
+    if (name === 'leads') return leads;
+    if (name === 'projects') return projects;
+    expect(typeof value).toBe('string'); expect(field).toBe('leadId');
+    return [{ id: `client-${value}` }];
+  });
+  mocks.ids.mockImplementation(async (_name, id) => ({ id }));
+  expect(await clientService.getAll()).toHaveLength(30);
+  expect(mocks.query.mock.calls.filter(([name]) => name === 'clients')).toHaveLength(15);
+  expect(mocks.ids).toHaveBeenCalledTimes(15);
 });

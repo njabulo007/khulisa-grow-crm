@@ -1,5 +1,5 @@
 import { deleteCrmRecord, type DeletionOptions } from './deletionService';
-import { Invoice, Payment } from '@/types/models';
+import { Invoice, Payment, Project } from '@/types/models';
 import { getPackageById, resolvePackageId } from '@/config/packages';
 import { resolveAgentIdForInvoice } from '@/lib/invoiceAgentResolver';
 import { deriveInvoicePaymentSummary, InvoicePaymentSummary } from '@/lib/invoicePayments';
@@ -63,9 +63,11 @@ class FirestoreInvoiceService implements InvoiceService {
 
   private async resolvePackageSnapshot(
     projectId?: string,
-    packageIdValue?: string
+    packageIdValue?: string,
+    projects?: Project[]
   ): Promise<{ packageId?: Invoice['packageId']; packageName?: Invoice['packageName']; packagePrice?: number }> {
-    const project = projectId ? await projectService.getById(projectId) : undefined;
+    const project = projects ? projects.find(project => project.id === projectId)
+      : !packageIdValue && projectId ? await projectService.getById(projectId) : undefined;
     const rawPackageId = packageIdValue ?? project?.packageId;
     if (!rawPackageId) return {};
     const packageId = resolvePackageId(rawPackageId);
@@ -73,8 +75,8 @@ class FirestoreInvoiceService implements InvoiceService {
     return { packageId, packageName: pkg?.name, packagePrice: pkg?.price };
   }
 
-  private async normalizeInvoice(invoice: Invoice & { packageType?: string }): Promise<Invoice> {
-    const packageSnapshot = await this.resolvePackageSnapshot(invoice.projectId, invoice.packageId ?? invoice.packageType);
+  private async normalizeInvoice(invoice: Invoice & { packageType?: string }, projects?: Project[]): Promise<Invoice> {
+    const packageSnapshot = await this.resolvePackageSnapshot(invoice.projectId, invoice.packageId ?? invoice.packageType, projects);
     return { ...invoice, ...packageSnapshot };
   }
 
@@ -129,18 +131,18 @@ class FirestoreInvoiceService implements InvoiceService {
     ]);
     const invoices = role === 'owner'
       ? await this.collection.getAll()
-      : await this.collection.getAllWhereIn('projectId', projects.map((project) => project.id));
+      : (await Promise.all(projects.map(project => this.collection.getAllWhere('projectId', project.id)))).flat();
 
     const clientInvoices = role === 'owner'
       ? []
-      : await this.collection.getAllWhereIn('clientId', (await clientService.getAll()).map((client) => client.id));
+      : (await Promise.all((await clientService.getAll()).map(client => this.collection.getAllWhere('clientId', client.id)))).flat();
     const invoicesById = new Map([...invoices, ...clientInvoices].map((invoice) => [invoice.id, invoice]));
     const visibleInvoices = Array.from(invoicesById.values());
     const visiblePayments = role === 'owner'
       ? payments
-      : await this.paymentsCollection.getAllWhereIn('invoiceId', visibleInvoices.map((invoice) => invoice.id));
+      : (await Promise.all(visibleInvoices.map(invoice => this.paymentsCollection.getAllWhere('invoiceId', invoice.id)))).flat();
 
-    const normalized = await Promise.all(visibleInvoices.map((invoice) => this.normalizeInvoice(invoice)));
+    const normalized = await Promise.all(visibleInvoices.map((invoice) => this.normalizeInvoice(invoice, projects)));
     return Promise.all(
       normalized.map(async (invoice) => {
         const summary = await this.getPaymentSummaryForInvoice(invoice, projects, visiblePayments);

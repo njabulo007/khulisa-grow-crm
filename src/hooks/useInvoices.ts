@@ -9,6 +9,7 @@ type InvoiceUpdateInput = Partial<Invoice>;
 export interface UseInvoicesResult {
   invoices: Invoice[];
   isLoading: boolean;
+  error: string | null;
   refresh: () => Promise<void>;
   getById: (id: string) => Promise<Invoice | undefined>;
   getByClient: (clientId: string) => Promise<Invoice[]>;
@@ -19,6 +20,7 @@ export interface UseInvoicesResult {
 }
 
 export function useInvoices(): UseInvoicesResult {
+  const [error, setError] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -27,6 +29,11 @@ export function useInvoices(): UseInvoicesResult {
     try {
       const next = await invoiceService.getAll();
       setInvoices(next);
+      setError(null);
+    } catch (error) {
+      console.error('[useInvoices] Failed to load invoices.', error);
+      setInvoices([]);
+      setError('Unable to load invoices. Try again; if this continues, ask the owner to check your access.');
     } finally {
       setIsLoading(false);
     }
@@ -72,6 +79,7 @@ export function useInvoices(): UseInvoicesResult {
   return {
     invoices,
     isLoading,
+    error,
     refresh,
     getById,
     getByClient,

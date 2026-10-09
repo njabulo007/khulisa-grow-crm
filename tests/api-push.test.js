@@ -78,7 +78,7 @@ test('service worker displays data-only FCM messages with their title, body, and
   const events = new Map(); const displayed = [];
   const source = readFileSync(new URL('../src/sw.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
   class Strategy {}
-  vm.runInNewContext(source, { clientsClaim() {}, cleanupOutdatedCaches() {}, precacheAndRoute() {}, registerRoute() {},
+  vm.runInNewContext(source, { clientsClaim() {}, createHandlerBoundToURL: () => async () => ({}), cleanupOutdatedCaches() {}, precacheAndRoute() {}, registerRoute() {},
     NavigationRoute: Strategy, NetworkFirst: Strategy, CacheFirst: Strategy, ExpirationPlugin: Strategy,
     URL, self: { __WB_MANIFEST: [], location: { origin: 'https://crm.example.com' },
       addEventListener: (name, callback) => events.set(name, callback),
@@ -92,4 +92,23 @@ test('service worker displays data-only FCM messages with their title, body, and
   assert.equal(displayed[0].options.body, 'Assigned to you');
   assert.equal(displayed[0].options.tag, 'khulisa-notification-n');
   assert.equal(displayed[0].options.data.link, '/leads/lead-1');
+});
+
+test('offline navigation to an uncached CRM route uses only the precached app shell', async () => {
+  const source = readFileSync(new URL('../src/sw.js', import.meta.url), 'utf8').replace(/^import .*;\n/gm, '');
+  let route; let fallbackCalls = 0; let failNetwork = true;
+  const networkResponse = { body: 'network page' }; const shellResponse = { body: 'cached app shell' };
+  class Strategy { async handle() { if (failNetwork) throw new Error('no-response'); return networkResponse; } }
+  class NavigationRoute { constructor(handler, options) { route = { handler, options }; } }
+  vm.runInNewContext(source, { clientsClaim() {}, cleanupOutdatedCaches() {}, precacheAndRoute() {}, registerRoute() {},
+    createHandlerBoundToURL(url) { assert.equal(url, '/index.html'); return async () => { fallbackCalls++; return shellResponse; }; },
+    NavigationRoute, NetworkFirst: Strategy, CacheFirst: Strategy, ExpirationPlugin: Strategy,
+    URL, self: { __WB_MANIFEST: [], location: { origin: 'https://crm.example.com' }, addEventListener() {} },
+  });
+  assert.equal(await route.handler({ request: { url: 'https://crm.example.com/settings' } }), shellResponse);
+  assert.equal(fallbackCalls, 1);
+  assert(route.options.denylist[0].test('/api/notifications/push'));
+  failNetwork = false;
+  assert.equal(await route.handler({ request: { url: 'https://crm.example.com/settings' } }), networkResponse);
+  assert.equal(fallbackCalls, 1);
 });

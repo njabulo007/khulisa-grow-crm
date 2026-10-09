@@ -1,3 +1,4 @@
+import { agentDashboardErrorMessage } from '@/services/agentDashboardService';
 import { ClientActivityPanel } from '@/components/common/ClientActivityPanel';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
@@ -54,49 +55,61 @@ export function ClientDetailPage() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentsByInvoice, setPaymentsByInvoice] = useState<Record<string, Payment[]>>({});
   const [isSavingOnboarding, setIsSavingOnboarding] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
+    setIsLoaded(false);
+    setLoadError(null);
+    setClient(undefined);
     const loadData = async () => {
-      const [clients, leads, projects] = await Promise.all([
-        clientService.getAll(),
-        leadService.getAll(),
-        projectService.getAll(),
-      ]);
-      if (!isMounted) return;
-      setAllClients(clients);
-      setAllLeads(leads);
-      setAllProjects(projects);
+      try {
+        const [clients, leads, projects] = await Promise.all([
+          clientService.getAll(),
+          leadService.getAll(),
+          projectService.getAll(),
+        ]);
+        if (!isMounted) return;
+        setAllClients(clients);
+        setAllLeads(leads);
+        setAllProjects(projects);
 
-      const nextClient = clients.find((entry) => entry.id === (id || ''));
-      setClient(nextClient);
-      if (!nextClient) {
-        setInvoices([]);
-        setPaymentsByInvoice({});
-        setIsLoaded(true);
-        return;
+        const nextClient = clients.find((entry) => entry.id === (id || ''));
+        setClient(nextClient);
+        if (!nextClient) {
+          setInvoices([]);
+          setPaymentsByInvoice({});
+          setIsLoaded(true);
+          return;
+        }
+
+        const clientInvoices = await invoiceService.getByClient(nextClient.id);
+        if (!isMounted) return;
+        setInvoices(clientInvoices);
+        const paymentsEntries = await Promise.all(
+          clientInvoices.map(async (invoice) => [invoice.id, await paymentService.getByInvoiceId(invoice.id)] as const)
+        );
+        if (!isMounted) return;
+        setPaymentsByInvoice(
+          paymentsEntries.reduce<Record<string, Payment[]>>((acc, [invoiceId, payments]) => {
+            acc[invoiceId] = [...payments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+            return acc;
+          }, {})
+        );
+      } catch (error) {
+        console.error('[ClientDetail] Failed to load client records.', error);
+        if (isMounted) setLoadError(agentDashboardErrorMessage(error).replace(/dashboard/g, 'client'));
+      } finally {
+        if (isMounted) setIsLoaded(true);
       }
-
-      const clientInvoices = await invoiceService.getByClient(nextClient.id);
-      setInvoices(clientInvoices);
-      const paymentsEntries = await Promise.all(
-        clientInvoices.map(async (invoice) => [invoice.id, await paymentService.getByInvoiceId(invoice.id)] as const)
-      );
-      if (!isMounted) return;
-      setPaymentsByInvoice(
-        paymentsEntries.reduce<Record<string, Payment[]>>((acc, [invoiceId, payments]) => {
-          acc[invoiceId] = [...payments].sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
-          return acc;
-        }, {})
-      );
-      setIsLoaded(true);
     };
     void loadData();
     return () => {
       isMounted = false;
     };
-  }, [id]);
+  }, [id, retryKey, user?.uid, user?.id, user?.role]);
 
   const projectLookup = useMemo(() => buildProjectLookup(allProjects), [allProjects]);
   const linkedLeads = useMemo(() => {
@@ -151,6 +164,12 @@ export function ClientDetailPage() {
       </div>
     );
   }
+
+  if (loadError) return <div className="space-y-3 py-12 text-center">
+    <p role="alert" className="text-destructive">{loadError}</p>
+    <Button variant="outline" onClick={() => setRetryKey(key => key + 1)}>Retry client</Button>
+    <Button variant="link" onClick={() => navigate('/clients')}>Back to Clients</Button>
+  </div>;
 
   if (!client) {
     return (

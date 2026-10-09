@@ -76,6 +76,8 @@ export function InvoicesPage() {
   const { user, isOwner } = useAuth();
   const {
     invoices: allInvoices,
+    error: invoicesError,
+    refresh: refreshInvoices,
     isLoading: isInvoicesLoading,
     createInvoice,
     getNextNumber,
@@ -335,6 +337,7 @@ export function InvoicesPage() {
 
   return (
     <div className="space-y-6 animate-fade-in">
+      {invoicesError && <p role="alert" className="rounded-lg border border-destructive/30 p-3 text-sm text-destructive">{invoicesError} <Button variant="link" onClick={() => void refreshInvoices()}>Retry invoices</Button></p>}
       <PageHeader title="Invoices" description="Manage billing and payments">
         {isOwner && <Button
           onClick={() => {

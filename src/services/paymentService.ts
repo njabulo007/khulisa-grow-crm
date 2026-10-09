@@ -20,7 +20,7 @@ class FirestorePaymentService implements PaymentService {
   async getAll(): Promise<Payment[]> {
     if ((await getCurrentAuthRole()) === 'owner') return this.collection.getAll();
     const accessibleInvoices = await invoiceService.getAll();
-    return this.collection.getAllWhereIn('invoiceId', accessibleInvoices.map((invoice) => invoice.id));
+    return (await Promise.all(accessibleInvoices.map(invoice => this.collection.getAllWhere('invoiceId', invoice.id)))).flat();
   }
 
   async getById(id: string): Promise<Payment | undefined> {

@@ -1,5 +1,5 @@
 import { clientsClaim } from "workbox-core";
-import { cleanupOutdatedCaches, precacheAndRoute } from "workbox-precaching";
+import { cleanupOutdatedCaches, createHandlerBoundToURL, precacheAndRoute } from "workbox-precaching";
 import { NavigationRoute, registerRoute } from "workbox-routing";
 import { CacheFirst, NetworkFirst } from "workbox-strategies";
 import { ExpirationPlugin } from "workbox-expiration";
@@ -19,14 +19,20 @@ self.addEventListener("message", (event) => {
   }
 });
 
-registerRoute(
-  new NavigationRoute(
-    new NetworkFirst({
-      cacheName: "khulisa-pages-v1",
-      networkTimeoutSeconds: 5,
-    })
-  )
-);
+const navigationStrategy = new NetworkFirst({
+  cacheName: "khulisa-pages-v1",
+  networkTimeoutSeconds: 5,
+});
+const appShell = createHandlerBoundToURL("/index.html");
+registerRoute(new NavigationRoute(async context => {
+  try {
+    return await navigationStrategy.handle(context);
+  } catch {
+    // An uncached route can still open the precached React app while offline.
+    // This caches no CRM records and does not bypass Firebase authentication.
+    return appShell(context);
+  }
+}, { denylist: [/^\/api\//] }));
 
 registerRoute(
   ({ request, url }) =>

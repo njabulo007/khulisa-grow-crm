@@ -117,14 +117,19 @@ service cloud.firestore {
           && get(/databases/$(database)/documents/projects/$(appProject)).data.clientId == clientId);
     }
 
+    // Evaluate resource.data for list queries. Reading the same client through
+    // get() prevents Firestore from proving leadId constraints on the query.
+    function clientDataAccessible(data, clientId) {
+      return signedIn()
+        && (leadAccessible(data.get('leadId', null))
+          || assignedClientProject(data, clientId));
+    }
+
     function clientAccessible(clientId) {
       return signedIn()
         && clientId is string
         && exists(/databases/$(database)/documents/clients/$(clientId))
-        && (
-          leadAccessible(get(/databases/$(database)/documents/clients/$(clientId)).data.get('leadId', null))
-          || assignedClientProject(get(/databases/$(database)/documents/clients/$(clientId)).data, clientId)
-        );
+        && clientDataAccessible(get(/databases/$(database)/documents/clients/$(clientId)).data, clientId);
     }
 
     function projectAccessible(projectId) {
@@ -134,17 +139,17 @@ service cloud.firestore {
         && sameUser(get(/databases/$(database)/documents/projects/$(projectId)).data.assignedTo);
     }
 
+    function invoiceDataAccessible(data) {
+      return signedIn()
+        && (projectAccessible(data.get('projectId', null))
+          || clientAccessible(data.clientId));
+    }
+
     function invoiceAccessible(invoiceId) {
       return signedIn()
         && invoiceId is string
         && exists(/databases/$(database)/documents/invoices/$(invoiceId))
-        && (
-          (
-            get(/databases/$(database)/documents/invoices/$(invoiceId)).data.projectId is string
-            && projectAccessible(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.projectId)
-          )
-          || clientAccessible(get(/databases/$(database)/documents/invoices/$(invoiceId)).data.clientId)
-        );
+        && invoiceDataAccessible(get(/databases/$(database)/documents/invoices/$(invoiceId)).data);
     }
 
     function activityAccessible(entityType, entityId) {
@@ -186,7 +191,7 @@ service cloud.firestore {
     }
 
     match /clients/{clientId} {
-      allow read: if isOwner() || clientAccessible(clientId);
+      allow read: if isOwner() || clientDataAccessible(resource.data, clientId);
       allow create: if validClientData(request.resource.data)
         && optionalAvailable(request.resource.data, 'leadId', 'leads')
         && isOwner();
@@ -221,7 +226,7 @@ service cloud.firestore {
     }
 
     match /invoices/{invoiceId} {
-      allow read: if isOwner() || invoiceAccessible(invoiceId);
+      allow read: if isOwner() || invoiceDataAccessible(resource.data);
       allow create: if isOwner() && validInvoiceData(request.resource.data)
         && available('clients', request.resource.data.clientId)
         && optionalAvailable(request.resource.data, 'projectId', 'projects');
