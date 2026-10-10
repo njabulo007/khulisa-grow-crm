@@ -2,6 +2,9 @@ import { agentDashboardErrorMessage } from '@/services/agentDashboardService';
 import { ClientFollowUps } from '@/components/common/ClientFollowUps';
 import { ClientRequests } from '@/components/common/ClientRequests';
 import { ClientActivityPanel } from '@/components/common/ClientActivityPanel';
+import { ClientFeedback } from '@/components/common/ClientFeedback';
+import { ClientGrowth } from '@/components/common/ClientGrowth';
+import { CommunicationTemplates } from '@/components/common/CommunicationTemplates';
 import { ClientCarePanel } from '@/components/common/ClientCarePanel';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
@@ -61,7 +64,7 @@ export function ClientDetailPage() {
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded || !client?.id || !['#client-activity', '#client-follow-ups', '#client-requests', '#client-health', '#client-onboarding'].includes(location.hash)) return;
+    if (!isLoaded || !client?.id || !['#client-activity', '#client-follow-ups', '#client-requests', '#client-health', '#client-onboarding', '#client-feedback', '#client-growth', '#client-templates'].includes(location.hash)) return;
     const frame = requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' }));
     return () => cancelAnimationFrame(frame);
   }, [isLoaded, client?.id, location.hash]);
@@ -297,6 +300,9 @@ export function ClientDetailPage() {
           <ClientCarePanel key={`care-${client.id}`} clientId={client.id} onChange={(care) => setClient(current => current?.id === client.id ? { ...current, onboardingCompleted: care.onboardingCompleted, contractSigned: care.checklist.contract.status === 'received' } : current)} />
           <ClientFollowUps key={`follow-${client.id}`} clientId={client.id} />
           <ClientActivityPanel key={client.id} clientId={client.id} />
+          <ClientFeedback key={`feedback-${client.id}`} clientId={client.id} contactName={client.ownerName} />
+          <ClientGrowth key={`growth-${client.id}`} clientId={client.id} />
+          <CommunicationTemplates key={`templates-${client.id}`} client={client} invoices={visibleInvoices.filter(invoice => invoice.status !== 'paid' && invoice.status !== 'draft').map(invoice => ({ id: invoice.id, invoiceNumber: invoice.invoiceNumber, dueDate: invoice.dueDate, outstanding: Math.max(getInvoiceEffectiveTotals(invoice, projectLookup).total - Math.max(paidAmountByInvoice[invoice.id] || 0, invoice.amountPaid || 0), 0) })).filter(invoice => invoice.outstanding > 0)} />
           <ClientRequests key={`requests-${client.id}`} clientId={client.id} />
           {/* Associated Leads */}
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">

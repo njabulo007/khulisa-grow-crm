@@ -107,7 +107,7 @@ function fixture(populated) {
     assert.equal(res.code, 200, res.data?.error);
     return res.data;
   };
-  return { invoke, queries };
+  return { invoke, queries, records };
 }
 
 for (const populated of [false, true])
@@ -139,3 +139,54 @@ for (const populated of [false, true])
         for (const query of f.queries) assert.equal(query.limit.value, 51);
       });
     }
+
+for (const role of ["owner", "agent"])
+  for (const scoped of [false, true]) {
+    test(`real SDK paginates ${role} ${scoped ? "client" : "global"} growth queues and feedback histories without descending indexes`, async () => {
+      const f = fixture(false);
+      for (let i = 0; i < 53; i++) {
+        const id = String(i).padStart(5, "0");
+        f.records.set(`client_opportunities/${id}`, {
+          clientId: "c1",
+          proposedByUid: "agent",
+          status: "proposed",
+          version: 1,
+        });
+        f.records.set(`client_feedback_revisions/${id}`, {
+          recordId: "feedback1",
+          clientId: "c1",
+          version: i + 1,
+          decision: "approved",
+        });
+      }
+      f.records.set("client_feedback/feedback1", {
+        clientId: "c1",
+        version: 53,
+        decision: "approved",
+      });
+      const growth = await f.invoke(
+        "opportunities",
+        role,
+        scoped ? { clientId: "c1" } : {},
+      );
+      assert.equal(growth.records.length, 50);
+      const next = await f.invoke("opportunities", role, {
+        ...(scoped ? { clientId: "c1" } : {}),
+        cursor: growth.cursor,
+      });
+      assert.equal(next.records.length, 3);
+      const history = await f.invoke("feedback", role, {
+        action: "history",
+        clientId: "c1",
+        recordId: "feedback1",
+      });
+      assert.equal(history.revisions.length, 50);
+      const nextHistory = await f.invoke("feedback", role, {
+        action: "history",
+        clientId: "c1",
+        recordId: "feedback1",
+        cursor: history.cursor,
+      });
+      assert.equal(nextHistory.revisions.length, 3);
+    });
+  }

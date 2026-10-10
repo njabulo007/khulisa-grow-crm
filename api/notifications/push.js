@@ -25,6 +25,8 @@ const followUps = createPaymentFollowUpHandler({ db: adminDb, auth: adminAuth,
 
 export default (req, res) => {
   const kind = parseBody(req).kind;
+  if (kind === 'client-feedback' && req.method !== 'GET') return clientWork.feedback(req, res);
+  if (kind === 'client-opportunity' && req.method !== 'GET') return clientWork.opportunities(req, res);
   if (kind === 'client-care' && req.method !== 'GET') return clientWork.care(req, res);
   if (kind === 'client-follow-up' && req.method !== 'GET') return clientWork.followUps(req, res);
   if (kind === 'client-request' && req.method !== 'GET') return clientWork.requests(req, res);

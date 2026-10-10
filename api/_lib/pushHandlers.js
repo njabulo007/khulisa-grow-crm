@@ -47,7 +47,7 @@ export function createPushHandler({ db, messaging, authenticate, requireOwner, n
         return json(res, 200, { status: 'no-devices' });
       }
       const link = ['invoice', 'client', 'project', 'lead'].find((type) => notificationData[`${type}Id`]);
-      const clientSection = notificationData.type === 'client_health' ? '#client-health' : notificationData.type === 'client_request' ? '#client-requests' : notificationData.type === 'client_follow_up' ? '#client-activity' : '';
+      const clientSection = notificationData.type === 'client_feedback' ? '#client-feedback' : notificationData.type === 'client_opportunity' ? '#client-growth' : notificationData.type === 'client_health' ? '#client-health' : notificationData.type === 'client_request' ? '#client-requests' : notificationData.type === 'client_follow_up' ? '#client-activity' : '';
       let sent = 0;
       let failed = 0;
       const errorCodes = new Set();

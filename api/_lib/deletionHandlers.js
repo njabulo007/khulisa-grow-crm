@@ -104,6 +104,7 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
       if (type === 'client') {
         add(await query('payment_follow_ups', 'clientId', id));
         add(await query('client_follow_ups', 'clientId', id));
+        for (const collection of ['client_feedback', 'client_feedback_revisions', 'client_opportunities', 'client_opportunity_revisions']) add(await query(collection, 'clientId', id));
         const care = await db.collection('client_care').doc(id).get();
         if (care.exists) add([care]);
         const requests = await query('client_requests', 'clientId', id);

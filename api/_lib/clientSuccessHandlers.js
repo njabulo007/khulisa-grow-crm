@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { createClientRelationshipHandlers } from "./clientRelationshipHandlers.js";
 import { createClientCareHandler } from "./clientCareHandlers.js";
 import { FieldPath } from "firebase-admin/firestore";
 import { createHttpError, json, methodNotAllowed, parseBody } from "./http.js";
@@ -807,6 +808,18 @@ export function createClientSuccessHandlers({
     requests,
     runDue,
     clientContext,
+    ...createClientRelationshipHandlers({
+      db,
+      authenticate: authenticateActor,
+      clientContext,
+      notifyOwners,
+      now,
+      notifySubmitter: async (uid, eventId, value) => {
+        const recipient = await identityFor(uid);
+        await clientContext(recipient, value.clientId);
+        await notify(recipient, eventId, value);
+      },
+    }),
     care: createClientCareHandler({
       db,
       authenticate: authenticateActor,

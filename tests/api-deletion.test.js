@@ -194,3 +194,9 @@ test('active request upload prevents deletion from racing past the saved cleanup
   const f = fixture({ 'clients/c': {}, 'client_requests/r': { clientId: 'c', attachments: [{ status: 'pending', leaseUntil: Date.now() + 60000 }] } });
   assert.equal((await f.invoke('client', 'c')).code, 409); assert.equal(f.records.size, 2); assert.equal(f.fileCalls?.length || 0, 0);
 });
+
+test('client deletion removes feedback, opportunities and every owned revision', async () => {
+  const f = fixture({ 'clients/c': {}, 'client_feedback/f': { clientId: 'c' }, 'client_feedback_revisions/f1': { clientId: 'c', recordId: 'f' }, 'client_feedback_revisions/f2': { clientId: 'c', recordId: 'f' }, 'client_opportunities/o': { clientId: 'c' }, 'client_opportunity_revisions/o1': { clientId: 'c', recordId: 'o' }, 'client_feedback/other': { clientId: 'other' } });
+  assert.equal((await f.invoke('client', 'c')).code, 200);
+  assert.deepEqual([...f.records.keys()], ['client_feedback/other']);
+});

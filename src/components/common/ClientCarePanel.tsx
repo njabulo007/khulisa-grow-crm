@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useClientSectionAnchor } from "@/hooks/useClientSectionAnchor";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   clientCareService,
@@ -33,7 +33,6 @@ export function ClientCarePanel({
   onChange?: (care: ClientCare) => void;
 }) {
   const { user, isOwner } = useAuth();
-  const location = useLocation();
   const [care, setCare] = useState<ClientCare | null>(null);
   const [status, setStatus] = useState<HealthStatus>("healthy");
   const [reason, setReason] = useState("");
@@ -89,20 +88,7 @@ export function ClientCarePanel({
       window.removeEventListener("crm:client-work-changed", refresh);
     };
   }, [load, user?.uid]);
-  const ready = Boolean(care && checklist);
-  useEffect(() => {
-    if (
-      !ready ||
-      !["#client-health", "#client-onboarding"].includes(location.hash)
-    )
-      return;
-    const frame = requestAnimationFrame(() =>
-      document
-        .getElementById(location.hash.slice(1))
-        ?.scrollIntoView({ block: "start" }),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [ready, clientId, location.hash]);
+  useClientSectionAnchor(clientId, Boolean(care && checklist));
   const save = async (
     action: "health" | "onboarding" | "resolve",
     escalate = false,

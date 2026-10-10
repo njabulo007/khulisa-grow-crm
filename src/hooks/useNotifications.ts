@@ -167,7 +167,7 @@ export function useNotifications(): UseNotificationsResult {
                     return;
                   }
                   if (notification.clientId) {
-                    window.location.assign(`/clients/${encodeURIComponent(notification.clientId)}${notification.type === 'client_health' ? '#client-health' : notification.type === 'client_request' ? '#client-requests' : notification.type === 'client_follow_up' ? '#client-activity' : ''}`);
+                    window.location.assign(`/clients/${encodeURIComponent(notification.clientId)}${notification.type === 'client_feedback' ? '#client-feedback' : notification.type === 'client_opportunity' ? '#client-growth' : notification.type === 'client_health' ? '#client-health' : notification.type === 'client_request' ? '#client-requests' : notification.type === 'client_follow_up' ? '#client-activity' : ''}`);
                     return;
                   }
                   if (notification.projectId) {
