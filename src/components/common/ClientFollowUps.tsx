@@ -299,7 +299,7 @@ export function ClientFollowUps({ clientId }: { clientId?: string }) {
         </div>
         {!clientId && cursor && (
           <p className="text-xs text-muted-foreground">
-            Counts cover loaded check-ins. Load more to include older schedules.
+            Counts cover loaded check-ins. Load more to include more schedules.
           </p>
         )}
       </CardContent>

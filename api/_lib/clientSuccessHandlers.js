@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { FieldPath } from "firebase-admin/firestore";
 import { createHttpError, json, methodNotAllowed, parseBody } from "./http.js";
 import { readIdentityConfig } from "./migrationHandlers.js";
 import { paymentFollowUpDay } from "./paymentFollowUpHandlers.js";
@@ -132,10 +133,13 @@ export function createClientSuccessHandlers({
     if (actor.role === "owner") await requireOwner(req);
     return actor;
   };
-  const paginate = async (query, cursor) => {
+  const paginate = async (query, cursor, scoped) => {
     if (cursor !== undefined && !id(cursor))
       throw createHttpError(400, "Invalid page cursor.");
-    let page = query.orderBy("__name__", "desc");
+    // Equality indexes use ascending document IDs by default. Reversing that
+    // ordering on a scoped query can require a composite index, even when empty.
+    // Unfiltered owner queues can still load newest document IDs first.
+    let page = query.orderBy(FieldPath.documentId(), scoped ? "asc" : "desc");
     if (cursor) page = page.startAfter(cursor);
     const result = await page.limit(51).get();
     const docs = result.docs.slice(0, 50);
@@ -209,7 +213,11 @@ export function createClientSuccessHandlers({
             : db
                 .collection("client_follow_ups")
                 .where("userUid", "==", actor.uid);
-        const { docs, cursor } = await paginate(query, payload.cursor);
+        const { docs, cursor } = await paginate(
+          query,
+          payload.cursor,
+          actor.role !== "owner" || Boolean(payload.clientId),
+        );
         const records = [];
         const contexts = new Map();
         for (const doc of docs) {
@@ -329,7 +337,12 @@ export function createClientSuccessHandlers({
       });
       return json(res, 200, result);
     } catch (error) {
-      return fail(res, error, "Client follow-up could not be processed.");
+      return fail(
+        res,
+        error,
+        "Client follow-up could not be processed.",
+        parseBody(req).action,
+      );
     }
   };
 
@@ -447,7 +460,7 @@ export function createClientSuccessHandlers({
       if (payload.action === "list") {
         if (payload.clientId !== undefined)
           await clientContext(actor, payload.clientId);
-        // Equality + document-ID ordering uses Firestore's built-in index.
+        // Scoped pagination must use the built-in equality index ordering.
         const query = payload.clientId
           ? db
               .collection("client_requests")
@@ -457,7 +470,11 @@ export function createClientSuccessHandlers({
             : db
                 .collection("client_requests")
                 .where("submittedByUid", "==", actor.uid);
-        const { docs, cursor } = await paginate(query, payload.cursor);
+        const { docs, cursor } = await paginate(
+          query,
+          payload.cursor,
+          actor.role !== "owner" || Boolean(payload.clientId),
+        );
         const records = [];
         const clients = new Map();
         for (const snapshot of docs) {
@@ -771,14 +788,27 @@ export function createClientSuccessHandlers({
       }
       throw createHttpError(400, "Invalid request action.");
     } catch (error) {
-      return fail(res, error, "Client request could not be processed.");
+      return fail(
+        res,
+        error,
+        "Client request could not be processed.",
+        parseBody(req).action,
+      );
     }
   };
   return { followUps, requests, runDue, clientContext };
 }
-function fail(res, error, fallback) {
+function fail(res, error, fallback, action) {
   if (!error.status)
-    console.error("[Client success API]", { code: error.code || "unknown" });
+    console.error("[Client success API]", {
+      operation: fallback,
+      action,
+      code: error.code || "unknown",
+      message:
+        typeof error.message === "string"
+          ? error.message.slice(0, 1000)
+          : "Unknown error",
+    });
   return json(res, error.status || 500, {
     error: error.status ? error.message : fallback,
   });

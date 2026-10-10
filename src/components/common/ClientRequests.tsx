@@ -618,13 +618,13 @@ export function ClientRequests({ clientId }: { clientId?: string }) {
               disabled={loading}
               onClick={() => void load(cursor)}
             >
-              Load older requests
+              Load more requests
             </Button>
           )}
         </div>
         {cursor && (
           <p className="text-xs text-muted-foreground">
-            Filters apply to loaded requests. Load older requests to include
+            Filters apply to loaded requests. Load more requests to include
             more.
           </p>
         )}

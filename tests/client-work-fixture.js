@@ -64,7 +64,10 @@ export function clientWorkFixture(extra = {}) {
           (a, b) =>
             (ordering[1] === "desc" ? -1 : 1) * a.id.localeCompare(b.id),
         );
-      if (cursor) docs = docs.filter((doc) => doc.id < cursor);
+      if (cursor)
+        docs = docs.filter((doc) =>
+          ordering?.[1] === "desc" ? doc.id < cursor : doc.id > cursor,
+        );
       return { docs: docs.slice(0, size) };
     },
   });

@@ -390,7 +390,7 @@ test("push delivery failure preserves saved requests and bell notification; retr
     1,
   );
 });
-test("pagination stays bounded and returns older requests without duplicates", async () => {
+test("pagination stays bounded and returns additional requests without duplicates", async () => {
   const f = clientWorkFixture();
   for (let i = 0; i < 55; i++)
     f.records.set(`client_requests/${String(i).padStart(5, "0")}`, {

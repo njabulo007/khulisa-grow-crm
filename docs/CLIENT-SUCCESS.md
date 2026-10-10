@@ -21,7 +21,7 @@ The current invite-only `firestore.rules` must already be published, including i
 
 Attachments are encrypted with AES-256-GCM before going into the existing public Blob store. Random paths reveal no client filenames; keys stay in server-only Firestore records and are excluded from API responses. Authorized downloads check current client access and decrypt on the server. These internal attachments are separate from public client-portal files.
 
-Queues load in pages of 50 and refresh on demand. Counts and filters apply to loaded records; **Load more** includes older pages. No new realtime listener is added. File limits bound individual uploads, but retained files still consume Blob storage and downloads consume transfer quota. Delete unused attachments as appropriate; client deletion also removes its schedules, requests, files, and linked notifications. Failed cleanup preserves references for retry, and active upload leases prevent deletion racing an upload.
+Queues load in pages of 50 and refresh on demand. Counts and filters apply to loaded records; **Load more** includes additional pages. Unfiltered owner queues load descending document IDs; manager and client-specific queues use ascending document IDs to match Firestore's built-in equality indexes, then sort loaded records for display. No new realtime listener is added. File limits bound individual uploads, but retained files still consume Blob storage and downloads consume transfer quota. Delete unused attachments as appropriate; client deletion also removes its schedules, requests, files, and linked notifications. Failed cleanup preserves references for retry, and active upload leases prevent deletion racing an upload.
 
 ## Validation
 
