@@ -111,7 +111,7 @@ export function InvoicesPage() {
   });
 
   useEffect(() => {
-    void syncCommissionsFromInvoices();
+
   }, []);
 
   useEffect(() => {

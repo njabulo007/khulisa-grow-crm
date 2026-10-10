@@ -1,3 +1,4 @@
+import { PortalReviewPanel } from '@/components/common/PortalReviewPanel';
 import { AGENT_DELIVERY_STATUSES, canChangeProjectDeliveryStatus, canEditProjectMilestones, resolveDeliveryStatus } from '@/lib/projectDeliveryPermissions';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -250,7 +251,7 @@ export function ProjectDetailPage() {
     );
   }
 
-  if (!canAccessProject(user, project)) {
+  if (!canAccessProject(user, project, client ? [client] : [])) {
     return (
       <div className="flex flex-col items-center justify-center py-12">
         <p className="text-muted-foreground">You do not have permission to view this project.</p>
@@ -657,10 +658,11 @@ export function ProjectDetailPage() {
                   <User className="h-5 w-5 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Assigned Agent</p>
+                  <p className="text-sm text-muted-foreground">Delivery coordinator</p>
                   <p className="font-medium">{agent?.name || 'Unassigned'}</p>
                 </div>
               </div>
+              <div><p className="text-sm text-muted-foreground">Build owner</p><p className="font-medium">{authService.getAll().find(a=>a.id===project.buildOwnerId||a.uid===project.buildOwnerId)?.name || 'Owner team'}</p></div>
               <div className="flex items-center gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-muted">
                   <Calendar className="h-5 w-5 text-muted-foreground" />
@@ -721,6 +723,7 @@ export function ProjectDetailPage() {
             </CardContent>
           </Card>
 
+          {isOwner && <PortalReviewPanel projectId={project.id} clientId={project.clientId} onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }} />}
           {canAccessProject(user, project) && <Card>
             <CardHeader><CardTitle className="text-lg">Client update</CardTitle><p className="text-sm text-muted-foreground">Publish a short update to the client portal. CRM notes remain private.</p></CardHeader>
             <CardContent className="space-y-4">

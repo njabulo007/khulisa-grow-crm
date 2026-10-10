@@ -1,3 +1,9 @@
+import { OperationalReports } from '@/components/common/OperationalReports';
+import { cashByMonth, closedLeadWinRate } from '@/lib/cashReporting';
+import { paymentService } from '@/services/paymentService';
+import type { Payment } from '@/types/models';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { getAgentPerformance } from '@/lib/agentPerformance';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -61,6 +67,8 @@ const formatReportDate = (value: Date): string =>
 export function ReportsPage() {
   const navigate = useNavigate();
   const { isOwner } = useAuth();
+  const [payments,setPayments]=useState<Payment[]>([]);
+  const [periodStart,setPeriodStart]=useState(''),[periodEnd,setPeriodEnd]=useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,12 +83,13 @@ export function ReportsPage() {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [nextLeads, nextProjects, nextInvoices, nextClients, nextActivities] = await Promise.all([
+        const [nextLeads, nextProjects, nextInvoices, nextClients, nextActivities, nextPayments] = await Promise.all([
           leadService.getAll(),
           projectService.getAll(),
           invoiceService.getAll(),
           clientService.getAll(),
           activityService.getAll(),
+          paymentService.getAll(),
         ]);
         if (!isMounted) return;
         setLeads(nextLeads);
@@ -88,6 +97,7 @@ export function ReportsPage() {
         setInvoices(nextInvoices);
         setClients(nextClients);
         setActivities(nextActivities);
+        setPayments(nextPayments);
         setLoadError(null);
       } catch (error) {
         console.error('[ReportsPage] Failed to load records.', error);
@@ -114,16 +124,8 @@ export function ReportsPage() {
     const getInvoiceAmount = (invoice: Invoice) => getInvoiceEffectiveTotals(invoice, projectLookup).total;
     const paidInvoices = invoices.filter((invoice) => invoice.status === 'paid');
 
-    const revenueByMonthMap = paidInvoices.reduce((acc, invoice) => {
-      const key = toMonthKey(getInvoiceIssueDate(invoice));
-      if (!acc[key]) {
-        acc[key] = { revenue: 0, invoiceCount: 0 };
-      }
-      acc[key].revenue += getInvoiceAmount(invoice);
-      acc[key].invoiceCount += 1;
-      return acc;
-    }, {} as Record<string, { revenue: number; invoiceCount: number }>);
-
+    const periodPayments = payments.filter(p=>{const day=new Date(Date.parse(p.paidAt)+7200000).toISOString().slice(0,10);return (!periodStart||day>=periodStart)&&(!periodEnd||day<=periodEnd);});
+    const revenueByMonthMap = cashByMonth(periodPayments);
     const now = new Date();
     const revenueByMonth = [];
     for (let i = MONTH_WINDOW - 1; i >= 0; i--) {
@@ -139,16 +141,13 @@ export function ReportsPage() {
     }
 
     const projectById = new Map(projects.map((project) => [project.id, project]));
-    const revenueByPackageMap = paidInvoices.reduce((acc, invoice) => {
-      const packageKey = invoice.projectId ? projectById.get(invoice.projectId)?.packageId || 'unlinked' : 'unlinked';
-      if (!acc[packageKey]) {
-        acc[packageKey] = { revenue: 0, invoiceCount: 0 };
-      }
-      acc[packageKey].revenue += getInvoiceAmount(invoice);
-      acc[packageKey].invoiceCount += 1;
+    const invoiceById = new Map(invoices.map(i=>[i.id,i]));
+    const revenueByPackageMap = periodPayments.reduce((acc,payment)=>{
+      const invoice=invoiceById.get(payment.invoiceId);
+      const packageKey=invoice?.packageId || (invoice?.projectId ? projectById.get(invoice.projectId)?.packageId : null) || 'unlinked';
+      acc[packageKey] ||= {revenue:0,invoiceCount:0};acc[packageKey].revenue+=payment.amount;acc[packageKey].invoiceCount++;
       return acc;
-    }, {} as Record<string, { revenue: number; invoiceCount: number }>);
-
+    },{} as Record<string,{revenue:number;invoiceCount:number}>);
     const revenueByPackage = Object.entries(revenueByPackageMap)
       .map(([packageId, value]) => ({
         packageType: packageId === 'unlinked' ? 'Unlinked' : getPackageNameById(packageId),
@@ -169,8 +168,8 @@ export function ReportsPage() {
     const totalLeads = leads.length || 1;
     const wonCount = funnel.find((item) => item.stage === 'Won')?.count || 0;
     const lostCount = funnel.find((item) => item.stage === 'Lost')?.count || 0;
-    const winRate = Math.round((wonCount / totalLeads) * 100);
-    const lossRate = Math.round((lostCount / totalLeads) * 100);
+    const winRate = closedLeadWinRate(wonCount,lostCount);
+    const lossRate = closedLeadWinRate(lostCount,wonCount);
 
     const agentPerformance = getAgentPerformance(users, leads, clients, projects, invoices)
       .map((agent) => ({ ...agent, agentId: agent.id, agentName: agent.name }));
@@ -203,7 +202,7 @@ export function ReportsPage() {
       agentPerformance,
       leadActivityReport,
     };
-  }, [activities, clients, invoices, leads, projectLookup, projects, users]);
+  }, [activities, clients, invoices, leads, payments, periodStart, periodEnd, projectLookup, projects, users]);
 
   const handleExportPipelineSummary = useCallback(() => {
     const now = new Date();
@@ -308,11 +307,13 @@ export function ReportsPage() {
           Export pipeline summary
         </Button>
       </PageHeader>
+      <OperationalReports />
+      <div className="flex flex-wrap gap-4 rounded-lg border p-4"><div><Label htmlFor="report-start">Cash received from</Label><Input id="report-start" type="date" value={periodStart} max={periodEnd||undefined} onChange={e=>setPeriodStart(e.target.value)} /></div><div><Label htmlFor="report-end">Through</Label><Input id="report-end" type="date" value={periodEnd} min={periodStart||undefined} onChange={e=>setPeriodEnd(e.target.value)} /></div><p className="text-sm text-muted-foreground self-center">Cash charts use actual payment dates, including partial payments. Lead win rate uses closed leads. Other operational totals show all records.</p></div>
       {loadError && <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm"><p>{loadError}</p><Button variant="outline" size="sm" onClick={() => setRetryKey((key) => key + 1)}>Try again</Button></div>}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Revenue by Month</CardTitle>
+            <CardTitle>Cash Received by Month</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -340,7 +341,7 @@ export function ReportsPage() {
                   />
                   <Legend formatter={(value) => <span className="text-foreground">{value}</span>} />
                   <Line type="monotone" dataKey="revenue" name="revenue" stroke="hsl(var(--accent))" strokeWidth={3} />
-                  <Line type="monotone" dataKey="invoiceCount" name="invoiceCount" stroke="hsl(var(--chart-1))" strokeWidth={2} />
+                  <Line type="monotone" dataKey="invoiceCount" name="Payments" stroke="hsl(var(--chart-1))" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -349,7 +350,7 @@ export function ReportsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Revenue by Service Package</CardTitle>
+            <CardTitle>Cash Received by Service Package</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-72">
@@ -474,14 +475,14 @@ export function ReportsPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Monthly Revenue Detail</CardTitle>
+            <CardTitle>Monthly Cash Detail</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Paid Invoices</TableHead>
+                  <TableHead className="text-right">Payments Received</TableHead>
                   <TableHead className="text-right">Revenue</TableHead>
                 </TableRow>
               </TableHeader>

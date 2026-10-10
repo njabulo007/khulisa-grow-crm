@@ -1,3 +1,5 @@
+import { applyDraftOverride } from '@/lib/communicationOverrides';
+import { settingsService } from '@/services/settingsService';
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -100,8 +102,12 @@ export function CommunicationTemplates({
       });
       if (version !== generation.current || selection !== currentKey.current)
         return;
-      setSubject(draft.subject);
-      setBody(draft.body);
+      const settings=await settingsService.getGlobal();
+      if (version !== generation.current || selection !== currentKey.current) return;
+      const selectedInvoice=invoices.find(i=>i.id===invoiceId);
+      const preparedDraft=applyDraftOverride(draft,settings.communicationTemplates?.[template],{clientName:client.businessName,contactName:client.ownerName,senderName:user?.name||'Khulisa Media',materials:materials?Object.entries(materials).filter(([,item])=>['outstanding','requested'].includes(item.status)).map(([name])=>CHECKLIST_ITEMS[name as keyof typeof CHECKLIST_ITEMS]).join('\n'):'',invoiceNumber:selectedInvoice?.invoiceNumber||'[Add invoice number]',outstanding:selectedInvoice?new Intl.NumberFormat('en-ZA',{style:'currency',currency:'ZAR'}).format(selectedInvoice.outstanding):'[Add outstanding balance]',dueDate:selectedInvoice?.dueDate.slice(0,10)||'[Add due date]'});
+      setSubject(preparedDraft.subject);
+      setBody(preparedDraft.body);
       setPrepared(selection);
     } catch (e) {
       if (version === generation.current)

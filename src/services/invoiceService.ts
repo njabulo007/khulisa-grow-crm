@@ -1,3 +1,4 @@
+import { authenticatedPost } from './apiClient';
 import { deleteCrmRecord, type DeletionOptions } from './deletionService';
 import { Invoice, Payment, Project } from '@/types/models';
 import { getPackageById, resolvePackageId } from '@/config/packages';
@@ -166,10 +167,8 @@ class FirestoreInvoiceService implements InvoiceService {
   }
 
   async getNextNumber(): Promise<string> {
-    const year = new Date().getFullYear();
-    const invoices = await this.collection.getAll();
-    const count = invoices.filter((invoice) => invoice.invoiceNumber.startsWith(`KM-${year}`)).length + 1;
-    return `KM-${year}-${count.toString().padStart(4, '0')}`;
+    const result = await authenticatedPost<{ invoiceNumber: string }>('/api/notifications/push', { kind: 'workflow', action: 'reserve-number' });
+    return result.invoiceNumber;
   }
 
   async create(invoice: Omit<Invoice, 'id' | 'createdAt' | 'updatedAt'>): Promise<Invoice> {

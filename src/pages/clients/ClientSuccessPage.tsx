@@ -1,3 +1,4 @@
+import { TodayWork } from '@/components/common/TodayWork';
 import { PageHeader } from "@/components/common";
 import { ClientFollowUps } from "@/components/common/ClientFollowUps";
 import { ClientRequests } from "@/components/common/ClientRequests";
@@ -10,6 +11,7 @@ export function ClientSuccessPage() {
         title="Client Success"
         description="Keep client conversations and delivery requests moving."
       />
+      <TodayWork />
       <ClientHealthOverview />
       <ClientFollowUps />
       <ClientRequests />

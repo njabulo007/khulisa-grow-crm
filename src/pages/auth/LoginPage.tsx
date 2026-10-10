@@ -1,3 +1,6 @@
+import { toast } from 'sonner';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from '@/lib/firebase';
 import React, { useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { ArrowRight, Lock, Mail } from 'lucide-react';
@@ -107,6 +110,7 @@ export function LoginPage() {
                 {isSubmitting ? 'Signing in...' : 'Log In'}
                 {!isSubmitting && <ArrowRight className="ml-2 h-4 w-4" />}
               </Button>
+                <Button type="button" variant="link" className="w-full" onClick={async()=>{try {if(!email.trim()) throw new Error('Enter your email first.');await sendPasswordResetEmail(auth,email.trim());toast.success('If this account exists, check your inbox for password reset instructions.');} catch(e) {toast.error(e instanceof Error ? e.message : 'Could not request password reset.');}}}>Forgot password?</Button>
             </form>
 
             <p className="text-center text-sm text-muted-foreground">Access is invitation-only. Contact the owner for an invitation.</p>

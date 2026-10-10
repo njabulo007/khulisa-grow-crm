@@ -186,6 +186,23 @@ test("managers propose opportunities but cannot inject approval or approve scope
   );
 });
 
+test("invoiced opportunities preserve approved terms while approval retries remain safe", async () => {
+  const f = clientWorkFixture();
+  const proposed = (await growth(f)).data;
+  const approved = (await review(f, proposed)).data;
+  const key = `client_opportunities/${approved.id}`;
+  f.records.set(key, { ...f.records.get(key), linkedInvoiceId: "invoice-1" });
+  assert.equal((await review(f, proposed)).code, 200);
+  const changed = await review(f, approved, {
+    requestId: "change-invoiced-terms",
+    approvedPrice: 900,
+    approvedScope: "Different scope",
+  });
+  assert.equal(changed.code, 409);
+  assert.equal(f.records.get(key).approvedPrice, 1800);
+  assert.equal(f.records.get(key).approvedScope, approved.approvedScope);
+});
+
 test("requesting changes and resubmission preserve the original scope and pricing history", async () => {
   const f = clientWorkFixture();
   const record = (await growth(f)).data;

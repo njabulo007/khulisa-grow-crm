@@ -40,7 +40,7 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
     } catch { throw createHttpError(401, 'Your session is invalid. Please sign in again.'); }
     const profile = await db.collection('users').doc(decoded.uid).get();
     const authUser = await auth.getUser(decoded.uid);
-    if (authUser.disabled || !admitted(decoded.uid, profile.data(), authUser.customClaims, getIdentityConfig())) {
+    if (authUser.disabled || profile.data()?.accessDisabled === true || !admitted(decoded.uid, profile.data(), authUser.customClaims, getIdentityConfig())) {
       throw createHttpError(403, 'CRM access is invitation-only. Ask the owner for an invitation.');
     }
     return decoded;

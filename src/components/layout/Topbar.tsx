@@ -119,6 +119,7 @@ export function Topbar({ onSearch }: TopbarProps) {
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allProjects, setAllProjects] = useState<Project[]>([]);
   const [allInvoices, setAllInvoices] = useState<Invoice[]>([]);
+  const searchGeneration = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const touchStartByNotificationRef = useRef<Map<string, number>>(new Map());
   const recentlySwipedRef = useRef<Set<string>>(new Set());
@@ -126,9 +127,10 @@ export function Topbar({ onSearch }: TopbarProps) {
   useEffect(() => {
     let isMounted = true;
     const loadSearchData = async () => {
+      const generation = ++searchGeneration.current;
       setAllLeads([]); setAllClients([]); setAllProjects([]); setAllInvoices([]); setSearchUnavailable([]);
       const { leads, clients, projects, invoices, unavailable } = await loadGlobalSearchData();
-      if (!isMounted) return;
+      if (!isMounted || generation !== searchGeneration.current) return;
       setAllLeads(leads);
       setAllClients(clients);
       setAllProjects(projects);
@@ -136,8 +138,11 @@ export function Topbar({ onSearch }: TopbarProps) {
       setSearchUnavailable(unavailable);
     };
     void loadSearchData();
+    const refresh = () => void loadSearchData();
+    window.addEventListener('crm:data-changed', refresh);
     return () => {
       isMounted = false;
+      window.removeEventListener('crm:data-changed', refresh);
     };
   }, [user?.id, user?.uid, isOwner, searchRetry]);
 

@@ -31,6 +31,9 @@ export interface Lead {
   stage: LeadStage;
   assignedTo: string; // User ID
   notes: string;
+  qualification?: string;
+  nextAction?: string;
+  lostReason?: string;
   followUpDate?: string;
   followUpCount?: number;
   followUpRevision?: string;
@@ -49,6 +52,7 @@ export interface Client {
   phone: string;
   location: string;
   industry: string;
+  contactManagerId?: string;
   contractSigned: boolean;
   onboardingCompleted: boolean;
   leadId?: string; // Original lead ID if converted
@@ -84,6 +88,7 @@ export interface Project {
   dueDate: string;
   startDate: string;
   assignedTo: string;
+  buildOwnerId?: string;
   driveLink?: string;
   notes: string;
   clientUpdate?: string;
@@ -152,6 +157,8 @@ export interface Commission {
   status: CommissionStatus;
   earnedDate?: string;
   paidOutDate?: string;
+  payoutReference?: string;
+  paidOutBy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -160,6 +167,7 @@ export type CommissionCalculationMode = 'automatic' | 'manual';
 
 export interface GlobalSettings {
   id: string;
+  communicationTemplates?: Record<string,{subject:string;body:string}>;
   commissionMode: CommissionCalculationMode;
   defaultManualCommissionRate: number; // Percent value (15 = 15%)
   createdAt: string;
@@ -203,7 +211,7 @@ export const PROJECT_STATUSES: Record<ProjectStatus, { label: string; color: str
   completed: { label: 'Completed', color: 'success' },
   'on-hold': { label: 'On Hold', color: 'destructive' },
   'waiting-client': { label: 'Waiting for Client', color: 'info' },
-  delivered: { label: 'Completed', color: 'success' },
+  delivered: { label: 'Delivered', color: 'success' },
 };
 
 export const INVOICE_STATUSES: Record<InvoiceStatus, { label: string; color: string }> = {

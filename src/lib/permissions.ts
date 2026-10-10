@@ -21,7 +21,7 @@ export const getAgentLinkedClientIds = (
   const clientIdsFromProjects = projects
     .filter((project) => keys.has(project.assignedTo))
     .map((project) => project.clientId);
-  return new Set([...clientIdsFromLeads, ...clientIdsFromProjects]);
+  return new Set([...clientIdsFromLeads, ...clientIdsFromProjects, ...clients.filter(c => c.contactManagerId && keys.has(c.contactManagerId)).map(c => c.id)]);
 };
 
 export const canAccessLead = (user: User | null | undefined, lead: Lead | null | undefined): boolean => {
@@ -29,9 +29,9 @@ export const canAccessLead = (user: User | null | undefined, lead: Lead | null |
   return isOwnerUser(user) || matchesUserIdentity(user, lead.assignedTo);
 };
 
-export const canAccessProject = (user: User | null | undefined, project: Project | null | undefined): boolean => {
+export const canAccessProject = (user: User | null | undefined, project: Project | null | undefined, clients: Client[] = []): boolean => {
   if (!user || !project) return false;
-  return isOwnerUser(user) || matchesUserIdentity(user, project.assignedTo);
+  return isOwnerUser(user) || matchesUserIdentity(user, project.assignedTo) || clients.some(c=>c.id===project.clientId&&matchesUserIdentity(user,c.contactManagerId));
 };
 
 export const canAccessClient = (

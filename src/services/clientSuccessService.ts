@@ -28,6 +28,8 @@ export interface ClientRequest {
   updatedAt: string;
   version: number;
   canEditFiles: boolean;
+  dueDate?: string;
+  projectId?: string;
   attachments: Array<{
     id: string;
     name: string;
@@ -83,11 +85,11 @@ export const clientFollowUpService = {
 };
 export const newClientRequestId = () => `${Date.now()}_${crypto.randomUUID()}`;
 export const clientRequestService = {
-  list: (clientId?: string, cursor?: string) =>
+  list: (clientId?: string, cursor?: string, priority?: string) =>
     request<{ requests: ClientRequest[]; cursor: string | null }>(
       "client-request",
       "list",
-      { ...(clientId ? { clientId } : {}), ...(cursor ? { cursor } : {}) },
+      { ...(clientId ? { clientId } : {}), ...(cursor ? { cursor } : {}), ...(priority ? {priority} : {}) },
     ),
   create: (payload: {
     clientId: string;
@@ -96,6 +98,8 @@ export const clientRequestService = {
     description: string;
     category: string;
     priority: RequestPriority;
+    projectId?: string;
+    dueDate?: string;
   }) => request<{ requestId: string }>("client-request", "create", payload),
   updateStatus: (
     record: ClientRequest,

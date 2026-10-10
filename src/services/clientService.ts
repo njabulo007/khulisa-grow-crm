@@ -42,7 +42,8 @@ class FirestoreClientService implements ClientService {
       .filter((client): client is Client => !!client);
 
     const byId = new Map<string, Client>();
-    [...leadClients, ...visibleProjectClients].forEach((client) => byId.set(client.id, client));
+    const managedClients = (await Promise.all(authKeys.map(key => this.collection.getAllWhere('contactManagerId', key).catch(error=>{if(error?.code !== 'permission-denied' && error?.code !== 'firestore/permission-denied')throw error;console.warn('[Client manager access] Publish updated Firestore rules to enable dedicated assignments.');return [];})))).flat();
+    [...leadClients, ...visibleProjectClients, ...managedClients].forEach((client) => byId.set(client.id, client));
     return Array.from(byId.values());
   }
 

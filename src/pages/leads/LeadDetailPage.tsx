@@ -388,7 +388,7 @@ export function LeadDetailPage() {
             <CardHeader>
               <CardTitle>Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4"><p className="text-sm"><strong>Next action:</strong> {lead.nextAction || 'Set a next action when editing this lead.'}</p>{lead.qualification&&<p className="text-sm"><strong>Qualification:</strong> {lead.qualification}</p>}{lead.lostReason&&lead.stage==='lost'&&<p className="text-sm"><strong>Lost reason:</strong> {lead.lostReason}</p>}
               {isOwner && (
                 <div>
                   <p className="text-sm text-muted-foreground">Estimated Value</p>

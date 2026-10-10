@@ -1,3 +1,4 @@
+import { TodayWork } from '@/components/common/TodayWork';
 import { loadAgentDashboardData, agentDashboardErrorMessage } from '@/services/agentDashboardService';
 import { paymentFollowUpToday } from '@/services/paymentFollowUpService';
 import React, { useEffect, useState } from 'react';
@@ -186,10 +187,11 @@ export function AgentDashboard() {
         description="Acquire clients, follow up, and keep assigned projects moving."
       >
         <Button onClick={() => navigate('/leads')}>Manage leads</Button>
-        <Button variant="outline" onClick={() => navigate('/clients')}>Client success</Button>
+        <Button variant="outline" onClick={() => navigate('/client-success')}>Client success</Button>
         <Button variant="outline" onClick={() => navigate('/projects')}>Delivery</Button>
       </PageHeader>
 
+      <TodayWork />
       {/* Commission KPIs */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
@@ -290,7 +292,7 @@ export function AgentDashboard() {
             ) : (
               <div className="space-y-3">
                 {upcomingFollowUps.map((lead) => {
-                  const isOverdue = new Date(lead.followUpDate!) < new Date();
+                  const isOverdue = lead.followUpDate!.slice(0,10) < paymentFollowUpToday();
                   return (
                     <div
                       key={lead.id}

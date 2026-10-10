@@ -48,6 +48,7 @@ export interface GrowthRecord extends GrowthInput {
   approvedPrice: number | null;
   ownerNote: string;
   canEditProposal: boolean;
+  linkedInvoiceId?: string;
   proposedByName?: string;
   updatedAt: string;
 }

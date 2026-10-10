@@ -12,6 +12,7 @@ const clampCommissionRatePercent = (value: number): number => {
 
 const normalizeGlobalSettings = (input?: Partial<GlobalSettings>): GlobalSettings => ({
   id: GLOBAL_SETTINGS_ID,
+  communicationTemplates: input?.communicationTemplates || {},
   commissionMode: input?.commissionMode === 'manual' ? 'manual' : 'automatic',
   defaultManualCommissionRate: clampCommissionRatePercent(
     input?.defaultManualCommissionRate ?? DEFAULT_MANUAL_COMMISSION_RATE
@@ -23,7 +24,7 @@ const normalizeGlobalSettings = (input?: Partial<GlobalSettings>): GlobalSetting
 export interface SettingsService {
   getGlobal: () => Promise<GlobalSettings>;
   updateGlobal: (
-    updates: Partial<Pick<GlobalSettings, 'commissionMode' | 'defaultManualCommissionRate'>>
+    updates: Partial<Pick<GlobalSettings, 'commissionMode' | 'defaultManualCommissionRate' | 'communicationTemplates'>>
   ) => Promise<GlobalSettings>;
 }
 
@@ -43,13 +44,13 @@ class FirestoreSettingsService implements SettingsService {
       await this.collection.create(created);
       return created;
     } catch (error) {
-      console.error('[SettingsService] Falling back to default settings.', error);
-      return normalizeGlobalSettings();
+      console.error('[SettingsService] Failed to load settings.', error);
+      throw new Error('Settings could not be loaded. Check your connection before changing policy.');
     }
   }
 
   async updateGlobal(
-    updates: Partial<Pick<GlobalSettings, 'commissionMode' | 'defaultManualCommissionRate'>>
+    updates: Partial<Pick<GlobalSettings, 'commissionMode' | 'defaultManualCommissionRate' | 'communicationTemplates'>>
   ): Promise<GlobalSettings> {
     const current = await this.getGlobal();
     const next: GlobalSettings = normalizeGlobalSettings({

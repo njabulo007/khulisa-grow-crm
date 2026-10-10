@@ -36,9 +36,7 @@ export default async function handler(req, res) {
     const project = projectSnapshot.data() || {};
     if (project._deleting) throw createHttpError(409, 'Project deletion is in progress.');
     const projectStatus = typeof project.status === 'string' ? project.status : 'not-started';
-    if (isProjectClosed(projectStatus)) {
-      throw createHttpError(409, 'Cannot create links for completed/delivered projects.');
-    }
+
 
     const clientId = typeof project.clientId === 'string' ? project.clientId.trim() : '';
     if (!clientId) {
@@ -96,7 +94,7 @@ export default async function handler(req, res) {
         transaction.get(projectSnapshot.ref), transaction.get(adminDb.collection(CLIENTS_COLLECTION).doc(clientId)),
       ]);
       if (!currentProject.exists || !currentClient.exists || currentProject.data()._deleting || currentClient.data()._deleting
-        || currentProject.data().clientId !== clientId || isProjectClosed(currentProject.data().status)) {
+        || currentProject.data().clientId !== clientId) {
         throw createHttpError(409, 'The project or client changed. Refresh before creating a portal link.');
       }
       transaction.set(shareRef, newShare);

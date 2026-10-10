@@ -90,6 +90,9 @@ export function LeadsPage() {
     source: 'facebook' as LeadSource,
     stage: 'new' as LeadStage,
     assignedTo: '',
+    qualification: '',
+    nextAction: '',
+    lostReason: '',
     notes: '',
     estimatedValue: 0,
     followUpDate: '',
@@ -268,6 +271,8 @@ export function LeadsPage() {
       return;
     }
 
+    const duplicate=leads.find(l=>l.id!==selectedLead?.id&&((payload.email&&l.email?.toLowerCase()===payload.email.toLowerCase())||(payload.phone&&l.phone?.replace(/\D/g,'')===payload.phone.replace(/\D/g,''))));
+    if(duplicate)toast.warning(`Similar contact already exists: ${duplicate.businessName}. Review the existing lead to avoid duplicates.`);
     setIsSaving(true);
     try {
       if (selectedLead) {
@@ -403,7 +408,10 @@ export function LeadsPage() {
       source: 'facebook',
       stage: 'new',
       assignedTo: '',
-      notes: '',
+      qualification: '',
+    nextAction: '',
+    lostReason: '',
+    notes: '',
       estimatedValue: 0,
       followUpDate: '',
     });
@@ -431,6 +439,9 @@ export function LeadsPage() {
       source: lead.source,
       stage: lead.stage,
       assignedTo: lead.assignedTo,
+      qualification: lead.qualification || '',
+      nextAction: lead.nextAction || '',
+      lostReason: lead.lostReason || '',
       notes: lead.notes,
       estimatedValue: lead.estimatedValue,
       followUpDate: lead.followUpDate || '',
@@ -792,6 +803,7 @@ export function LeadsPage() {
                 </Select>
               </div>
             )}
+            <div className="space-y-2"><Label htmlFor="lead-next-action">Next action</Label><Input id="lead-next-action" maxLength={180} value={formData.nextAction} onChange={e=>setFormData(f=>({...f,nextAction:e.target.value}))} placeholder="Call to confirm requirements" /><Label htmlFor="lead-qualification">Qualification</Label><Input id="lead-qualification" maxLength={1000} value={formData.qualification} onChange={e=>setFormData(f=>({...f,qualification:e.target.value}))} placeholder="Need, budget, decision maker and timing" />{formData.stage==='lost'&&<><Label htmlFor="lead-lost-reason">Lost reason</Label><Input id="lead-lost-reason" maxLength={500} value={formData.lostReason} onChange={e=>setFormData(f=>({...f,lostReason:e.target.value}))} /></>}</div>
             <div className="grid gap-2">
               <Label htmlFor="notes">Notes</Label>
               <NoteEditor
@@ -827,7 +839,7 @@ export function LeadsPage() {
             <DialogDescription>
               {selectedLead?.businessName} is now marked as Won. Confirm conversion.
             </DialogDescription>
-          </DialogHeader>
+          </DialogHeader><div className="rounded-lg border p-3 text-sm space-y-2"><p className="font-medium">Client handoff</p><p>{selectedLead?.contactName} · {selectedLead?.email || selectedLead?.phone || 'Contact details not supplied'}</p><p>Next action: {selectedLead?.nextAction || 'Schedule the onboarding contact.'}</p><p>Next contact: {selectedLead?.followUpDate?.slice(0,10) || 'Set after conversion.'}</p><p className="text-muted-foreground">Confirm agreed scope, collect missing onboarding materials, then create the invoice separately.</p></div>
           <div className="grid gap-4 py-4">
             <div className="flex items-center gap-2">
               <Checkbox

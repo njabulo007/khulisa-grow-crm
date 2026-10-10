@@ -1,3 +1,4 @@
+import { PortalClientActions } from '@/components/common/PortalClientActions';
 import React, {
   useCallback,
   useEffect,
@@ -283,6 +284,7 @@ export function ProjectPortalPage() {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
           <div className="min-w-0 space-y-6">
+            <PortalClientActions key={`${token}:${data.project.review?.id || ''}`} token={token!} project={data.project} />
             {data.project.clientUpdate && (
               <Card>
                 <CardHeader>

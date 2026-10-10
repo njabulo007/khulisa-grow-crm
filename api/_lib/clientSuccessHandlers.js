@@ -44,6 +44,8 @@ const outputRequest = (snapshot, clientName, actor) => {
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
     version: value.version || 1,
+    projectId: value.projectId || '',
+    dueDate: value.dueDate || '',
     canEditFiles: actor.role === "owner" || value.submittedByUid === actor.uid,
     attachments: (value.attachments || [])
       .filter((file) => file.status === "ready")
@@ -78,7 +80,7 @@ export function createClientSuccessHandlers({
       db.collection("users").doc(uid).get(),
     ]);
     if (
-      account.disabled ||
+      account.disabled || profile.data()?.accessDisabled === true ||
       !profile.exists ||
       !["owner", "agent"].includes(profile.data().role) ||
       (!getIdentityConfig().owners.has(uid) &&
@@ -108,6 +110,7 @@ export function createClientSuccessHandlers({
     if (actor.role === "owner") return snapshot;
     const client = snapshot.data();
     const userKeys = keys(actor);
+    if (userKeys.has(client.contactManagerId)) return snapshot;
     if (id(client.leadId)) {
       const lead = await read(db.collection("leads").doc(client.leadId));
       if (
@@ -472,7 +475,7 @@ export function createClientSuccessHandlers({
         if (payload.clientId !== undefined)
           await clientContext(actor, payload.clientId);
         // Scoped pagination must use the built-in equality index ordering.
-        const query = payload.clientId
+        let query = payload.clientId
           ? db
               .collection("client_requests")
               .where("clientId", "==", payload.clientId)
@@ -481,6 +484,10 @@ export function createClientSuccessHandlers({
             : db
                 .collection("client_requests")
                 .where("submittedByUid", "==", actor.uid);
+        if (payload.priority !== undefined) {
+          if (actor.role !== 'owner' || payload.clientId || !priorities.includes(payload.priority)) throw createHttpError(400, 'Priority filtering is available in the owner work queue.');
+          query = query.where('priority','==',payload.priority);
+        }
         const { docs, cursor } = await paginate(query, payload.cursor);
         const records = [];
         const clients = new Map();
@@ -521,6 +528,12 @@ export function createClientSuccessHandlers({
           .doc(`${payload.requestId}_${hash(actor.uid).slice(0, 12)}`);
         const result = await db.runTransaction(async (tx) => {
           await clientContext(actor, payload.clientId, (item) => tx.get(item));
+          if (payload.projectId) {
+            if (!id(payload.projectId)) throw createHttpError(400,'Invalid project.');
+            const project = await tx.get(db.collection('projects').doc(payload.projectId));
+            if (!project.exists || project.data()._deleting || project.data().clientId !== payload.clientId) throw createHttpError(400,'Select a project for this client.');
+          }
+          if (payload.dueDate && (!dateValid(payload.dueDate) || !/^\d{4}-\d{2}-\d{2}$/.test(payload.dueDate))) throw createHttpError(400,'Choose a valid requested date.');
           const existing = await tx.get(ref);
           if (existing.exists) {
             if (
@@ -538,6 +551,8 @@ export function createClientSuccessHandlers({
             category: payload.category,
             priority: payload.priority,
             status: "received",
+            projectId: payload.projectId || '',
+            dueDate: payload.dueDate || '',
             submittedByUid: actor.uid,
             createdAt: timestamp,
             updatedAt: timestamp,

@@ -218,12 +218,14 @@ const syncCommissionForInvoice = async (invoice, project) => {
   const defaultRate = agentEmail === 'njabulo@gmail.com'
     ? 0.3
     : paidSalesCount > 6 ? 0.2 : 0.15;
-  const manualRate = Number(agentProfile?.commissionRate);
+  const rawManualRate = Number(agentProfile?.commissionRate ?? settings.defaultManualCommissionRate ?? 15);
+  const manualRate = agentProfile?.commissionRate !== undefined && agentProfile?.commissionRateUnit !== 'percent' && rawManualRate <= 1 ? rawManualRate * 100 : rawManualRate;
   const rate = settings.commissionMode === 'manual' && Number.isFinite(manualRate)
-    ? Math.max(0, Math.min(100, manualRate <= 1 ? manualRate : manualRate / 100))
+    ? Math.max(0, Math.min(100, manualRate / 100))
     : defaultRate;
   const status = invoice.status === 'paid' ? 'earned' : 'pending';
   const commissionSnapshot = await db.collection('commissions').where('invoiceId', '==', invoice.id).limit(1).get();
+  if (!commissionSnapshot.empty && commissionSnapshot.docs[0].data().status === 'paid-out') return;
   const payload = {
     agentId,
     invoiceId: invoice.id,
@@ -242,6 +244,10 @@ const syncCommissionForInvoice = async (invoice, project) => {
     updatedAt: nowIso(),
   };
 
+  if (!commissionSnapshot.empty) {
+    const existing = commissionSnapshot.docs[0].data();
+    for (const key of ['rate','commissionAmount','packagePrice','packageId','packageName','agentId']) if (existing[key] !== undefined) payload[key] = existing[key];
+  }
   if (commissionSnapshot.empty) {
     await db.collection('commissions').doc().set({ ...payload, createdAt: nowIso() });
   } else {
@@ -645,36 +651,8 @@ exports.sendWebPushOnNotificationCreate = onDocumentCreated('notifications/{noti
   }
 });
 
-exports.revokeProjectSharesWhenProjectClosed = onDocumentUpdated('projects/{projectId}', async (event) => {
-  const before = event.data && event.data.before ? event.data.before.data() || {} : {};
-  const after = event.data && event.data.after ? event.data.after.data() || {} : {};
-  const beforeStatus = typeof before.status === 'string' ? before.status : '';
-  const afterStatus = typeof after.status === 'string' ? after.status : '';
-  const projectId = event.params.projectId;
-  if (!projectId) return;
-
-  if (!isProjectClosed(afterStatus) || isProjectClosed(beforeStatus)) {
-    return;
-  }
-
-  const sharesSnapshot = await db.collection(PROJECT_SHARES_COLLECTION).where('projectId', '==', projectId).get();
-  if (sharesSnapshot.empty) return;
-
-  const now = nowIso();
-  const batch = db.batch();
-  sharesSnapshot.docs.forEach((docSnapshot) => {
-    const share = docSnapshot.data() || {};
-    const isActive = share.status === 'active' && !share.revokedAt;
-    if (!isActive) return;
-    batch.update(docSnapshot.ref, {
-      status: 'expired',
-      revokedAt: now,
-      revokedBy: 'system:project-closed',
-      updatedAt: now,
-    });
-  });
-  await batch.commit();
-});
+// Compatibility trigger: completion no longer revokes downloads. Expiry and owner revocation control access.
+exports.revokeProjectSharesWhenProjectClosed = onDocumentUpdated('projects/{projectId}', async () => {});
 
 exports.reconcileInvoiceAfterPaymentCreated = onDocumentCreated('payments/{paymentId}', async (event) => {
   const snapshot = event.data;
@@ -939,9 +917,7 @@ exports.createProjectShare = onCall(async (request) => {
 
   const project = projectSnapshot.data() || {};
   const projectStatus = typeof project.status === 'string' ? project.status : 'not-started';
-  if (isProjectClosed(projectStatus)) {
-    throw new HttpsError('failed-precondition', 'Cannot create links for completed/delivered projects.');
-  }
+
 
   const clientId = typeof project.clientId === 'string' ? project.clientId.trim() : '';
   if (!clientId) {
@@ -1112,13 +1088,7 @@ exports.resolveProjectShare = onCall(async (request) => {
   }
   const project = projectSnapshot.data() || {};
   const projectStatus = typeof project.status === 'string' ? project.status : 'not-started';
-  if (isProjectClosed(projectStatus)) {
-    await shareDoc.ref.update({
-      status: 'expired',
-      updatedAt: nowIso(),
-    });
-    throw new HttpsError('permission-denied', 'Project has been closed. This link is no longer available.');
-  }
+
 
   const clientId = typeof project.clientId === 'string' ? project.clientId : '';
   if (!clientId) {

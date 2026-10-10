@@ -1,3 +1,7 @@
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { authenticatedPost } from '@/services/apiClient';
 import React, { useEffect, useMemo, useState } from 'react';
 import { PageHeader, StatusBadge } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -57,6 +61,7 @@ export function CommissionsPage() {
     updateCommission,
     refresh: refreshCommissions,
   } = useCommissions();
+  const [payoutId,setPayoutId]=useState(''),[payoutReference,setPayoutReference]=useState(''),[payoutBusy,setPayoutBusy]=useState(false);
   const [agentFilter, setAgentFilter] = useState<string>('all');
   const [monthFilter, setMonthFilter] = useState<string>(getEarnedMonthKey(new Date().toISOString()));
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -69,7 +74,7 @@ export function CommissionsPage() {
     const load = async () => {
       setIsPageLoading(true);
       try {
-        await syncCommissionsFromInvoices();
+
         await refreshCommissions();
       } finally {
         if (isMounted) {
@@ -224,15 +229,7 @@ export function CommissionsPage() {
 
   const handleMarkPaidOut = async (commissionId: string) => {
     if (!isOwner) return;
-    const updated = await updateCommission(commissionId, {
-      status: 'paid-out',
-      paidOutDate: new Date().toISOString(),
-    });
-    if (!updated) {
-      toast.error('Commission record not found.');
-      return;
-    }
-    toast.success('Commission marked as paid out.');
+    setPayoutReference('');setPayoutId(commissionId);
   };
 
   return (
@@ -404,7 +401,7 @@ export function CommissionsPage() {
                       <div>
                         <p className="font-medium">{getPackageNameById(commission.packageId)}</p>
                         <p className="text-xs text-muted-foreground">
-                          Date earned: {formatEarnedDate(commission.earnedDate)}
+                          Date earned: {formatEarnedDate(commission.earnedDate)}{commission.payoutReference ? ` · Receipt: ${commission.payoutReference}` : ''}
                         </p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -421,6 +418,7 @@ export function CommissionsPage() {
       )}
         </>
       )}
+      <Dialog open={!!payoutId} onOpenChange={open=>{if(!open&&!payoutBusy)setPayoutId('');}}><DialogContent><DialogHeader><DialogTitle>Record commission payout</DialogTitle><DialogDescription>Confirm the actual transfer before marking this commission settled. The invoice must be fully paid; the settled amount stays fixed.</DialogDescription></DialogHeader><Label htmlFor="payout-reference">Bank or receipt reference</Label><Input id="payout-reference" maxLength={180} value={payoutReference} onChange={e=>setPayoutReference(e.target.value)} /><DialogFooter><Button disabled={payoutBusy||!payoutReference.trim()} onClick={async()=>{setPayoutBusy(true);try{await authenticatedPost('/api/notifications/push',{kind:'workflow',action:'payout',commissionId:payoutId,reference:payoutReference});window.dispatchEvent(new CustomEvent('crm:data-changed'));await refreshCommissions();setPayoutId('');toast.success('Payout recorded.');}catch(e){toast.error(e instanceof Error?e.message:'Payout could not be recorded.');}finally{setPayoutBusy(false);}}}>Record payout</Button></DialogFooter></DialogContent></Dialog>
     </div>
   );
 }

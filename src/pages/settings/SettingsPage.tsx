@@ -1,334 +1,537 @@
-import { InviteAgent } from '@/components/auth/InviteAgent';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { PageHeader } from '@/components/common';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/contexts/AuthContext';
-import { authService, AuthService, settingsService, syncCommissionsFromInvoices } from '@/services';
-import { CommissionCalculationMode, User } from '@/types/models';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { toast } from 'sonner';
-import { ConfirmDialog } from '@/components/common';
-
-const normalizeCommissionRatePercent = (value: number, fallbackPercent: number): number => {
-  const baseline = Number.isFinite(fallbackPercent) ? fallbackPercent : 0;
-  if (!Number.isFinite(value)) return Math.max(0, Math.min(100, baseline));
-  const resolved = value <= 1 ? value * 100 : value;
-  return Math.max(0, Math.min(100, Math.round(resolved * 100) / 100));
-};
-
+import { KHULISA_BANKING } from "@/config/banking";
+import { Textarea } from "@/components/ui/textarea";
+import { COMMUNICATION_TEMPLATES } from "@/lib/communicationDrafts";
+import { useEffect, useState } from "react";
+import { InviteAgent } from "@/components/auth/InviteAgent";
+import { PageHeader, ConfirmDialog } from "@/components/common";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useAuth } from "@/contexts/AuthContext";
+import {
+  AuthService,
+  authService,
+  settingsService,
+  syncCommissionsFromInvoices,
+} from "@/services";
+import { authenticatedPost } from "@/services/apiClient";
+import { useTheme } from "@/contexts/ThemeContext";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "@/lib/firebase";
+import type { CommissionCalculationMode } from "@/types/models";
+import { toast } from "sonner";
+type Profile = Awaited<ReturnType<typeof AuthService.listUserProfiles>>[number];
 export function SettingsPage() {
-  const navigate = useNavigate();
   const { isOwner, user } = useAuth();
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-  const [agentUsers, setAgentUsers] = useState<User[]>([]);
-  const [commissionMode, setCommissionMode] = useState<CommissionCalculationMode>('automatic');
-  const [defaultManualCommissionRate, setDefaultManualCommissionRate] = useState<number>(15);
-  const [agentCommissionRates, setAgentCommissionRates] = useState<Record<string, number>>({});
-  const [userProfiles, setUserProfiles] = useState<Awaited<ReturnType<typeof AuthService.listUserProfiles>>>([]);
-  const [rosterTarget, setRosterTarget] = useState<(typeof userProfiles)[number] | null>(null);
-  const [isRosterSaving, setIsRosterSaving] = useState(false);
-  const [roleChanges, setRoleChanges] = useState<Record<string, 'owner' | 'agent'>>({});
-
-  const applySettingsToState = useCallback((
-    mode: CommissionCalculationMode,
-    defaultRate: number,
-    agents: User[],
-  ) => {
-    const normalizedDefaultRate = normalizeCommissionRatePercent(defaultRate, 15);
-    setCommissionMode(mode);
-    setDefaultManualCommissionRate(normalizedDefaultRate);
-    setAgentCommissionRates(
-      agents.reduce<Record<string, number>>((acc, agent) => {
-        acc[agent.id] = normalizeCommissionRatePercent(agent.commissionRate, normalizedDefaultRate);
-        return acc;
-      }, {}),
-    );
-  }, []);
-
+  const { theme, setTheme } = useTheme();
+  const [templates, setTemplates] = useState<
+    Record<string, { subject: string; body: string }>
+  >({});
+  const [selectedTemplate, setSelectedTemplate] = useState("check-in");
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [mode, setMode] = useState<CommissionCalculationMode>("automatic");
+  const [rate, setRate] = useState(15);
+  const [rates, setRates] = useState<Record<string, number>>({});
+  const [busy, setBusy] = useState(false),
+    [error, setError] = useState("");
+  const [target, setTarget] = useState<{
+    profile: Profile;
+    action: string;
+  } | null>(null);
+  const [roles, setRoles] = useState<Record<string, "owner" | "agent">>({});
+  const load = async () => {
+    if (!isOwner) return;
+    try {
+      const [people, settings] = await Promise.all([
+        AuthService.listUserProfiles(),
+        settingsService.getGlobal(),
+      ]);
+      setTemplates(settings.communicationTemplates || {});
+      setProfiles(people);
+      setMode(settings.commissionMode);
+      setRate(settings.defaultManualCommissionRate);
+      setRates(
+        Object.fromEntries(
+          people.map((p) => [
+            p.uid,
+            p.commissionRate ??
+              authService.getById(p.id)?.commissionRate ??
+              settings.defaultManualCommissionRate,
+          ]),
+        ),
+      );
+      setRoles(Object.fromEntries(people.map((p) => [p.uid, p.role])));
+      setError("");
+    } catch {
+      setError("Settings could not be loaded. Retry before saving.");
+    }
+  };
   useEffect(() => {
-    let isMounted = true;
-
-    const loadData = async () => {
-      if (!isOwner) {
-        setIsLoading(false);
-        return;
-      }
-      setIsLoading(true);
-      try {
-        const [globalSettings, profiles] = await Promise.all([
-          settingsService.getGlobal(),
-          AuthService.listUserProfiles(),
-        ]);
-        const agents = authService.getAll().filter((user) => user.role === 'agent' && user.isActive !== false);
-        if (!isMounted) return;
-
-        setAgentUsers(agents);
-        setUserProfiles(profiles);
-        setRoleChanges(Object.fromEntries(profiles.map((profile) => [profile.uid, profile.role])));
-        applySettingsToState(
-          globalSettings.commissionMode,
-          globalSettings.defaultManualCommissionRate,
-          agents,
-        );
-      } catch (error) {
-        console.error('[SettingsPage] Failed to load settings.', error);
-        toast.error('Failed to load global settings.');
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    void loadData();
-    return () => {
-      isMounted = false;
-    };
-  }, [applySettingsToState, isOwner]);
-
-  const commissionModeLabel = useMemo(
-    () => (commissionMode === 'manual' ? 'Manual Mode Active' : 'Automatic Mode Active'),
-    [commissionMode],
-  );
-
-  const handleSave = async () => {
-    setIsSaving(true);
+    void load();
+  }, [isOwner]); // eslint-disable-line react-hooks/exhaustive-deps
+  const run = async (task: () => Promise<unknown>, message: string) => {
+    setBusy(true);
     try {
-      const normalizedDefaultRate = normalizeCommissionRatePercent(defaultManualCommissionRate, 15);
-      await settingsService.updateGlobal({
-        commissionMode,
-        defaultManualCommissionRate: normalizedDefaultRate,
-      });
-
-      await Promise.all(
-        userProfiles.map(async (profile) => {
-          const nextRole = roleChanges[profile.uid] || profile.role;
-          if (profile.uid !== user?.uid && nextRole !== profile.role) await AuthService.updateUserRole(profile.uid, nextRole);
-        }),
-      );
-
-      agentUsers.forEach((agent) => {
-        const nextRate = normalizeCommissionRatePercent(
-          agentCommissionRates[agent.id],
-          normalizedDefaultRate,
-        );
-        if (agent.commissionRate === nextRate) return;
-        authService.update(agent.id, { commissionRate: nextRate });
-      });
-
-      await syncCommissionsFromInvoices();
-       const refreshedProfiles = await AuthService.listUserProfiles();
-       setUserProfiles(refreshedProfiles);
-       setRoleChanges(Object.fromEntries(refreshedProfiles.map((profile) => [profile.uid, profile.role])));
-       setAgentUsers(authService.getAll().filter((user) => user.role === 'agent' && user.isActive !== false));
-      toast.success('Global settings saved and commissions refreshed.');
-    } catch (error) {
-      console.error('[SettingsPage] Failed to save settings.', error);
-      toast.error('Could not save settings.');
+      await task();
+      await load();
+      toast.success(message);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save.");
     } finally {
-      setIsSaving(false);
+      setBusy(false);
     }
   };
-
-  const handleRosterChange = async () => {
-    if (!rosterTarget || isRosterSaving) return;
-    setIsRosterSaving(true);
-    try {
-      await AuthService.updateAgentRosterState(rosterTarget.uid, !rosterTarget.isActive);
-      const profiles = await AuthService.listUserProfiles();
-      setUserProfiles(profiles);
-      setAgentUsers(authService.getAll().filter((agent) => agent.role === 'agent' && agent.isActive !== false));
-      setRosterTarget(null);
-      toast.success(rosterTarget.isActive ? 'Agent removed from the active roster.' : 'Agent restored to the roster.');
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not update the agent roster.');
-    } finally { setIsRosterSaving(false); }
+  const confirm = async () => {
+    if (!target) return;
+    const { profile, action } = target;
+    await run(async () => {
+      if (action === "archive")
+        await AuthService.updateAgentRosterState(
+          profile.uid,
+          !profile.isActive,
+        );
+      else
+        await authenticatedPost("/api/notifications/push", {
+          kind: "workflow",
+          action,
+          uid: profile.uid,
+        });
+      setTarget(null);
+    }, "Team access updated.");
   };
-
-  const handleReset = async () => {
-    setIsLoading(true);
-    try {
-       const [globalSettings, profiles] = await Promise.all([
-         settingsService.getGlobal(),
-         AuthService.listUserProfiles(),
-       ]);
-      const agents = authService.getAll().filter((user) => user.role === 'agent' && user.isActive !== false);
-       setAgentUsers(agents);
-       setUserProfiles(profiles);
-       setRoleChanges(Object.fromEntries(profiles.map((profile) => [profile.uid, profile.role])));
-      applySettingsToState(
-        globalSettings.commissionMode,
-        globalSettings.defaultManualCommissionRate,
-        agents,
-      );
-      toast.success('Settings restored.');
-    } catch (error) {
-      console.error('[SettingsPage] Failed to reset settings view.', error);
-      toast.error('Could not reset settings view.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  if (!isOwner) {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <PageHeader title="Settings" description="Manage your CRM settings" />
-        <Card>
-          <CardContent className="py-12 text-center">
-            <p className="text-muted-foreground">Only owners can change global settings.</p>
-            <Button variant="link" onClick={() => navigate('/')}>
-              Back to Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 animate-fade-in">
-      <PageHeader title="Settings" description="Manage your CRM settings" />
-      <Card>
-        <CardHeader>
-          <CardTitle>Commission Controls</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading settings...</p>
-          ) : (
+    <div className="space-y-6">
+      <PageHeader
+        title="Settings"
+        description="Personal preferences, team access and business policies."
+      />
+      {error && (
+        <p role="alert">
+          {error}{" "}
+          <Button variant="outline" onClick={() => void load()}>
+            Retry
+          </Button>
+        </p>
+      )}
+      <Tabs defaultValue="personal">
+        <TabsList className="h-auto flex flex-wrap justify-start gap-1">
+          <TabsTrigger value="personal">Personal</TabsTrigger>
+          {isOwner && (
             <>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="grid gap-2">
-                  <Label>Commission Mode</Label>
+              <TabsTrigger value="team">Team & Access</TabsTrigger>
+              <TabsTrigger value="commissions">Commission policy</TabsTrigger>
+              <TabsTrigger value="templates">Templates</TabsTrigger>
+              <TabsTrigger value="billing">Business & Billing</TabsTrigger>
+              <TabsTrigger value="maintenance">Maintenance</TabsTrigger>
+            </>
+          )}
+        </TabsList>
+        <TabsContent value="personal">
+          <Card>
+            <CardHeader>
+              <CardTitle>Your preferences</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <Label>Appearance</Label>
+              <Select
+                value={theme}
+                onValueChange={(v) => setTheme(v as "light" | "dark")}
+              >
+                <SelectTrigger className="max-w-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="light">Light</SelectItem>
+                  <SelectItem value="dark">Dark</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Use the bell menu to register background push, send a test and
+                check delivery. Scheduled follow-up reminders run daily around
+                09:00 South African time.
+              </p>
+              <Button
+                variant="outline"
+                disabled={busy || !user?.email}
+                onClick={() =>
+                  void run(
+                    () => sendPasswordResetEmail(auth, user!.email),
+                    "Password reset email requested. Check your inbox.",
+                  )
+                }
+              >
+                Reset my password
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+        {isOwner && (
+          <>
+            <TabsContent value="team">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Team & Access</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <InviteAgent />
+                  <p className="text-sm text-muted-foreground">
+                    Archive hides an agent from new assignments. Disable access
+                    blocks sign-in and existing CRM sessions. Reassign open work
+                    before disabling access.
+                  </p>
+                  {profiles.map((p) => (
+                    <div
+                      key={p.uid}
+                      className="flex flex-wrap items-center gap-3 rounded-lg border p-4"
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium break-words">
+                          {p.displayName || p.email}
+                        </p>
+                        <p className="text-xs text-muted-foreground break-all">
+                          {p.email} ·{" "}
+                          {p.accessDisabled
+                            ? "Access disabled"
+                            : p.invitationPending
+                              ? "Invitation pending"
+                              : "Access enabled"}
+                        </p>
+                      </div>
+                      <Select
+                        disabled={busy || p.uid === user?.uid}
+                        value={roles[p.uid] || p.role}
+                        onValueChange={(v) =>
+                          setRoles((r) => ({
+                            ...r,
+                            [p.uid]: v as "owner" | "agent",
+                          }))
+                        }
+                      >
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="owner">Owner</SelectItem>
+                          <SelectItem value="agent">Agent</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {roles[p.uid] !== p.role && (
+                        <Button
+                          disabled={busy}
+                          onClick={() =>
+                            void run(
+                              () =>
+                                AuthService.updateUserRole(p.uid, roles[p.uid]),
+                              "Role updated.",
+                            )
+                          }
+                        >
+                          Save role
+                        </Button>
+                      )}
+                      {p.role === "agent" && (
+                        <>
+                          <Button
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() =>
+                              setTarget({ profile: p, action: "archive" })
+                            }
+                          >
+                            {p.isActive ? "Archive" : "Restore roster"}
+                          </Button>
+                          <Button
+                            variant={
+                              p.accessDisabled ? "outline" : "destructive"
+                            }
+                            disabled={busy}
+                            onClick={() =>
+                              setTarget({
+                                profile: p,
+                                action: p.accessDisabled
+                                  ? "restore-access"
+                                  : "disable-access",
+                              })
+                            }
+                          >
+                            {p.accessDisabled
+                              ? "Restore access"
+                              : "Disable access"}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="commissions">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Commission policy</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <Label>Calculation mode</Label>
                   <Select
-                    value={commissionMode}
-                    onValueChange={(value) => setCommissionMode(value as CommissionCalculationMode)}
+                    value={mode}
+                    onValueChange={(v) =>
+                      setMode(v as CommissionCalculationMode)
+                    }
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="max-w-xs">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="manual">Manual (owner-controlled rates)</SelectItem>
-                      <SelectItem value="automatic">Automatic (sales threshold logic)</SelectItem>
+                      <SelectItem value="automatic">
+                        Automatic sales thresholds
+                      </SelectItem>
+                      <SelectItem value="manual">
+                        Approved manual rates
+                      </SelectItem>
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-muted-foreground">{commissionModeLabel}</p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="default-manual-rate">Default Manual Rate (%)</Label>
+                  <Label htmlFor="default-rate">Default rate (%)</Label>
                   <Input
-                    id="default-manual-rate"
+                    id="default-rate"
+                    className="max-w-xs"
                     type="number"
+                    min="0"
+                    max="100"
                     step="0.01"
-                    min={0}
-                    max={100}
-                    value={defaultManualCommissionRate}
-                    onChange={(event) =>
-                      setDefaultManualCommissionRate(Number(event.target.value))
+                    value={rate}
+                    onChange={(e) => setRate(Number(e.target.value))}
+                  />
+                  {profiles
+                    .filter((p) => p.role === "agent")
+                    .map((p) => (
+                      <div
+                        key={p.uid}
+                        className="flex flex-wrap items-center gap-3"
+                      >
+                        <Label className="flex-1" htmlFor={`rate-${p.uid}`}>
+                          {p.displayName || p.email} (%)
+                        </Label>
+                        <Input
+                          id={`rate-${p.uid}`}
+                          className="w-32"
+                          type="number"
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          value={rates[p.uid] ?? rate}
+                          onChange={(e) =>
+                            setRates((r) => ({
+                              ...r,
+                              [p.uid]: Number(e.target.value),
+                            }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  <p className="text-sm text-muted-foreground">
+                    Rates are shared across devices. Existing settled payouts
+                    are preserved. Changing policy does not silently recalculate
+                    historical commissions.
+                  </p>
+                  <Button
+                    disabled={busy || !!error}
+                    onClick={() =>
+                      void run(async () => {
+                        if (
+                          ![rate, ...Object.values(rates)].every(
+                            (v) => Number.isFinite(v) && v >= 0 && v <= 100,
+                          )
+                        )
+                          throw new Error("Rates must be between 0 and 100.");
+                        await authenticatedPost("/api/notifications/push", {
+                          kind: "workflow",
+                          action: "commission-rates",
+                          rates: profiles
+                            .filter((p) => p.role === "agent")
+                            .map((p) => ({
+                              uid: p.uid,
+                              rate: rates[p.uid] ?? rate,
+                            })),
+                        });
+                        await settingsService.updateGlobal({
+                          commissionMode: mode,
+                          defaultManualCommissionRate: rate,
+                        });
+                      }, "Commission policy saved.")
+                    }
+                  >
+                    Save commission policy
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="templates">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Shared communication templates</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <Label htmlFor="shared-template">Template</Label>
+                  <select
+                    id="shared-template"
+                    className="h-10 w-full rounded-md border bg-background px-3"
+                    value={selectedTemplate}
+                    onChange={(e) => setSelectedTemplate(e.target.value)}
+                  >
+                    {Object.entries(COMMUNICATION_TEMPLATES).map(
+                      ([key, label]) => (
+                        <option key={key} value={key}>
+                          {label}
+                        </option>
+                      ),
+                    )}
+                  </select>
+                  <Label htmlFor="shared-subject">Email subject</Label>
+                  <Input
+                    id="shared-subject"
+                    value={templates[selectedTemplate]?.subject || ""}
+                    maxLength={180}
+                    onChange={(e) =>
+                      setTemplates((t) => ({
+                        ...t,
+                        [selectedTemplate]: {
+                          subject: e.target.value,
+                          body: t[selectedTemplate]?.body || "",
+                        },
+                      }))
                     }
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Used when an agent has no custom rate in manual mode.
+                  <Label htmlFor="shared-body">Draft message</Label>
+                  <Textarea
+                    id="shared-body"
+                    rows={12}
+                    value={templates[selectedTemplate]?.body || ""}
+                    maxLength={4000}
+                    onChange={(e) =>
+                      setTemplates((t) => ({
+                        ...t,
+                        [selectedTemplate]: {
+                          body: e.target.value,
+                          subject: t[selectedTemplate]?.subject || "",
+                        },
+                      }))
+                    }
+                    placeholder="Leave blank to use the standard template."
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Available fields:{" "}
+                    {
+                      "{clientName}, {contactName}, {senderName}, {materials}, {invoiceNumber}, {outstanding}, {dueDate}"
+                    }
+                    . Drafts remain editable and are sent manually. Never
+                    include private credentials.
                   </p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">Team & Access</h3>
-                <InviteAgent />
-                <p className="text-xs text-muted-foreground">Archived agents leave the rankings and assignment menus. Their records and sign-in accounts are retained; archiving does not revoke access.</p>
-                <Table>
-                  <TableHeader><TableRow><TableHead>User</TableHead><TableHead>Email</TableHead><TableHead>Role</TableHead><TableHead>Roster</TableHead></TableRow></TableHeader>
-                  <TableBody>
-                    {userProfiles.map((profile) => (
-                      <TableRow key={profile.uid}>
-                        <TableCell className="font-medium">{profile.displayName || profile.email}</TableCell>
-                        <TableCell>{profile.email}</TableCell>
-                        <TableCell>
-                          <Select disabled={profile.uid === user?.uid} value={roleChanges[profile.uid] || profile.role} onValueChange={(value) => setRoleChanges((prev) => ({ ...prev, [profile.uid]: value as 'owner' | 'agent' }))}>
-                            <SelectTrigger className="w-[140px]"><SelectValue /></SelectTrigger>
-                            <SelectContent><SelectItem value="owner">Owner</SelectItem><SelectItem value="agent">Agent</SelectItem></SelectContent>
-                          </Select>
-                        </TableCell>
-                        <TableCell>
-                          {profile.role === 'agent' ? (
-                            <Button variant="outline" size="sm" disabled={isSaving || isRosterSaving || profile.uid === user?.uid}
-                              onClick={() => setRosterTarget(profile)}>
-                              {profile.isActive ? 'Archive agent' : 'Restore agent'}
-                            </Button>
-                          ) : <span className="text-xs text-muted-foreground">Owner</span>}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-medium">Agent Commission Rates (%)</h3>
-                {agentUsers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No agent users found.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Agent</TableHead>
-                        <TableHead>Email</TableHead>
-                        <TableHead className="w-[220px] text-right">Rate (%)</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {agentUsers.map((agent) => (
-                        <TableRow key={agent.id}>
-                          <TableCell className="font-medium">{agent.name}</TableCell>
-                          <TableCell>{agent.email}</TableCell>
-                          <TableCell className="text-right">
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min={0}
-                              max={100}
-                              value={agentCommissionRates[agent.id] ?? defaultManualCommissionRate}
-                              onChange={(event) =>
-                                setAgentCommissionRates((prev) => ({
-                                  ...prev,
-                                  [agent.id]: Number(event.target.value),
-                                }))
-                              }
-                              className="ml-auto w-[180px]"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
-
-              <div className="flex items-center justify-end gap-2">
-                <Button variant="outline" onClick={() => void handleReset()} disabled={isSaving}>
-                  Reset
-                </Button>
-                <Button onClick={() => void handleSave()} disabled={isSaving}>
-                  {isSaving ? 'Saving...' : 'Save Settings'}
-                </Button>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-      <ConfirmDialog open={Boolean(rosterTarget)} onOpenChange={(open) => { if (!open && !isRosterSaving) setRosterTarget(null); }}
-        title={rosterTarget?.isActive ? 'Archive agent?' : 'Restore agent?'}
-        description={rosterTarget?.isActive
-          ? `${rosterTarget.displayName || rosterTarget.email} will be removed from rankings and new assignment menus. Existing leads, clients, projects, and financial records are preserved.`
-          : 'This agent will appear in rankings and assignment menus again.'}
-        confirmLabel={isRosterSaving ? 'Saving...' : rosterTarget?.isActive ? 'Archive agent' : 'Restore agent'}
-        onConfirm={() => void handleRosterChange()} />
+                  <Button
+                    disabled={busy || !!error}
+                    onClick={() =>
+                      void run(
+                        () =>
+                          settingsService.updateGlobal({
+                            communicationTemplates: templates,
+                          }),
+                        "Shared templates saved.",
+                      )
+                    }
+                  >
+                    Save templates
+                  </Button>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="billing">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Business & Billing</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="font-medium">KHULISA MEDIA (PTY) LTD</p>
+                  <p className="text-sm">
+                    info@khulisamedia.co.za · 063 031 0393
+                  </p>
+                  {Object.entries(KHULISA_BANKING).map(([key, value]) => (
+                    <p key={key} className="text-sm">
+                      <span className="text-muted-foreground">
+                        {key.replace(/([A-Z])/g, " $1")}:{" "}
+                      </span>
+                      {value}
+                    </p>
+                  ))}
+                  <p className="text-sm text-muted-foreground">
+                    These verified payment details appear on invoices. Record
+                    receipts through an issued invoice; drafts do not count as
+                    amounts billed. Invoice numbering is reserved centrally and
+                    cannot be reused after deletion.
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+            <TabsContent value="maintenance">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Maintenance</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    Repair historical unpaid commission records only when
+                    needed. Settled payouts remain unchanged. Client assignment
+                    repair is available from Clients.
+                  </p>
+                  <Button
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(
+                        syncCommissionsFromInvoices,
+                        "Commission repair completed.",
+                      )
+                    }
+                  >
+                    Repair unpaid commissions
+                  </Button>
+                  <p className="text-sm text-muted-foreground">
+                    Use Reports to export business summaries. Keep Firebase
+                    backups and billing records before deleting client data.
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </>
+        )}
+      </Tabs>
+      <ConfirmDialog
+        open={!!target}
+        onOpenChange={(open) => {
+          if (!open && !busy) setTarget(null);
+        }}
+        title={
+          target?.action === "archive"
+            ? "Change roster status?"
+            : target?.action === "restore-access"
+              ? "Restore agent access?"
+              : "Disable agent access?"
+        }
+        description={
+          target?.action === "archive"
+            ? "This changes the assignment roster only. It does not revoke access."
+            : "This changes sign-in access for this agent. Their records and financial history are retained."
+        }
+        confirmLabel={busy ? "Saving…" : "Confirm"}
+        onConfirm={() => void confirm()}
+      />
     </div>
   );
 }

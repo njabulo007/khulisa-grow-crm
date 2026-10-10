@@ -186,6 +186,11 @@ export function createClientRelationshipHandlers({
           throw createHttpError(404, "Record unavailable.");
         if (previous.exists)
           return { record: { id: ref.id, ...current }, duplicate: true };
+        if (!feedback && current?.linkedInvoiceId)
+          throw createHttpError(
+            409,
+            "This opportunity has been invoiced. Create a new proposal for changes to its scope or price.",
+          );
         if (payload.action === "create" ? snapshot.exists : !snapshot.exists)
           throw createHttpError(
             409,

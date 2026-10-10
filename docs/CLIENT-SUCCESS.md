@@ -46,3 +46,6 @@ Queues load in pages of 50 and refresh on demand. Counts and filters apply to lo
 ## Validation
 
 Automated tests cover signed API calls, current assignment checks, owner-only progress changes, duplicate request/contact retries, optional repeat dates, daily reminders through the existing protected cron, pagination, attachment limits, encrypted round-trip/tampering, and retryable deletion. Browser checks exercise manager-to-owner workflows on desktop and mobile with simulated accounts/storage. Production Firebase permissions, Vercel Blob access, and push delivery must be tested after deployment; this environment has no live owner session or production secrets.
+
+
+For the connected daily workflow, client tabs, portal verification and deployment steps, see [Workflow rollout](WORKFLOW-ROLLOUT.md).

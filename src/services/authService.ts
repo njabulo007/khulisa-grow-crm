@@ -38,6 +38,9 @@ export interface AppUserProfile {
   role: Role;
   hasAppUserId: boolean;
   isActive: boolean;
+  accessDisabled?: boolean;
+  commissionRate?: number;
+  invitationPending?: boolean;
 }
 
 function getFallbackRoleForEmail(_email?: string | null): Role {
@@ -183,6 +186,9 @@ export const AuthService = {
           role,
           hasAppUserId: Boolean(appUserId),
           isActive: data.isActive !== false,
+          accessDisabled: data.accessDisabled === true,
+          invitationPending: data.invitationPending === true,
+          commissionRate: typeof data.commissionRate === 'number' ? (data.commissionRateUnit === 'percent' || data.commissionRate > 1 ? data.commissionRate : data.commissionRate * 100) : undefined,
         });
       });
 

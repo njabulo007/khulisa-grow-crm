@@ -146,14 +146,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             ? 0
             : getDefaultCommissionRatePercentForAgent(normalizedEmail);
         const existingCommissionRate =
-          existingByTargetId?.commissionRate ??
+          profile.commissionRate ?? existingByTargetId?.commissionRate ??
           existingByEmail?.commissionRate;
         const nextCommissionRate =
           profile.role === 'owner'
             ? 0
-            : isSpecialCommissionAgentEmail(normalizedEmail)
-              ? defaultCommissionRate
-              : existingCommissionRate ?? defaultCommissionRate;
+            : existingCommissionRate ?? defaultCommissionRate;
 
         if (existingByTargetId) {
           authService.update(existingByTargetId.id, {

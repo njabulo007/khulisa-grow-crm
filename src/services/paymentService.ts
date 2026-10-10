@@ -1,4 +1,5 @@
-﻿import { Payment } from '@/types/models';
+import { authenticatedPost } from './apiClient';
+import { Payment } from '@/types/models';
 import { assertValid, validatePayment } from '@/lib/domainValidation';
 import { FirestoreCollection, generateId, getCurrentAuthRole, getTimestamp } from './storage';
 import { invoiceService } from './invoiceService';
@@ -15,6 +16,7 @@ export interface PaymentService {
 }
 
 class FirestorePaymentService implements PaymentService {
+  private readonly paymentAttempts = new Map<string, string>();
   private readonly collection = new FirestoreCollection<Payment>('payments');
 
   async getAll(): Promise<Payment[]> {
@@ -37,12 +39,12 @@ class FirestorePaymentService implements PaymentService {
 
   async create(payment: Omit<Payment, 'id' | 'createdAt'>): Promise<Payment> {
     assertValid(validatePayment(payment));
-    const created = {
-      ...payment,
-      id: generateId(),
-      createdAt: getTimestamp(),
-    };
-    const persisted = await this.collection.create(created);
+    const key = JSON.stringify(payment);
+    const requestId = this.paymentAttempts.get(key) || crypto.randomUUID();
+    this.paymentAttempts.set(key, requestId);
+    const persisted = await authenticatedPost<Payment>('/api/notifications/push', { kind: 'workflow', action: 'payment', requestId, ...payment });
+    this.paymentAttempts.delete(key);
+    window.dispatchEvent(new CustomEvent('crm:data-changed'));
     return persisted;
   }
 

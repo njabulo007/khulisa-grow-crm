@@ -35,6 +35,7 @@ export function clientWorkFixture(extra = {}) {
     id: path.split("/").slice(1).join("/"),
     get: async () => snapshot(ref(path)),
     delete: async () => records.delete(path),
+    set: async (data,options) => records.set(path,options?.merge ? {...records.get(path),...data}:data),
     update: async (patch) =>
       records.set(path, { ...records.get(path), ...patch }),
   });
@@ -68,7 +69,7 @@ export function clientWorkFixture(extra = {}) {
         docs = docs.filter((doc) =>
           ordering?.[1] === "desc" ? doc.id < cursor : doc.id > cursor,
         );
-      return { docs: docs.slice(0, size) };
+      return { docs: docs.slice(0, size), empty: docs.length === 0, size: docs.slice(0,size).length };
     },
   });
   const db = {
@@ -77,6 +78,7 @@ export function clientWorkFixture(extra = {}) {
       doc: (key) => ref(`${name}/${key}`),
     }),
   };
+  db.batch=()=>{const deletes=[];return {delete:ref=>deletes.push(ref.path),commit:async()=>{for(const key of deletes)records.delete(key);}};};
   let queue = Promise.resolve();
   db.runTransaction = (operation) => {
     const result = queue.then(async () => {
@@ -215,6 +217,8 @@ export function clientWorkFixture(extra = {}) {
     sendPush: async () => {},
     runClientFollowUps: handlers.runDue,
   });
+  state.db = db;
+  state.auth = auth;
   state.runDue = handlers.runDue;
   state.handlers = handlers;
   return state;

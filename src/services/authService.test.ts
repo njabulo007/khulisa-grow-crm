@@ -62,7 +62,7 @@ describe('canonical agent roster', () => {
       profile('legacy-doc', { uid: 'athi-uid', email: 'athi@example.com', role: 'agent', displayName: 'Duplicate', isActive: true }),
       profile('athi-uid', { uid: 'athi-uid', appUserId: 'athi', email: 'athi@example.com', role: 'agent', displayName: 'Athi', isActive: false }),
     ] });
-    await expect(AuthService.listUserProfiles()).resolves.toEqual([
+    await expect(AuthService.listUserProfiles()).resolves.toMatchObject([
       { id: 'athi', uid: 'athi-uid', email: 'athi@example.com', role: 'agent', displayName: 'Athi', isActive: false, hasAppUserId: true },
     ]);
   });

@@ -75,8 +75,11 @@ export function InvoiceDetailPage() {
   const [editForm, setEditForm] = useState<InvoiceFormState | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<Awaited<ReturnType<typeof invoiceService.getPaymentSummary>>>(null);
 
+  const [showPaymentDialog, setShowPaymentDialog] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentForm, setPaymentForm] = useState({ amount: '', date: new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Johannesburg' }), method: 'eft', reference: '' });
   useEffect(() => {
-    void syncCommissionsFromInvoices();
+
   }, []);
 
   const loadData = useCallback(async () => {
@@ -277,63 +280,14 @@ export function InvoiceDetailPage() {
   };
 
   const handleRecordPayment = async () => {
-    if (!isOwner || !user) {
-      toast.error('Only owners can record payments.');
-      return;
-    }
-
-    const amountInput = window.prompt('Payment amount');
-    const amount = Number(amountInput);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('Enter a valid payment amount.');
-      return;
-    }
-    if (balance > 0 && amount > balance + 0.01) {
-      toast.error('Payment amount cannot exceed the balance.');
-      return;
-    }
-
-    const dateInput = window.prompt('Payment date (YYYY-MM-DD)', new Date().toISOString().slice(0, 10));
-    if (!dateInput) return;
-    const methodInput = (window.prompt('Method: eft, cash, card, other', 'eft') || 'eft').toLowerCase();
-    const method = ['eft', 'cash', 'card', 'other'].includes(methodInput) ? methodInput : 'other';
-    const reference = window.prompt('Reference (optional)', '') || 'PAYMENT';
-
-    await paymentService.create({
-      invoiceId: invoice.id,
-      amount,
-      method: method as Payment['method'],
-      reference,
-      paidAt: toIsoFromDateInput(dateInput),
-      createdBy: user.id,
-    });
-
-    await refreshPaymentData();
-    toast.success('Payment recorded.');
-  };
-
-  const handleMarkRemainingPaid = async () => {
-    if (!isOwner || !user) {
-      toast.error('Only owners can mark invoices as paid.');
-      return;
-    }
-    if (balance <= 0) {
-      toast.error('Invoice is already fully paid.');
-      return;
-    }
-
-    // Chosen approach: create a balancing payment for the remaining amount.
-    await paymentService.create({
-      invoiceId: invoice.id,
-      amount: balance,
-      method: 'other',
-      reference: 'MANUAL-SETTLEMENT',
-      paidAt: new Date().toISOString(),
-      createdBy: user.id,
-    });
-
-    await refreshPaymentData();
-    toast.success('Invoice marked as paid.');
+    if (!isOwner || !user || paymentBusy) return;
+    setPaymentBusy(true);
+    try {
+      const amount = Number(paymentForm.amount);
+      if (!Number.isFinite(amount) || amount <= 0 || amount > balance || !paymentForm.reference.trim() || !/^\d{4}-\d{2}-\d{2}$/.test(paymentForm.date)) throw new Error('Enter a valid amount within the balance, date and reference.');
+      await paymentService.create({invoiceId:invoice.id,amount,method:paymentForm.method as Payment['method'],reference:paymentForm.reference.trim(),paidAt:toIsoFromDateInput(paymentForm.date),createdBy:user.id});
+      await refreshPaymentData();setShowPaymentDialog(false);toast.success('Payment recorded and commission reconciled.');
+    } catch(e) {toast.error(e instanceof Error ? e.message : 'Payment could not be recorded.');} finally {setPaymentBusy(false);}
   };
 
   const handleDeleteInvoice = async () => {
@@ -518,12 +472,10 @@ export function InvoiceDetailPage() {
                   </p>
                 </div>
                 {isOwner && <div className="grid gap-2">
-                  <Button onClick={() => void handleRecordPayment()} disabled={balance <= 0}>
+                  <Button onClick={() => { setPaymentForm(f=>({...f,amount:String(balance),reference:''}));setShowPaymentDialog(true); }} disabled={balance <= 0}>
                     Record Payment
                   </Button>
-                  <Button variant="outline" onClick={() => void handleMarkRemainingPaid()} disabled={balance <= 0}>
-                    Mark Remaining as Paid
-                  </Button>
+
                 </div>}
               </CardContent>
             </Card>
@@ -587,6 +539,13 @@ export function InvoiceDetailPage() {
         </div>
       </div>
 
+      <Dialog open={showPaymentDialog} onOpenChange={open=>{if(!paymentBusy)setShowPaymentDialog(open);}}><DialogContent><DialogHeader><DialogTitle>Record verified payment</DialogTitle><DialogDescription>Remaining balance: {formatCurrency(balance)}. Record money actually received; this also updates commission eligibility.</DialogDescription></DialogHeader>
+        <Label htmlFor="payment-amount">Amount (R)</Label><Input id="payment-amount" type="number" min="0.01" max={balance} step="0.01" value={paymentForm.amount} onChange={e=>setPaymentForm(f=>({...f,amount:e.target.value}))} />
+        <Label htmlFor="payment-date">Date received</Label><Input id="payment-date" type="date" value={paymentForm.date} onChange={e=>setPaymentForm(f=>({...f,date:e.target.value}))} />
+        <Label>Method</Label><Select value={paymentForm.method} onValueChange={method=>setPaymentForm(f=>({...f,method}))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['eft','cash','card','other'].map(m=><SelectItem key={m} value={m}>{m.toUpperCase()}</SelectItem>)}</SelectContent></Select>
+        <Label htmlFor="payment-reference">Bank or receipt reference</Label><Input id="payment-reference" maxLength={180} value={paymentForm.reference} onChange={e=>setPaymentForm(f=>({...f,reference:e.target.value}))} />
+        <DialogFooter><Button disabled={paymentBusy} onClick={()=>void handleRecordPayment()}>{paymentBusy ? 'Recording…' : 'Record payment'}</Button></DialogFooter>
+      </DialogContent></Dialog>
       <Dialog
         open={showEditDialog}
         onOpenChange={(open) => {

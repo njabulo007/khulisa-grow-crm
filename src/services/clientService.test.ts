@@ -48,11 +48,11 @@ it('keeps related-document checks bounded with more than ten assigned leads and 
   mocks.query.mockImplementation(async (name, field, value) => {
     if (name === 'leads') return leads;
     if (name === 'projects') return projects;
-    expect(typeof value).toBe('string'); expect(field).toBe('leadId');
+    expect(typeof value).toBe('string'); if (field === 'contactManagerId') return []; expect(field).toBe('leadId');
     return [{ id: `client-${value}` }];
   });
   mocks.ids.mockImplementation(async (_name, id) => ({ id }));
   expect(await clientService.getAll()).toHaveLength(30);
-  expect(mocks.query.mock.calls.filter(([name]) => name === 'clients')).toHaveLength(15);
+  expect(mocks.query.mock.calls.filter(([name, field]) => name === 'clients' && field === 'leadId')).toHaveLength(15);
   expect(mocks.ids).toHaveBeenCalledTimes(15);
 });

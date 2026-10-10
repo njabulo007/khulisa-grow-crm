@@ -1,4 +1,7 @@
-import { adminDb } from '../_lib/firebaseAdmin.js';
+import { createPortalNotifier } from '../_lib/portalNotifications.js';
+import { createPushHandler } from '../_lib/pushHandlers.js';
+import { createPortalResponseHandler, materialLabels } from '../_lib/portalWorkflowHandlers.js';
+import { adminDb, adminAuth, adminMessaging } from '../_lib/firebaseAdmin.js';
 import { createHttpError, handleRouteError, json, methodNotAllowed, parseBody } from '../_lib/http.js';
 import {
   CLIENTS_COLLECTION,
@@ -18,6 +21,8 @@ export default async function handler(req, res) {
     return methodNotAllowed(res, ['POST']);
   }
 
+  if (parseBody(req).action) return createPortalResponseHandler({ db: adminDb, notify: createPortalNotifier({db:adminDb,auth:adminAuth,sendPush:async (notificationId,userId)=>{const response={setHeader(){},status(code){this.code=code;return this;},json(data){this.data=data;}};await createPushHandler({db:adminDb,messaging:adminMessaging,authenticate:async()=>({uid:userId,role:'agent'}),requireOwner:async()=>{}})({method:'POST',body:{notificationId}},response);if(response.code>=400)throw new Error('Push failed.');}}) })(req, res);
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const payload = parseBody(req);
     const token = typeof payload.token === 'string' ? payload.token.trim() : '';
@@ -60,15 +65,7 @@ export default async function handler(req, res) {
     const project = projectSnapshot.data() || {};
     if (project._deleting) throw createHttpError(403, 'This project is being deleted.');
     const projectStatus = typeof project.status === 'string' ? project.status : 'not-started';
-    if (isProjectClosed(projectStatus)) {
-      await shareDoc.ref.update({
-        status: 'expired',
-        revokedAt: nowIso(),
-        revokedBy: 'system:project-closed',
-        updatedAt: nowIso(),
-      });
-      throw createHttpError(403, 'Project has been closed. This link is no longer available.');
-    }
+
 
     const clientId = typeof project.clientId === 'string' ? project.clientId.trim() : '';
     if (!clientId) {
@@ -83,17 +80,20 @@ export default async function handler(req, res) {
     const client = clientSnapshot.data() || {};
     if (client._deleting) throw createHttpError(403, 'This client is being deleted.');
     let contact = null;
-    if (typeof project.assignedTo === 'string' && project.assignedTo && !project.assignedTo.includes('/')) {
-      let profile = await adminDb.collection('users').doc(project.assignedTo).get();
+    const contactId = client.contactManagerId || project.assignedTo;
+    if (typeof contactId === 'string' && contactId && !contactId.includes('/')) {
+      let profile = await adminDb.collection('users').doc(contactId).get();
       if (!profile.exists) {
-        const matches = await adminDb.collection('users').where('appUserId', '==', project.assignedTo).limit(1).get();
+        const matches = await adminDb.collection('users').where('appUserId', '==', contactId).limit(1).get();
         profile = matches.docs[0];
       }
       const person = profile?.data();
-      if (person?.isActive !== false && typeof person?.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email)) {
+      if (person?.isActive !== false && person?.accessDisabled !== true && typeof person?.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(person.email)) {
         contact = { name: person.displayName || person.name || 'Khulisa Media', email: person.email };
       }
     }
+    const care = (await adminDb.collection('client_care').doc(clientId).get()).data();
+    const materials = Object.entries(materialLabels).filter(([key]) => care ? ['outstanding','requested'].includes(care.checklist?.[key]?.status) : !client.onboardingCompleted).map(([key,label]) => ({key,label}));
     await shareDoc.ref.update({
       lastViewedAt: nowIso(),
       updatedAt: nowIso(),
@@ -119,6 +119,8 @@ export default async function handler(req, res) {
         startDate: parseOptionalIsoDate(project.startDate),
         dueDate: parseOptionalIsoDate(project.dueDate),
         notes: '',
+        materials,
+        review: project.portalReview ? { id: project.portalReview.id, title: project.portalReview.title, version: project.portalReview.version, instructions: project.portalReview.instructions, status: project.portalReview.status, decision: project.portalReview.decision || null } : null,
         clientUpdate: typeof project.clientUpdate === 'string' ? project.clientUpdate : '',
         contact,
         driveLink: typeof project.driveLink === 'string' ? project.driveLink : null,

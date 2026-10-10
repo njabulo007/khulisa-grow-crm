@@ -190,6 +190,22 @@ export const normalizeForFirestore = (value: unknown): unknown => {
   return value;
 };
 
+// Short-lived, identity-scoped list cache. Never persist CRM data in localStorage.
+const listCache = new Map<string,{expires:number;promise:Promise<unknown>}>();
+let cacheGeneration = 0;
+const clearLists = () => {cacheGeneration++;listCache.clear();};
+if (typeof window !== 'undefined') window.addEventListener('crm:data-changed', clearLists);
+const cachedList = async <T>(key:string,load:()=>Promise<T>):Promise<T> => {
+  const uid=auth?.currentUser?.uid;
+  if(!uid)return load();
+  const scoped=`${uid}:${key}`,existing=listCache.get(scoped);
+  if(existing&&existing.expires>Date.now())return existing.promise as Promise<T>;
+  if(listCache.size>=100)listCache.clear();
+  const generation=cacheGeneration;
+  const promise=load().catch(error=>{if(generation===cacheGeneration)listCache.delete(scoped);throw error;});
+  listCache.set(scoped,{expires:Date.now()+15000,promise});return promise;
+};
+
 export class FirestoreCollection<T extends { id: string }> {
   private readonly collectionRef;
 
@@ -209,13 +225,11 @@ export class FirestoreCollection<T extends { id: string }> {
   }
 
   async getAll(): Promise<T[]> {
-    const snapshot = await getDocs(this.collectionRef);
-    return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
+    return cachedList(`${this.collectionName}:all`,async()=>{const snapshot=await getDocs(this.collectionRef);return snapshot.docs.map(docSnapshot=>this.mapSnapshot(docSnapshot));});
   }
 
   async getAllWhere(field: string, value: unknown): Promise<T[]> {
-    const snapshot = await getDocs(query(this.collectionRef, where(field, '==', value)));
-    return snapshot.docs.map((docSnapshot) => this.mapSnapshot(docSnapshot));
+    return cachedList(`${this.collectionName}:${field}:${JSON.stringify(value)}`,async()=>{const snapshot=await getDocs(query(this.collectionRef,where(field,'==',value)));return snapshot.docs.map(docSnapshot=>this.mapSnapshot(docSnapshot));});
   }
 
   async getAllWhereFields(fields: Record<string, unknown>): Promise<T[]> {

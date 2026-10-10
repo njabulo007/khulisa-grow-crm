@@ -54,6 +54,8 @@ export interface PublicProjectPortalData {
     startDate: string | null;
     dueDate: string | null;
     notes: string;
+    materials?: Array<{key:string;label:string}>;
+    review?: {id:string;title:string;version:string;instructions:string;status:string;decision?:string|null} | null;
     clientUpdate?: string;
     contact?: { name: string; email: string } | null;
     driveLink: string | null;

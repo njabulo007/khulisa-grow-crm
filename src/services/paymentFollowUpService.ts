@@ -16,7 +16,7 @@ const request = <T>(action: string, payload = {}) => authenticatedPost<T>('/api/
 });
 
 export const paymentFollowUpService = {
-  list: (invoiceId?: string) => request<{ followUps: PaymentFollowUp[]; backgroundConfigured: boolean }>('list', invoiceId ? { invoiceId } : {}),
+  list: (invoiceId?: string, all = false) => request<{ followUps: PaymentFollowUp[]; backgroundConfigured: boolean }>('list', { ...(invoiceId ? {invoiceId} : {}), ...(all ? {all} : {}) }),
   save: (invoiceId: string, followUpDate: string, notes: string) => request('save', { invoiceId, followUpDate, notes }),
   cancel: (invoiceId: string) => request('cancel', { invoiceId }),
   check: () => request<{ notified: number; stopped: number; failed: number }>('check'),

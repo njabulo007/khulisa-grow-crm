@@ -1,3 +1,4 @@
+import { authService } from '@/services/authService';
 import { repairClientProjectAccess } from '@/services/clientAccessService';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -73,6 +74,7 @@ export function ClientsPage() {
     phone: '',
     location: '',
     industry: '',
+    contactManagerId: '',
     contractSigned: false,
     onboardingCompleted: false,
   });
@@ -211,6 +213,7 @@ export function ClientsPage() {
           return;
         }
         const contactUpdates = { ...payload };
+        if (!isOwner) delete contactUpdates.contactManagerId;
         delete contactUpdates.contractSigned;
         delete contactUpdates.onboardingCompleted;
         await updateClient(selectedClient.id, contactUpdates);
@@ -256,7 +259,8 @@ export function ClientsPage() {
       phone: '',
       location: '',
       industry: '',
-      contractSigned: false,
+      contactManagerId: '',
+    contractSigned: false,
       onboardingCompleted: false,
     });
     setSelectedClient(null);
@@ -275,6 +279,7 @@ export function ClientsPage() {
       phone: client.phone,
       location: client.location,
       industry: client.industry,
+      contactManagerId: client.contactManagerId || '',
       contractSigned: client.contractSigned,
       onboardingCompleted: client.onboardingCompleted,
     });
@@ -541,6 +546,7 @@ export function ClientsPage() {
                 />
               </div>
             </div>
+            {isOwner && <div className="space-y-2"><Label htmlFor="contact-manager">Client contact manager</Label><select id="contact-manager" className="h-10 w-full rounded-md border bg-background text-foreground px-3" value={formData.contactManagerId} onChange={e=>setFormData(f=>({...f,contactManagerId:e.target.value}))}><option value="">Use existing lead/project assignments</option>{authService.getAll().filter(a=>a.role==='agent'&&a.isActive!==false).map(a=><option key={a.id} value={a.uid||a.id}>{a.name}</option>)}</select></div>}
             {!selectedClient ? <div className="flex items-center gap-2">
               <Checkbox id="contractSigned" checked={formData.contractSigned} onCheckedChange={checked => setFormData({ ...formData, contractSigned: !!checked })} />
               <Label htmlFor="contractSigned">Contract Signed</Label>

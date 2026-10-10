@@ -1,3 +1,5 @@
+import { projectService } from '@/services/projectService';
+import type { Project } from '@/types/models';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -215,6 +217,8 @@ function RequestCard({
           />
         </div>
       )}
+      <p className="text-xs text-muted-foreground">Request reference: {record.id}{record.dueDate ? ` · Requested by ${record.dueDate}` : ''}</p>
+      {record.projectId && <Link className="text-sm text-primary-text hover:underline" to={`/projects/${record.projectId}`}>Open linked project</Link>}
       {record.ownerUpdate && (
         <div className="rounded-lg bg-muted/50 p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -289,8 +293,12 @@ export function ClientRequests({ clientId }: { clientId?: string }) {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("website-change");
   const [priority, setPriority] = useState<RequestPriority>("normal");
+  const [dueDate,setDueDate] = useState('');
+  const [projectId,setProjectId] = useState('');
   const [attachments, setAttachments] = useState<File[]>([]);
   const [formOpen, setFormOpen] = useState(false);
+  const [projectChoices,setProjectChoices]=useState<Project[]>([]);
+  useEffect(()=>{let live=true;if(formOpen)void projectService.getAll().then(p=>{if(live)setProjectChoices(p);}).catch(()=>{if(live)setProjectChoices([]);});return()=>{live=false;};},[formOpen,clientId]);
   const submission = useRef<{ input: string; id: string } | null>(null);
   const generation = useRef(0);
   const load = useCallback(
@@ -367,6 +375,8 @@ export function ClientRequests({ clientId }: { clientId?: string }) {
         description,
         category,
         priority,
+        dueDate,
+        projectId,
       });
       if (submission.current?.input !== input)
         submission.current = { input, id: newClientRequestId() };
@@ -377,10 +387,13 @@ export function ClientRequests({ clientId }: { clientId?: string }) {
         description,
         category,
         priority,
+        dueDate,
+        projectId,
       });
       savedId = result.requestId;
       // The request is durable before files upload. Never create duplicates to retry a file failure.
       setTitle("");
+      setDueDate('');setProjectId('');
       setDescription("");
       setFormOpen(false);
       submission.current = null;
@@ -515,6 +528,7 @@ export function ClientRequests({ clientId }: { clientId?: string }) {
                 </select>
               </div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="request-date">Requested date (optional)</Label><Input id="request-date" type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)} /></div><div className="space-y-2"><Label htmlFor="request-project">Project (optional)</Label><select id="request-project" className="h-10 w-full rounded-md border bg-background text-foreground px-3" value={projectId} onChange={e=>setProjectId(e.target.value)}><option value="">General client request</option>{projectChoices.filter(p=>p.clientId===selectedClient).map(p=><option key={p.id} value={p.id}>{p.name}</option>)}</select></div></div>
             <NoteEditor
               label="Request details"
               value={description}

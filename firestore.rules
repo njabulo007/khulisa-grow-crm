@@ -6,6 +6,7 @@ service cloud.firestore {
       return request.auth != null
         && request.auth.token.get('role', null) in ['owner', 'agent']
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('accessDisabled', false) != true
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', null) in ['owner', 'agent'];
     }
 
@@ -121,7 +122,7 @@ service cloud.firestore {
     // get() prevents Firestore from proving leadId constraints on the query.
     function clientDataAccessible(data, clientId) {
       return signedIn()
-        && (leadAccessible(data.get('leadId', null))
+        && (sameUser(data.get('contactManagerId', null)) || leadAccessible(data.get('leadId', null))
           || assignedClientProject(data, clientId));
     }
 
@@ -200,16 +201,15 @@ service cloud.firestore {
         && optionalAvailable(request.resource.data, 'leadId', 'leads')
         && (isOwner()
         || (clientAccessible(clientId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasNone(['createdBy', 'leadId', 'visibleTo', 'projectAccess'])));
+          && request.resource.data.diff(resource.data).affectedKeys().hasNone(['createdBy', 'leadId', 'visibleTo', 'projectAccess', 'contactManagerId'])));
       allow delete: if false;
     }
 
     match /projects/{projectId} {
-      allow read: if isOwner() || sameUser(resource.data.assignedTo);
+      allow read: if isOwner() || sameUser(resource.data.assignedTo) || (available('clients',resource.data.clientId) && sameUser(get(/databases/$(database)/documents/clients/$(resource.data.clientId)).data.get('contactManagerId',null)));
       allow create: if validProjectData(request.resource.data)
         && available('clients', request.resource.data.clientId)
-        && (isOwner()
-        || (sameUser(request.resource.data.assignedTo) && sameUser(request.resource.data.createdBy)));
+        && isOwner();
       allow update: if validProjectData(request.resource.data)
         && resource.data.get('_deleting', false) != true
         && available('clients', request.resource.data.clientId)

@@ -38,7 +38,7 @@ export function createPaymentFollowUpHandler({ db, auth, authenticate, requireOw
     const project = validId(invoice.projectId) ? await read(db.collection('projects').doc(invoice.projectId)) : null;
     if (identity.role !== 'owner') {
       const keys = new Set([identity.uid, identity.appUserId, configuredAlias(identity.uid)].filter(validId));
-      let accessible = project?.exists && !project.data()._deleting && keys.has(project.data().assignedTo);
+      let accessible = keys.has(client?.data()?.contactManagerId) || project?.exists && !project.data()._deleting && keys.has(project.data().assignedTo);
       if (!accessible && validId(client?.data()?.leadId)) {
         const lead = await read(db.collection('leads').doc(client.data().leadId));
         accessible = lead.exists && !lead.data()._deleting && keys.has(lead.data().assignedTo);
@@ -148,7 +148,8 @@ export function createPaymentFollowUpHandler({ db, auth, authenticate, requireOw
       if (!['list', 'save', 'cancel'].includes(payload.action)) throw createHttpError(400, 'Invalid payment follow-up action.');
       if (payload.action === 'list') {
         if (payload.invoiceId !== undefined && !validId(payload.invoiceId)) throw createHttpError(400, 'Invalid invoice ID.');
-        const records = await db.collection('payment_follow_ups').where('userUid', '==', identity.uid).get();
+        if (payload.all === true && identity.role !== 'owner') throw createHttpError(403, 'Only owners can review all payment follow-ups.');
+        const records = payload.all === true ? await db.collection('payment_follow_ups').where('status','==','scheduled').limit(100).get() : await db.collection('payment_follow_ups').where('userUid', '==', identity.uid).get();
         const followUps = [];
         for (const snapshot of records.docs) {
           const record = snapshot.data();

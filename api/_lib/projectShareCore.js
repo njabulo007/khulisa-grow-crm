@@ -34,14 +34,14 @@ export const tokenHash = (token) => crypto.createHash('sha256').update(token).di
 
 export const isProjectClosed = (status) => status === 'completed' || status === 'delivered';
 
-export const computeShareStatus = (share) => {
+export const computeShareStatus = (share, currentTime = Date.now()) => {
   const expiresAt = parseOptionalIsoDate(share.expiresAt);
   const revokedAt = parseOptionalIsoDate(share.revokedAt);
   const status = typeof share.status === 'string' ? share.status : 'active';
 
   if (status === 'revoked' || revokedAt) return 'revoked';
   if (status === 'expired') return 'expired';
-  if (expiresAt && new Date(expiresAt).getTime() <= Date.now()) return 'expired';
+  if (expiresAt && new Date(expiresAt).getTime() <= currentTime) return 'expired';
   return 'active';
 };
 

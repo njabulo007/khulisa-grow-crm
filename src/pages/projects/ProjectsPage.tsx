@@ -56,6 +56,7 @@ export function ProjectsPage() {
     status: 'not-started' as ProjectStatus,
     startDate: new Date().toISOString().slice(0, 10),
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    buildOwnerId: user?.uid || user?.id || '',
     assignedTo: '',
     notes: '',
   });
@@ -117,7 +118,7 @@ export function ProjectsPage() {
   const projects = useMemo(() => {
     const visible = isOwner
       ? allProjects
-      : allProjects.filter((project) => canAccessProject(user, project));
+      : allProjects.filter((project) => canAccessProject(user, project, allClients));
 
     return visible.filter((project) => {
       if (!isOwner && !accessibleClientIds.has(project.clientId)) return false;
@@ -143,6 +144,7 @@ export function ProjectsPage() {
       status: 'not-started',
       startDate: new Date().toISOString().slice(0, 10),
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      buildOwnerId: user?.uid || user?.id || '',
       assignedTo: isOwner ? '' : user?.id || '',
       notes: '',
     });
@@ -150,7 +152,7 @@ export function ProjectsPage() {
 
   const handleCreate = async () => {
     if (isCreating) return;
-    if (!user) return;
+    if (!user || !isOwner) return;
     if (!formData.name.trim() || !formData.clientId || !formData.dueDate || !formData.startDate) {
       toast.error('Please complete all required project fields.');
       return;
@@ -172,6 +174,7 @@ export function ProjectsPage() {
       dueDate: formData.dueDate,
       startDate: formData.startDate,
       assignedTo,
+      buildOwnerId: formData.buildOwnerId,
       notes: formData.notes.trim(),
       createdBy: user.id,
       });
@@ -223,7 +226,7 @@ export function ProjectsPage() {
   return (
     <div className="space-y-6 animate-fade-in">
       <PageHeader title="Projects" description="Track your project deliverables">
-        <Button
+        {isOwner ? <Button
           onClick={() => {
             resetForm();
             setShowAddDialog(true);
@@ -231,7 +234,7 @@ export function ProjectsPage() {
         >
           <Plus className="mr-2 h-4 w-4" />
           Add Project
-        </Button>
+        </Button> : <Button onClick={() => navigate('/client-success#client-requests')}>Request new work</Button>}
       </PageHeader>
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -444,6 +447,7 @@ export function ProjectsPage() {
                 </Select>
               </div>
             )}
+            {isOwner && <div className="space-y-2"><Label htmlFor="build-owner">Build owner</Label><select id="build-owner" className="h-10 w-full rounded-md border bg-background text-foreground px-3" value={formData.buildOwnerId} onChange={e=>setFormData(f=>({...f,buildOwnerId:e.target.value}))}>{authService.getAll().filter(a=>a.role==='owner'&&a.isActive!==false).map(a=><option key={a.id} value={a.uid||a.id}>{a.name}</option>)}{!authService.getAll().some(a=>a.role==='owner')&&<option value={user?.uid||user?.id}>{user?.name||'Owner'}</option>}</select></div>}
             <div className="grid gap-2">
               <Label htmlFor="project-notes">Notes</Label>
               <Input

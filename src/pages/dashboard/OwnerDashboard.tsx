@@ -1,3 +1,7 @@
+import { cashByMonth } from '@/lib/cashReporting';
+import { paymentService } from '@/services/paymentService';
+import type { Payment } from '@/types/models';
+import { TodayWork } from '@/components/common/TodayWork';
 import { getAgentPerformance } from '@/lib/agentPerformance';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -71,6 +75,7 @@ export function OwnerDashboard() {
   const [clients, setClients] = useState<Awaited<ReturnType<typeof clientService.getAll>>>([]);
   const [projects, setProjects] = useState<Awaited<ReturnType<typeof projectService.getAll>>>([]);
   const latestLoadRef = React.useRef(0);
+  const [payments,setPayments] = useState<Payment[]>([]);
   const [invoices, setInvoices] = useState<Awaited<ReturnType<typeof invoiceService.getAll>>>([]);
 
   useEffect(() => {
@@ -79,17 +84,19 @@ export function OwnerDashboard() {
       const loadId = ++latestLoadRef.current;
       setIsLoading(true);
       try {
-        const [nextLeads, nextClients, nextProjects, nextInvoices] = await Promise.all([
+        const [nextLeads, nextClients, nextProjects, nextInvoices, nextPayments] = await Promise.all([
           leadService.getAll(),
           clientService.getAll(),
           projectService.getAll(),
           invoiceService.getAll(),
+          paymentService.getAll(),
         ]);
         if (!isMounted || loadId !== latestLoadRef.current) return;
         setLeads(nextLeads);
         setClients(nextClients);
         setProjects(nextProjects);
         setInvoices(nextInvoices);
+        setPayments(nextPayments);
         setError(null);
       } catch (loadError) {
         console.error('[OwnerDashboard] Failed to load dashboard data.', loadError);
@@ -122,14 +129,8 @@ export function OwnerDashboard() {
 
     // Revenue calculations
     const getInvoiceAmount = (invoice: Invoice) => getInvoiceEffectiveTotals(invoice, projectLookup).total;
-    const paidInvoices = invoices.filter((invoice) => invoice.status === 'paid');
-    const totalRevenue = paidInvoices.reduce((sum, invoice) => sum + getInvoiceAmount(invoice), 0);
-
-    const paidRevenueByMonth = paidInvoices.reduce((acc, invoice) => {
-      const key = toMonthKey(getInvoiceIssueDate(invoice));
-      acc[key] = (acc[key] || 0) + getInvoiceAmount(invoice);
-      return acc;
-    }, {} as Record<string, number>);
+    const totalRevenue = payments.reduce((sum,p)=>sum+p.amount,0);
+    const paidRevenueByMonth = Object.fromEntries(Object.entries(cashByMonth(payments)).map(([key,value])=>[key,value.revenue]));
 
     const monthlyRevenue = paidRevenueByMonth[currentMonthKey] || 0;
     const previousMonthRevenue = paidRevenueByMonth[previousMonthKey] || 0;
@@ -155,7 +156,7 @@ export function OwnerDashboard() {
     const activeProjects = projects.filter((project) => project.status !== 'completed' && project.status !== 'delivered');
     const overdueProjects = projects.filter((project) => {
       const dueDate = new Date(project.dueDate);
-      return dueDate < now && project.status !== 'completed' && project.status !== 'delivered';
+      return project.dueDate.slice(0,10) < new Date(Date.now()+7200000).toISOString().slice(0,10) && project.status !== 'completed' && project.status !== 'delivered';
     });
 
     const agentStats: AgentPerformance[] = getAgentPerformance(users, leads, clients, projects, invoices);
@@ -188,7 +189,7 @@ export function OwnerDashboard() {
       monthlyData,
       recentInvoices,
     };
-  }, [clients, invoices, leads, projectLookup, projects, users]);
+  }, [clients, invoices, leads, payments, projectLookup, projects, users]);
 
   const pipelineData = Object.entries(LEAD_STAGES).map(([key, value]) => ({
     name: value.label,
@@ -234,9 +235,10 @@ export function OwnerDashboard() {
       />
 
       {/* KPI Cards */}
+      <TodayWork />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KPICard
-          title="Total Revenue"
+          title="Cash Received"
           value={formatCurrency(stats.totalRevenue)}
           subtitle="All time"
           icon={<DollarSign className="h-5 w-5" />}
@@ -245,7 +247,7 @@ export function OwnerDashboard() {
         <KPICard
           title="This Month"
           value={formatCurrency(stats.monthlyRevenue)}
-          subtitle="Paid invoices issued this month"
+          subtitle="Payments received this month"
           icon={<TrendingUp className="h-5 w-5" />}
           variant="blue"
           trend={{ value: stats.monthlyTrend, label: 'vs last month' }}
@@ -268,10 +270,10 @@ export function OwnerDashboard() {
 
       {/* Charts Row */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Revenue Trend */}
+        {/* Cash Received by Month */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Revenue Trend</CardTitle>
+            <CardTitle className="text-lg">Cash Received by Month</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">

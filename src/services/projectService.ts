@@ -1,3 +1,4 @@
+import { clientService } from './clientService';
 import { resolveDeliveryStatus } from '@/lib/projectDeliveryPermissions';
 import { saveProjectWithClientAccess } from './clientAccessService';
 import { deleteCrmRecord } from './deletionService';
@@ -108,11 +109,12 @@ class FirestoreProjectService implements ProjectService {
   }
 
   async getAll(): Promise<Project[]> {
-    const projects = (await getCurrentAuthRole()) === 'owner'
-      ? await this.collection.getAll()
-      : this.collection.getAllWhereIn('assignedTo', await getCurrentAuthKeys());
-    const resolvedProjects = await projects;
-    return resolvedProjects.map((project) => this.normalizeProject(project));
+    if ((await getCurrentAuthRole()) === 'owner') return (await this.collection.getAll()).map(p=>this.normalizeProject(p));
+    const keys=await getCurrentAuthKeys();
+    const assigned=await this.collection.getAllWhereIn('assignedTo',keys);
+    const managed=(await clientService.getAll()).filter(c=>c.contactManagerId&&keys.includes(c.contactManagerId));
+    const related=(await Promise.all(managed.map(c=>this.collection.getAllWhere('clientId',c.id)))).flat();
+    return [...new Map([...assigned,...related].map(p=>[p.id,p])).values()].map(p=>this.normalizeProject(p));
   }
 
   async getById(id: string): Promise<Project | undefined> {

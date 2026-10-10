@@ -1,7 +1,7 @@
 import { getCommissionRateForAgent } from '@/config/commission';
 import { getPackageById, type PackageId } from '@/config/packages';
 import { Commission, CommissionStatus, Invoice } from '@/types/models';
-import { authService } from './authService';
+import { AuthService } from './authService';
 import { clientService } from './clientService';
 import { commissionService } from './commissionService';
 import { invoiceService } from './invoiceService';
@@ -14,7 +14,7 @@ const roundCurrency = (value: number): number => Math.round(value * 100) / 100;
 const normalizeCommissionRatePercent = (value: number, fallbackPercent: number): number => {
   const baseline = Number.isFinite(fallbackPercent) ? fallbackPercent : 0;
   if (!Number.isFinite(value)) return Math.max(0, Math.min(100, baseline));
-  const resolved = value <= 1 ? value * 100 : value;
+  const resolved = value;
   return Math.max(0, Math.min(100, resolved));
 };
 const rateFromPercent = (percent: number): number =>
@@ -89,7 +89,7 @@ export async function syncCommissionsFromInvoices(): Promise<void> {
   // repair path for historical records and manual migrations.
   const [globalSettings, users, invoices, projects, clients, leads, existingCommissions] = await Promise.all([
     settingsService.getGlobal(),
-    authService.getAll(),
+    AuthService.listUserProfiles().then(profiles=>profiles.map(p=>({...p,name:p.displayName||p.email}))),
     invoiceService.getAll(),
     projectService.getAll(),
     clientService.getAll(),
@@ -151,7 +151,8 @@ export async function syncCommissionsFromInvoices(): Promise<void> {
       continue;
     }
 
-    const nextStatus: CommissionStatus = existing.status === 'paid-out' ? 'paid-out' : baseStatus;
+    if (existing.status === 'paid-out') continue;
+    const nextStatus: CommissionStatus = baseStatus;
     const nextEarnedDate = resolveEarnedDate(invoice, existing, nextStatus);
     const needsUpdate =
       existing.agentId !== agentId ||

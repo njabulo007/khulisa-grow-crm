@@ -1,3 +1,4 @@
+import { authenticatedPost } from '@/services/apiClient';
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useClientSectionRefresh } from "@/hooks/useClientSectionRefresh";
@@ -547,6 +548,7 @@ export function ClientGrowth({ clientId }: { clientId?: string }) {
                 <NoteContent text={record.ownerNote} />
               </div>
             )}
+            {isOwner && record.status === 'approved' && (record.linkedInvoiceId ? <Link to={`/invoices/${record.linkedInvoiceId}`} className="text-sm text-primary-text hover:underline">Open linked invoice</Link> : <Button variant="outline" disabled={saving || !record.approvedPrice} onClick={async()=>{setSaving(true);try{const result=await authenticatedPost<{invoiceId:string}>('/api/notifications/push',{kind:'workflow',action:'growth-invoice',opportunityId:record.id});await load();window.dispatchEvent(new CustomEvent('crm:data-changed'));window.location.assign(`/invoices/${result.invoiceId}`);}catch(e){toast.error(e instanceof Error?e.message:'Could not create invoice.');}finally{setSaving(false);}}}>Create invoice from approved scope</Button>)}
             {record.canEditProposal && (
               <Button
                 size="sm"
@@ -572,7 +574,7 @@ export function ClientGrowth({ clientId }: { clientId?: string }) {
                 Revise proposal
               </Button>
             )}
-            {isOwner && (
+            {isOwner && !record.linkedInvoiceId && (
               <GrowthReview
                 key={`${record.id}:${record.version}`}
                 record={record}
