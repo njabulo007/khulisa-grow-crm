@@ -11,11 +11,21 @@ Open **Client Success** in the sidebar for the follow-up queue and requests. Eac
 - Managers see their submitted requests in the global queue; a client's request panel shows team requests for that accessible client. Managers can change their own open-request attachments, and the owner controls progress. Completed requests remain available as history. The owner can remove completed-request attachments to reclaim storage.
 - New requests notify owners; progress updates notify the submitter while they retain client access. Due/overdue check-ins generate a daily bell/push reminder. Notification links open the relevant client section. These are internal reminders; the CRM does not automatically contact clients.
 
+## Client health and onboarding
+
+Open a client to assess **Healthy**, **Needs Attention**, or **At Risk**, with a formatted reason and last-contact date. Clients remain **Not assessed** until reviewed. Calls, emails, WhatsApp messages, and meetings recorded through Client activity update a shared last-contact timestamp; notes alone do not. Historic contacts can be entered manually.
+
+Managers can **Save and escalate to owner** for concerns. This saves an open escalation, adds client history, and sends the owner a bell/push notification linking to Client health. Only the owner can resolve it, with a resolution note. Health status and escalation resolution are separate: resolving a concern does not silently change its health rating. Client Success shows assigned clients for managers and all clients for owners, with filters for concerns, risk, escalations, unassessed clients, and incomplete onboarding.
+
+The onboarding checklist tracks **Logo and brand assets**, **Website content**, **Access credentials**, **Signed contract**, and **Client requirements**. Each item has a status (Outstanding, Requested, Received, or Not Required) and notes. All five must be Received or Not Required for onboarding to be complete. Saving the checklist also keeps the existing client completion and signed-contract flags consistent. Old completed clients retain that status and show a reminder to review their detailed checklist; no bulk migration is performed. Client forms now direct users to the checklist rather than the old completion checkbox. Access notes should describe required accounts and invitations, never contain passwords or secret keys.
+
+Care records live in the server-only `client_care` collection and are deleted with their client. Updates recheck actual client assignments, protect against conflicting edits, and deduplicate retry requests. The overview fetches summaries for at most 50 clients per page on demand, after loading the existing accessible-client list; it adds no realtime listener. No new variables, routes, indexes, or rules are needed when the current deny-by-default rules are already published. Production push delivery still needs a live test.
+
 ## Deployment
 
 Let Vercel deploy `main`, then reopen/refresh the PWA. No new API route, environment variable, composite index, Firestore rule change, or data migration is required. This reuses the existing Firebase Admin connection, `BLOB_READ_WRITE_TOKEN`, `CRON_SECRET`, and the existing `0 7 * * *` cron (about 09:00 Africa/Johannesburg).
 
-The current invite-only `firestore.rules` must already be published, including its deny-by-default catch-all. New `client_follow_ups` and `client_requests` collections are server-only. Server checks use current lead/project assignments and trusted identity aliases; reassigned clients disappear from manager queues and stop generating their reminders.
+The current invite-only `firestore.rules` must already be published, including its deny-by-default catch-all. New `client_follow_ups`, `client_requests`, and `client_care` collections are server-only. Server checks use current lead/project assignments and trusted identity aliases; reassigned clients disappear from manager queues and stop generating their reminders.
 
 ## Storage and usage
 

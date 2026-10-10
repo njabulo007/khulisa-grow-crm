@@ -89,6 +89,7 @@ class FirestoreNotificationService implements NotificationService {
   private mapSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Notification {
     const data = snapshot.data() as Record<string, unknown>;
     const type =
+      data.type === 'client_health' ||
       data.type === 'client_follow_up' ||
       data.type === 'client_request' ||
       data.type === 'invoice_paid' ||

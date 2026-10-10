@@ -70,6 +70,12 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
     };
   }, [clientId, user?.uid, retryKey]);
 
+  useEffect(() => {
+    const refresh = () => setRetryKey(key => key + 1);
+    window.addEventListener('crm:client-work-changed', refresh);
+    return () => window.removeEventListener('crm:client-work-changed', refresh);
+  }, [clientId, user?.uid]);
+
   const save = useCallback(async () => {
     if (!user || !description.trim() || isSaving) return;
     setIsSaving(true);
@@ -79,7 +85,7 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
       await clientFollowUpService.complete({ clientId, requestId: attempt.current.id, type,
         description: description.trim(), nextFollowUpDate: nextDate, waitingForResponse: !!nextDate && waiting, notes: description.trim() });
       setDescription(''); setNextDate(''); setWaiting(false); attempt.current = null;
-      clientWorkChanged(); setRetryKey(key => key + 1);
+      clientWorkChanged();
       toast.success(nextDate ? 'Interaction saved and next check-in scheduled.' : 'Interaction saved. No further check-in scheduled.');
       void paymentFollowUpService.check().catch(() => {});
     } catch (error) {

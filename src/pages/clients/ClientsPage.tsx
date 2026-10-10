@@ -210,7 +210,10 @@ export function ClientsPage() {
           toast.error('You do not have permission to update this client');
           return;
         }
-        await updateClient(selectedClient.id, payload);
+        const contactUpdates = { ...payload };
+        delete contactUpdates.contractSigned;
+        delete contactUpdates.onboardingCompleted;
+        await updateClient(selectedClient.id, contactUpdates);
         toast.success('Client updated successfully');
       } else {
         await createClient({
@@ -538,24 +541,11 @@ export function ClientsPage() {
                 />
               </div>
             </div>
-            <div className="flex items-center gap-6">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="contractSigned"
-                  checked={formData.contractSigned}
-                  onCheckedChange={(checked) => setFormData({ ...formData, contractSigned: !!checked })}
-                />
-                <Label htmlFor="contractSigned">Contract Signed</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="onboardingCompleted"
-                  checked={formData.onboardingCompleted}
-                  onCheckedChange={(checked) => setFormData({ ...formData, onboardingCompleted: !!checked })}
-                />
-                <Label htmlFor="onboardingCompleted">Onboarding Complete</Label>
-              </div>
-            </div>
+            {!selectedClient ? <div className="flex items-center gap-2">
+              <Checkbox id="contractSigned" checked={formData.contractSigned} onCheckedChange={checked => setFormData({ ...formData, contractSigned: !!checked })} />
+              <Label htmlFor="contractSigned">Contract Signed</Label>
+            </div> : null}
+            <p className="text-sm text-muted-foreground">Track onboarding items and signed contracts in the client's onboarding checklist.</p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAddDialog(false)}>

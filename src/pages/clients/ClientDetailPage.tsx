@@ -2,8 +2,7 @@ import { agentDashboardErrorMessage } from '@/services/agentDashboardService';
 import { ClientFollowUps } from '@/components/common/ClientFollowUps';
 import { ClientRequests } from '@/components/common/ClientRequests';
 import { ClientActivityPanel } from '@/components/common/ClientActivityPanel';
-import { Checkbox } from '@/components/ui/checkbox';
-import { toast } from 'sonner';
+import { ClientCarePanel } from '@/components/common/ClientCarePanel';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
@@ -57,13 +56,12 @@ export function ClientDetailPage() {
   const [client, setClient] = useState<Client | undefined>(undefined);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [paymentsByInvoice, setPaymentsByInvoice] = useState<Record<string, Payment[]>>({});
-  const [isSavingOnboarding, setIsSavingOnboarding] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
 
   useEffect(() => {
-    if (!isLoaded || !client?.id || !['#client-activity', '#client-follow-ups', '#client-requests'].includes(location.hash)) return;
+    if (!isLoaded || !client?.id || !['#client-activity', '#client-follow-ups', '#client-requests', '#client-health', '#client-onboarding'].includes(location.hash)) return;
     const frame = requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' }));
     return () => cancelAnimationFrame(frame);
   }, [isLoaded, client?.id, location.hash]);
@@ -296,6 +294,7 @@ export function ClientDetailPage() {
             </CardContent>
           </Card>
 
+          <ClientCarePanel key={`care-${client.id}`} clientId={client.id} onChange={(care) => setClient(current => current?.id === client.id ? { ...current, onboardingCompleted: care.onboardingCompleted, contractSigned: care.checklist.contract.status === 'received' } : current)} />
           <ClientFollowUps key={`follow-${client.id}`} clientId={client.id} />
           <ClientActivityPanel key={client.id} clientId={client.id} />
           <ClientRequests key={`requests-${client.id}`} clientId={client.id} />
@@ -530,16 +529,8 @@ export function ClientDetailPage() {
                 <span className={`font-medium ${client.contractSigned ? 'text-success-text' : 'text-muted-foreground'}`}>Contract Signed</span>
               </div>
               <div className={`flex items-center gap-3 p-3 rounded-lg border transition-all ${client.onboardingCompleted ? 'bg-success/5 border-success/30' : 'bg-muted/30 border-border/40'}`}>
-                <Checkbox id="client-onboarding-complete" checked={client.onboardingCompleted} disabled={isSavingOnboarding} onCheckedChange={async (checked) => {
-                  setIsSavingOnboarding(true);
-                  try {
-                    const updated = await clientService.update(client.id, { onboardingCompleted: checked === true });
-                    if (!updated) throw new Error('Client could not be updated.');
-                    setClient((current) => current?.id === updated.id ? updated : current); toast.success('Onboarding status updated.');
-                  } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update onboarding.'); }
-                  finally { setIsSavingOnboarding(false); }
-                }} />
-                <label htmlFor="client-onboarding-complete" className={`font-medium ${client.onboardingCompleted ? 'text-success-text' : 'text-muted-foreground'}`}>Onboarding Completed</label>
+                {client.onboardingCompleted ? <CheckCircle className="h-5 w-5 text-success-text" /> : <XCircle className="h-5 w-5 text-muted-foreground" />}
+                <a href="#client-onboarding" className="font-medium text-primary-text hover:underline">{client.onboardingCompleted ? 'Onboarding complete' : 'Review onboarding checklist'}</a>
               </div>
             </CardContent>
           </Card>

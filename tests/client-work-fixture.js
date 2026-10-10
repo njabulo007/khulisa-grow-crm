@@ -90,7 +90,13 @@ export function clientWorkFixture(extra = {}) {
           );
           return item.get();
         },
-        set: (item, data) => writes.push(() => records.set(item.path, data)),
+        set: (item, data, options) =>
+          writes.push(() =>
+            records.set(
+              item.path,
+              options?.merge ? { ...records.get(item.path), ...data } : data,
+            ),
+          ),
         update: (item, data) =>
           writes.push(() =>
             records.set(item.path, { ...records.get(item.path), ...data }),

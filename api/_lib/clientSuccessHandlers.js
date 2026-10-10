@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { createClientCareHandler } from "./clientCareHandlers.js";
 import { FieldPath } from "firebase-admin/firestore";
 import { createHttpError, json, methodNotAllowed, parseBody } from "./http.js";
 import { readIdentityConfig } from "./migrationHandlers.js";
@@ -164,7 +165,7 @@ export function createClientSuccessHandlers({
       console.error("[Client work push]", { code: error.code || "unknown" });
     }
   };
-  const notifyOwners = async (requestId, request) => {
+  const notifyOwners = async (requestId, request, notification = {}) => {
     const profiles = await db
       .collection("users")
       .where("role", "==", "owner")
@@ -183,6 +184,7 @@ export function createClientSuccessHandlers({
             requestId,
             title: "New client request",
             message: `${request.title} · ${request.priority} priority. Open the work queue to review.`,
+            ...notification,
           });
       } catch (error) {
         console.error("[Client work owner notification]", {
@@ -290,12 +292,25 @@ export function createClientSuccessHandlers({
         await clientContext(actor, payload.clientId, (item) => tx.get(item));
         const current = await tx.get(ref);
         const previous = activity ? await tx.get(activity) : null;
+        const careRef = db.collection("client_care").doc(payload.clientId);
+        const contact =
+          activity && payload.type !== "note" ? await tx.get(careRef) : null;
         if (previous?.exists) return { alreadyCompleted: true };
         const timestamp = new Date(now()).toISOString();
         if (payload.action === "cancel") {
           if (current.exists) tx.delete(ref);
           return { stopped: true };
         }
+        if (contact)
+          tx.set(
+            careRef,
+            {
+              clientId: payload.clientId,
+              lastContactAt: timestamp,
+              version: (contact.data()?.version || 0) + 1,
+            },
+            { merge: true },
+          );
         if (activity)
           tx.set(activity, {
             type: payload.type,
@@ -787,7 +802,19 @@ export function createClientSuccessHandlers({
       );
     }
   };
-  return { followUps, requests, runDue, clientContext };
+  return {
+    followUps,
+    requests,
+    runDue,
+    clientContext,
+    care: createClientCareHandler({
+      db,
+      authenticate: authenticateActor,
+      clientContext,
+      notifyOwners,
+      now,
+    }),
+  };
 }
 function fail(res, error, fallback, action) {
   if (!error.status)

@@ -182,10 +182,10 @@ test('removing the acquisition lead keeps client-success access through an agent
 
 test('client deletion cleans check-ins, requests, pending files and request notifications; failed file deletion is retryable', async () => {
   const file = { path: 'client-requests/r/file.enc', key: 'private-server-key', status: 'pending' };
-  const f = fixture({ 'clients/c': {}, 'client_follow_ups/f': { clientId: 'c' }, 'client_requests/r': { clientId: 'c', attachments: [file] }, 'notifications/n': { clientId: 'c', requestId: 'r' } });
+  const f = fixture({ 'clients/c': {}, 'client_care/c': { clientId: 'c', health: { status: 'at-risk' } }, 'client_follow_ups/f': { clientId: 'c' }, 'client_requests/r': { clientId: 'c', attachments: [file] }, 'notifications/n': { clientId: 'c', requestId: 'r' } });
   f.failRequestFile = true;
   assert.equal((await f.invoke('client', 'c')).code, 502);
-  assert.equal(f.records.size, 4); assert.equal(f.records.get('clients/c')._deleting, true);
+  assert.equal(f.records.size, 5); assert.equal(f.records.get('clients/c')._deleting, true);
   f.failRequestFile = false;
   assert.equal((await f.invoke('client', 'c')).code, 200); assert.equal(f.records.size, 0);
   assert.deepEqual(f.fileCalls, [file, file]);
