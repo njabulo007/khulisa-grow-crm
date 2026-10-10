@@ -47,6 +47,7 @@ export function createPushHandler({ db, messaging, authenticate, requireOwner, n
         return json(res, 200, { status: 'no-devices' });
       }
       const link = ['invoice', 'client', 'project', 'lead'].find((type) => notificationData[`${type}Id`]);
+      const clientSection = notificationData.type === 'client_request' ? '#client-requests' : notificationData.type === 'client_follow_up' ? '#client-activity' : '';
       let sent = 0;
       let failed = 0;
       const errorCodes = new Set();
@@ -55,7 +56,7 @@ export function createPushHandler({ db, messaging, authenticate, requireOwner, n
         const result = await messaging.sendEachForMulticast({
           tokens: chunk,
           data: { title: String(notificationData.title || 'Khulisa CRM').slice(0, 180), body: String(notificationData.message || 'You have a new notification.').slice(0, 1800),
-            notificationId: ref.id, link: link ? `/${link}s/${encodeURIComponent(notificationData[`${link}Id`])}` : '/' },
+            notificationId: ref.id, link: link ? `/${link}s/${encodeURIComponent(notificationData[`${link}Id`])}${link === 'client' ? clientSection : ''}` : '/' },
           webpush: { headers: { Urgency: 'high', TTL: '86400' } },
         });
         sent += result.successCount; failed += result.failureCount;

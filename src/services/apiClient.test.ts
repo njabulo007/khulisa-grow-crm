@@ -5,6 +5,7 @@ vi.mock('@/lib/firebase', () => ({ auth: session }));
 import { authenticatedPost } from './apiClient';
 import { leadConversionService } from './leadConversionService';
 import { leadFollowUpService } from './leadFollowUpService';
+import { clientFollowUpService, clientRequestService } from './clientSuccessService';
 import { paymentFollowUpService } from './paymentFollowUpService';
 
 describe('authenticated Vercel requests', () => {
@@ -39,6 +40,28 @@ describe('authenticated Vercel requests', () => {
     expect(fetch).toHaveBeenCalledWith('/api/notifications/push', expect.objectContaining({
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
       body: JSON.stringify({ kind: 'lead-follow-up', action: 'complete', leadId: 'lead-one', type: 'call', description: '**Interested**\n\nCall later', nextFollowUpDate: '', requestId: 'retry-id' }),
+    }));
+  });
+
+  it('atomically logs client contact and optional next date with the signed bearer token', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ stopped: true }) });
+    vi.stubGlobal('fetch', fetch);
+    const payload = { clientId: 'client-one', requestId: 'retry-id', type: 'call', description: '**Called** client', nextFollowUpDate: '', waitingForResponse: false, notes: '' };
+    await clientFollowUpService.complete(payload);
+    expect(fetch).toHaveBeenCalledWith('/api/notifications/push', expect.objectContaining({
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
+      body: JSON.stringify({ kind: 'client-follow-up', action: 'complete', ...payload }),
+    }));
+  });
+
+  it('submits client requests through the existing authenticated route with stable retry IDs', async () => {
+    const fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ requestId: 'saved-request' }) });
+    vi.stubGlobal('fetch', fetch);
+    const payload = { clientId: 'client-one', requestId: 'stable-id', title: 'Homepage', description: 'New photos', category: 'website-change', priority: 'high' as const };
+    await expect(clientRequestService.create(payload)).resolves.toEqual({ requestId: 'saved-request' });
+    expect(fetch).toHaveBeenCalledWith('/api/notifications/push', expect.objectContaining({
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer signed-token' },
+      body: JSON.stringify({ kind: 'client-request', action: 'create', ...payload }),
     }));
   });
 

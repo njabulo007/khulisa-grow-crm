@@ -5,7 +5,7 @@ const validId = (id) => typeof id === 'string' && id.trim().length > 0 && id.len
 
 // Keep the parent until cleanup succeeds, so a failed request can be retried.
 // Delete only owned dependants; shared business/financial records are protected.
-export function createDeletionHandler({ db, authenticate, requireOwner, deleteMedia, deleteField }) {
+export function createDeletionHandler({ db, authenticate, requireOwner, deleteMedia, deleteField, deleteRequestFile = async () => { throw new Error('Request attachment cleanup is unavailable.'); } }) {
   return async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     if (req.method !== 'POST') return methodNotAllowed(res, ['POST']);
@@ -101,7 +101,18 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
       ]);
       add(activities.filter((entry) => entry.data().entityType === type));
       add(notifications); add(type === 'lead' ? linkedActivities.filter((entry) => entry.data().entityType === 'lead') : linkedActivities);
-      if (type === 'client') add(await query('payment_follow_ups', 'clientId', id));
+      if (type === 'client') {
+        add(await query('payment_follow_ups', 'clientId', id));
+        add(await query('client_follow_ups', 'clientId', id));
+        const requests = await query('client_requests', 'clientId', id);
+        for (const request of requests) {
+          for (const file of request.data().attachments || []) {
+            if (file.leaseUntil > Date.now()) throw createHttpError(409, 'A request attachment is still uploading. Retry deletion in a minute.');
+            try { await deleteRequestFile(file); } catch { throw createHttpError(502, 'Request attachments could not be deleted. Client and file references were kept; retry deletion.'); }
+          }
+        }
+        add(requests);
+      }
       if (type === 'client' || type === 'project') {
         const shares = await query('project_shares', field, id);
         // Preserve every reference if any external deletion fails. Missing files

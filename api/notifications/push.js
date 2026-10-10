@@ -2,6 +2,8 @@ import { adminAuth, adminDb, adminMessaging } from '../_lib/firebaseAdmin.js';
 import { migration } from '../_lib/migration.js';
 import { createPushHandler } from '../_lib/pushHandlers.js';
 import { createPaymentFollowUpHandler } from '../_lib/paymentFollowUpHandlers.js';
+import { createClientSuccessHandlers } from '../_lib/clientSuccessHandlers.js';
+import { requestAttachmentStorage } from '../_lib/requestAttachmentStorage.js';
 import { parseBody } from '../_lib/http.js';
 import { createLeadFollowUpHandlers } from '../_lib/leadFollowUpHandlers.js';
 
@@ -15,12 +17,16 @@ const sendPush = async (notificationId, userId) => {
   if (response.code >= 400 || response.data?.status === 'failed') throw new Error('Push delivery failed.');
 };
 const leads = createLeadFollowUpHandlers({ db: adminDb, auth: adminAuth, authenticate: migration.authenticate, requireOwner: migration.requireOwner, sendPush });
+const clientWork = createClientSuccessHandlers({ db: adminDb, auth: adminAuth, authenticate: migration.authenticate,
+  requireOwner: migration.requireOwner, sendPush, files: requestAttachmentStorage });
 const followUps = createPaymentFollowUpHandler({ db: adminDb, auth: adminAuth,
-  authenticate: migration.authenticate, requireOwner: migration.requireOwner, sendPush, runLeadFollowUps: leads.runDue,
+  authenticate: migration.authenticate, requireOwner: migration.requireOwner, sendPush, runLeadFollowUps: leads.runDue, runClientFollowUps: clientWork.runDue,
 });
 
 export default (req, res) => {
   const kind = parseBody(req).kind;
+  if (kind === 'client-follow-up' && req.method !== 'GET') return clientWork.followUps(req, res);
+  if (kind === 'client-request' && req.method !== 'GET') return clientWork.requests(req, res);
   if (kind === 'lead-follow-up' && req.method !== 'GET') return leads.handle(req, res);
   return req.method === 'GET' || kind === 'payment-follow-up' ? followUps(req, res) : push(req, res);
 };

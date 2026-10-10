@@ -43,6 +43,7 @@ function fixture(initial = {}) {
   const handler = createDeletionHandler({ db, deleteField: () => 'DELETE_FIELD',
     authenticate: async (req) => { if (!req.headers.authorization) throw Object.assign(new Error('Sign in'), { status: 401 }); return { uid: req.headers.authorization, role: req.headers.authorization === 'owner' ? 'owner' : 'agent', appUserId: req.headers.authorization === 'agent' ? 'legacy-agent' : undefined }; },
     requireOwner: async (req) => { if (req.headers.authorization !== 'owner') throw Object.assign(new Error('Owners only'), { status: 403 }); },
+    deleteRequestFile: async file => { state.fileCalls ||= []; state.fileCalls.push(file); if (state.failRequestFile) throw new Error('Blob unavailable'); },
     deleteMedia: async (media) => { state.mediaCalls.push(media); await state.onMedia?.(); return { failed: state.failMedia ? 1 : 0 }; },
   });
   state.invoke = async (type, id, identity = 'owner', options = {}) => {
@@ -176,4 +177,20 @@ test('removing the acquisition lead keeps client-success access through an agent
   assert.equal((await f.invoke('lead', 'l', 'agent')).code, 200);
   assert.deepEqual(f.records.get('clients/c').projectAccess, { agent: 'p' });
   assert.equal(f.records.get('clients/c').leadId, undefined);
+});
+
+
+test('client deletion cleans check-ins, requests, pending files and request notifications; failed file deletion is retryable', async () => {
+  const file = { path: 'client-requests/r/file.enc', key: 'private-server-key', status: 'pending' };
+  const f = fixture({ 'clients/c': {}, 'client_follow_ups/f': { clientId: 'c' }, 'client_requests/r': { clientId: 'c', attachments: [file] }, 'notifications/n': { clientId: 'c', requestId: 'r' } });
+  f.failRequestFile = true;
+  assert.equal((await f.invoke('client', 'c')).code, 502);
+  assert.equal(f.records.size, 4); assert.equal(f.records.get('clients/c')._deleting, true);
+  f.failRequestFile = false;
+  assert.equal((await f.invoke('client', 'c')).code, 200); assert.equal(f.records.size, 0);
+  assert.deepEqual(f.fileCalls, [file, file]);
+});
+test('active request upload prevents deletion from racing past the saved cleanup reference', async () => {
+  const f = fixture({ 'clients/c': {}, 'client_requests/r': { clientId: 'c', attachments: [{ status: 'pending', leaseUntil: Date.now() + 60000 }] } });
+  assert.equal((await f.invoke('client', 'c')).code, 409); assert.equal(f.records.size, 2); assert.equal(f.fileCalls?.length || 0, 0);
 });

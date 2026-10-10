@@ -13,7 +13,8 @@ const money = value => Math.round((positive(value) + Number.EPSILON) * 100) / 10
 
 export function createPaymentFollowUpHandler({ db, auth, authenticate, requireOwner, sendPush,
   now = () => Date.now(), getIdentityConfig = readIdentityConfig, cronSecret = () => process.env.CRON_SECRET,
-  runLeadFollowUps = async () => ({ notified: 0, stopped: 0, failed: 0 }) }) {
+  runLeadFollowUps = async () => ({ notified: 0, stopped: 0, failed: 0 }),
+  runClientFollowUps = async () => ({ notified: 0, stopped: 0, failed: 0 }) }) {
   const refFor = (invoiceId, uid) => db.collection('payment_follow_ups').doc(digest(`${invoiceId}:${uid}`));
   const configuredAlias = uid => Object.hasOwn(getIdentityConfig().legacyIds, uid) ? getIdentityConfig().legacyIds[uid] : undefined;
 
@@ -120,8 +121,13 @@ export function createPaymentFollowUpHandler({ db, auth, authenticate, requireOw
       console.error('[Lead reminder check]', { code: error.code || 'unknown' });
       leads = { notified: 0, stopped: 0, failed: 1 };
     }
-    return { notified: payments.notified + leads.notified, stopped: payments.stopped + leads.stopped,
-      failed: payments.failed + leads.failed, payments, leads };
+    let clients;
+    try { clients = await runClientFollowUps(identity); } catch (error) {
+      console.error('[Client reminder check]', { code: error.code || 'unknown' });
+      clients = { notified: 0, stopped: 0, failed: 1 };
+    }
+    return { notified: payments.notified + leads.notified + clients.notified, stopped: payments.stopped + leads.stopped + clients.stopped,
+      failed: payments.failed + leads.failed + clients.failed, payments, leads, clients };
   };
 
   return async (req, res) => {

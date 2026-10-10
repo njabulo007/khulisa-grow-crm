@@ -20,6 +20,7 @@ import { InvoicePrintPage } from "@/pages/invoices/InvoicePrintPage";
 import { CommissionsPage } from "@/pages/commissions/CommissionsPage";
 import { ReportsPage } from "@/pages/reports/ReportsPage";
 import { SettingsPage } from "@/pages/settings/SettingsPage";
+import { ClientSuccessPage } from '@/pages/clients/ClientSuccessPage';
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -47,6 +48,7 @@ const App = () => (
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/leads" element={<LeadsPage />} />
                   <Route path="/leads/:id" element={<LeadDetailPage />} />
+                  <Route path="/client-success" element={<ClientSuccessPage />} />
                   <Route path="/clients" element={<ClientsPage />} />
                   <Route path="/clients/:id" element={<ClientDetailPage />} />
                   <Route path="/projects" element={<ProjectsPage />} />

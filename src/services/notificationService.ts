@@ -89,6 +89,8 @@ class FirestoreNotificationService implements NotificationService {
   private mapSnapshot(snapshot: QueryDocumentSnapshot<DocumentData>): Notification {
     const data = snapshot.data() as Record<string, unknown>;
     const type =
+      data.type === 'client_follow_up' ||
+      data.type === 'client_request' ||
       data.type === 'invoice_paid' ||
       data.type === 'invoice_due' ||
       data.type === 'payment_follow_up' ||
@@ -102,6 +104,7 @@ class FirestoreNotificationService implements NotificationService {
       id: snapshot.id,
       userId: String(data.userId || ''),
       type,
+      requestId: typeof data.requestId === 'string' ? data.requestId : undefined,
       leadId: typeof data.leadId === 'string' ? data.leadId : undefined,
       invoiceId: typeof data.invoiceId === 'string' ? data.invoiceId : undefined,
       clientId: typeof data.clientId === 'string' ? data.clientId : undefined,

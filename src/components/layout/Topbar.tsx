@@ -288,7 +288,7 @@ export function Topbar({ onSearch }: TopbarProps) {
       return;
     }
     if (clientId) {
-      navigate(`/clients/${clientId}`);
+      navigate(`/clients/${encodeURIComponent(clientId)}${selected?.type === 'client_request' ? '#client-requests' : selected?.type === 'client_follow_up' ? '#client-activity' : ''}`);
       return;
     }
     if (projectId) {

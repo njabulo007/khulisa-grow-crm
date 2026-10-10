@@ -167,7 +167,7 @@ export function useNotifications(): UseNotificationsResult {
                     return;
                   }
                   if (notification.clientId) {
-                    window.location.assign(`/clients/${notification.clientId}`);
+                    window.location.assign(`/clients/${encodeURIComponent(notification.clientId)}${notification.type === 'client_request' ? '#client-requests' : notification.type === 'client_follow_up' ? '#client-activity' : ''}`);
                     return;
                   }
                   if (notification.projectId) {

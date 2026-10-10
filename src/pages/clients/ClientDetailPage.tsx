@@ -1,9 +1,11 @@
 import { agentDashboardErrorMessage } from '@/services/agentDashboardService';
+import { ClientFollowUps } from '@/components/common/ClientFollowUps';
+import { ClientRequests } from '@/components/common/ClientRequests';
 import { ClientActivityPanel } from '@/components/common/ClientActivityPanel';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import React, { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import {
   ArrowLeft,
   Phone,
@@ -47,6 +49,7 @@ const formatCurrency = (amount: number) => {
 export function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user, isOwner } = useAuth();
   const [allClients, setAllClients] = useState<Client[]>([]);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
@@ -58,6 +61,12 @@ export function ClientDetailPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!isLoaded || !client?.id || !['#client-activity', '#client-follow-ups', '#client-requests'].includes(location.hash)) return;
+    const frame = requestAnimationFrame(() => document.getElementById(location.hash.slice(1))?.scrollIntoView({ block: 'start' }));
+    return () => cancelAnimationFrame(frame);
+  }, [isLoaded, client?.id, location.hash]);
 
   useEffect(() => {
     let isMounted = true;
@@ -287,7 +296,9 @@ export function ClientDetailPage() {
             </CardContent>
           </Card>
 
+          <ClientFollowUps key={`follow-${client.id}`} clientId={client.id} />
           <ClientActivityPanel key={client.id} clientId={client.id} />
+          <ClientRequests key={`requests-${client.id}`} clientId={client.id} />
           {/* Associated Leads */}
           <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
             <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50">

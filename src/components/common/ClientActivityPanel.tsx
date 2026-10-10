@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { activityService } from "@/services";
 import type { Activity, ActivityType } from "@/types/models";
@@ -13,6 +13,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
+import { clientFollowUpService, clientWorkChanged } from '@/services/clientSuccessService';
+import { paymentFollowUpService } from '@/services/paymentFollowUpService';
 import { toast } from "sonner";
 
 const CONTACT_TYPES: Array<{ value: ActivityType; label: string }> = [
@@ -32,10 +37,13 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [retryKey, setRetryKey] = useState(0);
+  const [nextDate, setNextDate] = useState('');
+  const [waiting, setWaiting] = useState(false);
+  const attempt = useRef<{ input: string; id: string } | null>(null);
   const [visibleCount, setVisibleCount] = useState(10);
 
   useEffect(() => {
-    setDescription('');
+    setDescription(''); setNextDate(''); setWaiting(false); attempt.current = null;
     setVisibleCount(10);
   }, [clientId, user?.uid]);
 
@@ -66,16 +74,14 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
     if (!user || !description.trim() || isSaving) return;
     setIsSaving(true);
     try {
-      const next = await activityService.create({
-        type,
-        entityType: "client",
-        entityId: clientId,
-        description: description.trim(),
-        createdBy: user.id,
-      });
-      setActivities((current) => [next, ...current]);
-      setDescription("");
-      toast.success("Client interaction saved.");
+      const input = JSON.stringify({ clientId, type, description, nextDate, waiting });
+      if (attempt.current?.input !== input) attempt.current = { input, id: crypto.randomUUID() };
+      await clientFollowUpService.complete({ clientId, requestId: attempt.current.id, type,
+        description: description.trim(), nextFollowUpDate: nextDate, waitingForResponse: !!nextDate && waiting, notes: description.trim() });
+      setDescription(''); setNextDate(''); setWaiting(false); attempt.current = null;
+      clientWorkChanged(); setRetryKey(key => key + 1);
+      toast.success(nextDate ? 'Interaction saved and next check-in scheduled.' : 'Interaction saved. No further check-in scheduled.');
+      void paymentFollowUpService.check().catch(() => {});
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -85,10 +91,10 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
     } finally {
       setIsSaving(false);
     }
-  }, [user, description, isSaving, type, clientId]);
+  }, [user, description, isSaving, type, clientId, nextDate, waiting]);
 
   return (
-    <Card>
+    <Card id="client-activity">
       <CardHeader>
         <CardTitle className="text-lg">Client activity</CardTitle>
         <p className="text-sm text-muted-foreground">
@@ -123,6 +129,12 @@ export function ClientActivityPanel({ clientId }: { clientId: string }) {
             onChange={setDescription}
             disabled={isSaving}
           />
+          <div className="space-y-2">
+            <Label htmlFor="client-activity-next-date">Next contact date (optional)</Label>
+            <Input id="client-activity-next-date" type="date" value={nextDate} disabled={isSaving} onChange={event => setNextDate(event.target.value)} className="max-w-xs" />
+            <p className="text-xs text-muted-foreground">Leave empty to finish this follow-up and stop your current check-in reminder. Choose another date only if needed.</p>
+            {nextDate && <label className="flex items-center gap-2 text-sm"><Checkbox checked={waiting} disabled={isSaving} onCheckedChange={value => setWaiting(value === true)} />Awaiting client response</label>}
+          </div>
           <Button
             onClick={() => void save()}
             disabled={isSaving || !description.trim()}
