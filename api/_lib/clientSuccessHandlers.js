@@ -133,13 +133,12 @@ export function createClientSuccessHandlers({
     if (actor.role === "owner") await requireOwner(req);
     return actor;
   };
-  const paginate = async (query, cursor, scoped) => {
+  const paginate = async (query, cursor) => {
     if (cursor !== undefined && !id(cursor))
       throw createHttpError(400, "Invalid page cursor.");
-    // Equality indexes use ascending document IDs by default. Reversing that
-    // ordering on a scoped query can require a composite index, even when empty.
-    // Unfiltered owner queues can still load newest document IDs first.
-    let page = query.orderBy(FieldPath.documentId(), scoped ? "asc" : "desc");
+    // Use the default document-ID order for every queue. Firestore also
+    // requires an extra index for unfiltered descending document-ID queries.
+    let page = query.orderBy(FieldPath.documentId(), "asc");
     if (cursor) page = page.startAfter(cursor);
     const result = await page.limit(51).get();
     const docs = result.docs.slice(0, 50);
@@ -213,11 +212,7 @@ export function createClientSuccessHandlers({
             : db
                 .collection("client_follow_ups")
                 .where("userUid", "==", actor.uid);
-        const { docs, cursor } = await paginate(
-          query,
-          payload.cursor,
-          actor.role !== "owner" || Boolean(payload.clientId),
-        );
+        const { docs, cursor } = await paginate(query, payload.cursor);
         const records = [];
         const contexts = new Map();
         for (const doc of docs) {
@@ -470,11 +465,7 @@ export function createClientSuccessHandlers({
             : db
                 .collection("client_requests")
                 .where("submittedByUid", "==", actor.uid);
-        const { docs, cursor } = await paginate(
-          query,
-          payload.cursor,
-          actor.role !== "owner" || Boolean(payload.clientId),
-        );
+        const { docs, cursor } = await paginate(query, payload.cursor);
         const records = [];
         const clients = new Map();
         for (const snapshot of docs) {

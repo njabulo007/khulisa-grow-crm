@@ -52,12 +52,11 @@ function fixture(populated) {
     queries.push(query);
     const filter = query.where?.fieldFilter;
     const descending = query.orderBy[0].direction === "DESCENDING";
-    // Built-in equality-index contract: no non-default document-ID ordering.
-    if (filter)
-      assert.equal(
-        descending,
-        false,
-        "Scoped queries must not require a custom index",
+    // Reproduce the production backend rejection, including owner queries.
+    if (descending)
+      throw Object.assign(
+        new Error("9 FAILED_PRECONDITION: The query requires an index."),
+        { code: 9 },
       );
     let docs = [...records].filter(
       ([path, data]) =>
@@ -75,12 +74,10 @@ function fixture(populated) {
     }
     return Readable.from(
       [
-        ...docs
-          .slice(0, query.limit.value)
-          .map(([path, data]) => ({
-            document: document(path, data),
-            readTime: time,
-          })),
+        ...docs.slice(0, query.limit.value).map(([path, data]) => ({
+          document: document(path, data),
+          readTime: time,
+        })),
         { readTime: time },
       ],
       { objectMode: true },
