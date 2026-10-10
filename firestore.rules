@@ -201,7 +201,7 @@ service cloud.firestore {
         && optionalAvailable(request.resource.data, 'leadId', 'leads')
         && (isOwner()
         || (clientAccessible(clientId)
-          && request.resource.data.diff(resource.data).affectedKeys().hasNone(['createdBy', 'leadId', 'visibleTo', 'projectAccess', 'contactManagerId'])));
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'leadId', 'visibleTo', 'projectAccess', 'contactManagerId'])));
       allow delete: if false;
     }
 
