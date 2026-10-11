@@ -157,7 +157,7 @@ export function SettingsPage() {
               <p className="text-sm text-muted-foreground">
                 Use the bell menu to register background push, send a test and
                 check delivery. Scheduled follow-up reminders run daily around
-                09:00 South African time.
+                08:00 South African time.
               </p>
               <Button
                 variant="outline"

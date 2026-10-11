@@ -364,23 +364,6 @@ export function ClientDetailPage() {
             >
               Edit client details
             </Button>
-            <Button
-              size="sm"
-              className="transition-all hover:shadow-md"
-              onClick={() => navigate(`/projects?client=${client.id}`)}
-            >
-              <FolderKanban className="mr-1 h-4 w-4" />
-              {isOwner ? "Create Project" : "View Projects"}
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              className="transition-all hover:shadow-md"
-              onClick={() => navigate(`/invoices?client=${client.id}`)}
-            >
-              <FileText className="mr-1 h-4 w-4" />
-              {isOwner ? "Create Invoice" : "View Invoices"}
-            </Button>
           </div>
         </PageHeader>
       </div>
@@ -482,14 +465,16 @@ export function ClientDetailPage() {
               <Card className="border-border/50 shadow-md hover:shadow-lg transition-shadow overflow-hidden">
                 <CardHeader className="bg-gradient-to-r from-primary/5 to-accent/5 border-b border-border/50 flex flex-row items-center justify-between">
                   <CardTitle className="text-primary-text">Projects</CardTitle>
-                  <Button
-                    size="sm"
-                    className="transition-all hover:shadow-md"
-                    onClick={() => navigate(`/projects?client=${client.id}`)}
-                  >
-                    <Plus className="mr-1 h-4 w-4" />
-                    New Project
-                  </Button>
+                  {isOwner && (
+                    <Button
+                      size="sm"
+                      className="transition-all hover:shadow-md"
+                      onClick={() => navigate(`/projects?client=${client.id}`)}
+                    >
+                      <Plus className="mr-1 h-4 w-4" />
+                      New Project
+                    </Button>
+                  )}
                 </CardHeader>
                 <CardContent className="pt-6">
                   {projects.length === 0 ? (

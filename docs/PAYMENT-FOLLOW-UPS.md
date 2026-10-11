@@ -9,12 +9,12 @@ Each owner or assigned agent schedules their own reminders. They cannot edit fin
 1. In Vercel, open the CRM project → **Settings → Environment Variables**.
 2. Add **CRON_SECRET** with a random private value of at least 32 characters, scoped to **Production**. For example, generate one locally with `openssl rand -hex 32`. Keep it private; do not prefix it with `VITE_`.
 3. Redeploy the latest `main` deployment after saving the variable.
-4. Open **Settings → Cron Jobs** and confirm the `/api/notifications/push` job is present with schedule `0 7 * * *`.
+4. Open **Settings → Cron Jobs** and confirm the `/api/notifications/push` job is present with schedule `0 6 * * *`.
 5. Register push notifications on each receiving device through the CRM bell menu, as with the existing push test.
 
 The same job also processes [lead follow-ups](LEAD-FOLLOW-UPS.md); it needs no second cron job or secret.
 
-The production job runs daily around **09:00 South African time (07:00 UTC)**. Vercel Hobby scheduling can run within the scheduled hour; this is not an exact-minute alarm. Scheduled reminders are checked from their follow-up date and repeat daily while the balance remains unpaid. The CRM also checks the signed-in user's due reminders when opened or brought into focus, throttled to once every five minutes. Saving a reminder for today starts a check immediately.
+The production job runs daily around **08:00 South African time (06:00 UTC)**. Vercel Hobby scheduling can run within the scheduled hour; this is not an exact-minute alarm. Scheduled reminders are checked from their follow-up date and repeat daily while the balance remains unpaid. The CRM also checks the signed-in user's due reminders when opened or brought into focus, throttled to once every five minutes. Saving a reminder for today starts a check immediately.
 
 There is no Firebase Functions deployment, Blaze upgrade, new API function, or Firestore rules change. The server keeps the reminder collection private and uses the existing Firebase Admin and FCM configuration. Ordinary Firestore, Vercel compute, and push quotas still apply. Vercel's separate commercial-use plan policy still applies.
 

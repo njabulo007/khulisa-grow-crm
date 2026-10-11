@@ -87,7 +87,7 @@ export function PaymentFollowUps({ invoiceId, clientId, payable = true }: { invo
               <Input id="payment-follow-up-date" type="date" value={date} disabled={saving} onChange={event => setDate(event.target.value)} className="max-w-xs" />
             </div>
             <NoteEditor label="Payment follow-up notes" value={notes} onChange={setNotes} maxLength={4000} disabled={saving} placeholder="Client response, promise to pay, and next action…" />
-            <p className="text-xs text-muted-foreground">Remind me daily from this date until paid or stopped. Background checks run around 09:00 South African time. These reminders go to you; contact the client separately.</p>
+            <p className="text-xs text-muted-foreground">Remind me daily from this date until paid or stopped. Background checks run around 08:00 South African time. These reminders go to you; contact the client separately.</p>
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => void save()} disabled={saving || !date}>{saving ? 'Saving…' : records[0] ? 'Update follow-up' : 'Schedule follow-up'}</Button>
               {records[0] && <Button variant="outline" disabled={saving} onClick={() => void cancel()}>Stop reminders</Button>}

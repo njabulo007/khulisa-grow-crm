@@ -184,7 +184,7 @@ export function ClientFollowUps({ clientId }: { clientId?: string }) {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Daily reminders start on this date, around 09:00 South African
+              Daily reminders start on this date, around 08:00 South African
               time, until you log an interaction without a next date or stop
               them. These reminders go to you.
             </p>

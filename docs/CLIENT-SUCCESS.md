@@ -33,7 +33,7 @@ Records and histories are server-only in `client_feedback`, `client_feedback_rev
 
 ## Deployment
 
-Let Vercel deploy `main`, then reopen/refresh the PWA. No new API route, environment variable, composite index, Firestore rule change, or data migration is required. This reuses the existing Firebase Admin connection, `BLOB_READ_WRITE_TOKEN`, `CRON_SECRET`, and the existing `0 7 * * *` cron (about 09:00 Africa/Johannesburg).
+Let Vercel deploy `main`, then reopen/refresh the PWA. No new API route, environment variable, composite index, Firestore rule change, or data migration is required. This reuses the existing Firebase Admin connection, `BLOB_READ_WRITE_TOKEN`, `CRON_SECRET`, and the existing `0 6 * * *` cron (about 08:00 Africa/Johannesburg).
 
 The current invite-only `firestore.rules` must already be published, including its deny-by-default catch-all. The client-success collections, including care, feedback, opportunities, and their histories, are server-only. Server checks use current lead/project assignments and trusted identity aliases; reassigned clients disappear from manager queues and stop generating their reminders.
 

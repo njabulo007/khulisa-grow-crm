@@ -8,10 +8,7 @@ import {
   Users,
   Target,
   Clock,
-  CheckCircle2,
   ArrowRight,
-  AlertTriangle,
-  TrendingUp,
 } from 'lucide-react';
 import { KPICard, PageHeader, StatusBadge } from '@/components/common';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -224,28 +221,6 @@ export function AgentDashboard() {
         />
       </div>
 
-      {/* Overdue Follow-ups Alert */}
-      {stats.overdueFollowUps.length > 0 && (
-        <Card className="border-warning/50 bg-warning/5">
-          <CardContent className="flex items-center gap-4 py-4">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-warning/10">
-              <AlertTriangle className="h-5 w-5 text-warning-text" />
-            </div>
-            <div className="flex-1">
-              <p className="font-medium text-foreground">
-                You have {stats.overdueFollowUps.length} overdue follow-up{stats.overdueFollowUps.length > 1 ? 's' : ''}
-              </p>
-              <p className="text-sm text-muted-foreground">
-                {stats.overdueFollowUps.map(l => l.businessName).join(', ')}
-              </p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => navigate('/leads')}>
-              View Leads
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Main Content */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Lead Pipeline */}
@@ -257,6 +232,9 @@ export function AgentDashboard() {
             </Button>
           </CardHeader>
           <CardContent>
+            <p className="mb-4 text-sm text-muted-foreground">
+              {stats.myLeads.length} total leads · {stats.activeLeads.length} active
+            </p>
             <div className="space-y-4">
               {Object.entries(LEAD_STAGES)
                 .filter(([key]) => key !== 'won' && key !== 'lost')
@@ -325,40 +303,30 @@ export function AgentDashboard() {
 
       {/* Performance & Projects */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Performance Summary */}
+        {/* Commission Summary */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Performance Summary</CardTitle>
+            <CardTitle className="text-lg">Commission Summary</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Total Leads</span>
-              <span className="font-semibold">{stats.myLeads.length}</span>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">Paid Out</span>
+              <span className="font-semibold">{formatCurrency(stats.paidOutAmount)}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Deals Won</span>
-              <span className="font-semibold text-success-text">{stats.wonLeads.length}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Conversion Rate</span>
-              <span className="font-semibold">{stats.conversionRate}%</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground">Active Projects</span>
-              <span className="font-semibold">{stats.activeProjects.length}</span>
-            </div>
-            <div className="h-px bg-border" />
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <span className="font-medium">Total Earned</span>
               <span className="font-bold text-accent-text">{formatCurrency(stats.earnedAmount + stats.paidOutAmount)}</span>
             </div>
+            <Button variant="outline" size="sm" onClick={() => navigate('/commissions')}>
+              View commissions
+            </Button>
           </CardContent>
         </Card>
 
         {/* Active Projects */}
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-lg">My Active Projects</CardTitle>
+            <CardTitle className="text-lg">My Active Projects ({stats.activeProjects.length})</CardTitle>
             <Button variant="ghost" size="sm" onClick={() => navigate('/projects')}>
               View All <ArrowRight className="ml-1 h-4 w-4" />
             </Button>

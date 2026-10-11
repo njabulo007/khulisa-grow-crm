@@ -184,7 +184,6 @@ export function ClientCarePanel({
               Last contact: {contactDate(care.lastContactAt) || "Not recorded"}
             </span>
           </div>
-          {care.health && <NoteContent text={care.health.reason} />}
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="care-health-status">Health status</Label>

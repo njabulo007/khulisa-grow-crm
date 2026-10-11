@@ -13,7 +13,7 @@ Publishing Firestore rules and verifying real Android/FCM delivery remain produc
 
 ## Daily workflow
 
-- Dashboard and Client Success begin with Today's work: lead/client/payment follow-ups, waiting responses, urgent requests, onboarding/health concerns and scope decisions. Counts describe loaded records, not a complete database-wide aggregate. Global payment follow-ups are owner-only and bounded to 100 scheduled records. Other server queues start at 50 and have dedicated paginated views.
+- The dashboard begins with Today's work: lead/client/payment follow-ups, waiting responses, urgent requests, onboarding/health concerns and scope decisions. Client Success provides the full health, check-in, request and growth queues without repeating that dashboard summary. Counts describe loaded records, not a complete database-wide aggregate. Global payment follow-ups are owner-only and bounded to 100 scheduled records. Other server queues start at 50 and have dedicated paginated views.
 - Clients use Overview, Conversations, Onboarding, Delivery, Approvals, Growth and Billing tabs. Tabs load on first visit and keep drafts when switching tabs. Notifications select the correct tab and anchor.
 - Owners can assign a dedicated contact manager when creating/editing a client. Existing lead/project-derived access still works. A contact manager can read the client's project details, but cannot edit another delivery coordinator's milestones or technical status.
 - Leads have qualification, next action and lost reason fields, a similar-contact warning, and a conversion handoff summary. The warning respects the user's visible records. Existing catalogue-based lead conversion is retained; standalone project creation requires the owner.
