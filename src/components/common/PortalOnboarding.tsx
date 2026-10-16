@@ -223,7 +223,7 @@ export function PortalOnboarding({
           and agree the next steps.
         </p>
         <p className="text-sm font-medium">
-          Onboarding: {ONBOARDING_STATES[record.status] || record.status} ·
+          Getting started: {ONBOARDING_STATES[record.status] || record.status} ·
           About {Math.max(8, ...templates.map((t) => t.minutes))}–
           {Math.max(8, ...templates.map((t) => t.minutes)) + 5} minutes, plus
           uploads.
@@ -246,9 +246,9 @@ export function PortalOnboarding({
             className="rounded-lg border bg-slate-50 p-4 text-sm"
           >
             {record.legacyCompleted
-              ? "Your team previously marked onboarding complete. You do not need to repeat it. Contact your team if you need to provide new project information."
+              ? "Your team has already received your project details. You do not need to repeat it. Contact your team if you need to provide new project information."
               : record.status === "approved"
-                ? "Your onboarding has been approved. Your team will keep you updated on delivery."
+                ? "Your project details have been approved. Your team will keep you updated on delivery."
                 : ["submitted", "under-review"].includes(record.status)
                   ? "Your information has been received and is awaiting team review. We will ask here if anything needs clarification."
                   : "This form is read-only. Contact your team if details need changing."}
@@ -299,7 +299,7 @@ export function PortalOnboarding({
             </p>
             {record.editable && (
               <div className="space-y-2">
-                <Label htmlFor="onboarding-upload">Upload a material</Label>
+                <Label htmlFor="onboarding-upload">Upload a file</Label>
                 <Input
                   id="onboarding-upload"
                   type="file"
@@ -439,15 +439,15 @@ export function PortalOnboarding({
                   onClick={() =>
                     void run(
                       () => mutate("submit", { answers, confirmed }),
-                      "Your onboarding was submitted. Your team will review it and contact you about the next steps.",
+                      "Your project details have been sent. Your team will review it and contact you about the next steps.",
                     )
                   }
                 >
                   {busy
                     ? "Submitting…"
                     : record.submission
-                      ? "Resubmit onboarding"
-                      : "Submit onboarding"}
+                      ? "Send updated details"
+                      : "Send project details"}
                 </Button>
               </>
             )}

@@ -762,3 +762,39 @@ test("private replacement names and deletion rights stay private even on a clien
   assert.doesNotMatch(JSON.stringify(publicView), /private-team-draft/);
   assert.equal((await f.change("file-delete", { fileId: file.id })).code, 403);
 });
+
+test('handover is additive, private until published, versioned and quiet when unchanged', async () => {
+  const f = fixture();
+  const original = structuredClone(f.records.get('projects/p1'));
+  const details = {published:false, websiteUrl:'https://example.co.za', instructions:'Use the attached guide to update your pages.', outstanding:'Logo originals to follow.', supportScope:'One agreed training session.', supportUntil:'2026-11-01'};
+  assert.equal((await f.call({action:'handover-update', requestId:'draft', version:0, handover:details}, 'agent')).code, 200);
+  let client = (await f.call()).data;
+  assert.equal(client.handover.published, false); assert.equal(client.handover.instructions, ''); assert.equal(client.handover.supportScope, '');
+  assert.equal((await f.call({}, 'agent')).data.handover.version, 1);
+  assert.equal((await f.call({action:'handover-update', requestId:'publish', version:1, handover:{...details,published:true}}, 'owner')).code, 200);
+  client = (await f.call()).data;
+  assert.equal(client.handover.instructions, details.instructions); assert.equal(client.handover.version, 2); assert(client.handover.publishedAt);
+  const activityCount = [...f.records.keys()].filter(k => k.startsWith('activities/')).length;
+  const pushes = f.pushes.length;
+  await f.call({action:'handover-update', requestId:'unchanged', version:2, handover:{...details,published:true}}, 'agent');
+  assert.equal([...f.records.keys()].filter(k => k.startsWith('activities/')).length, activityCount); assert.equal(f.pushes.length, pushes);
+  assert.equal(f.records.get('projects/p1').status, original.status); assert.deepEqual(f.records.get('projects/p1').milestones, original.milestones);
+  assert.equal((await f.call({action:'handover-update', requestId:'stale', version:1, handover:details}, 'owner')).code, 409);
+  f.records.get('projects/p1').status = 'completed';
+  assert.equal((await f.call({action:'handover-update', requestId:'hide', version:2, handover:details}, 'agent')).code, 200);
+  assert.equal(f.records.get('projects/p1').status, 'completed');
+  assert.equal((await f.call()).data.handover.instructions, '');
+});
+
+test('handover rejects unauthorised writes, unsafe links and invented support dates', async () => {
+  const f = fixture();
+  const details = {published:true,websiteUrl:'https://example.co.za',instructions:'Read your guide.',outstanding:'',supportScope:'',supportUntil:''};
+  assert.equal((await f.call({action:'handover-update',requestId:'public',version:0,handover:details})).code,400);
+  f.records.get('clients/c1').contactManagerId = 'other';
+  assert.equal((await f.call({action:'handover-update',requestId:'other',version:0,handover:details},'other')).code,403);
+  for (const [i, invalid] of [{websiteUrl:'javascript:alert(1)'},{websiteUrl:'https://name:secret@example.co.za'}, {supportUntil:'2026-11-01'}, {supportScope:'Agreed support',supportUntil:'2026-02-30'}, {instructions:''}].entries()) {
+    assert.equal((await f.call({action:'handover-update',requestId:`invalid-${i}`,version:0,handover:{...details,...invalid}},'owner')).code,400);
+  }
+  assert.equal(f.records.get('projects/p1').portalHandover, undefined);
+  f.records.get('project_shares/s1').status='revoked'; assert.equal((await f.call()).code,403);
+});

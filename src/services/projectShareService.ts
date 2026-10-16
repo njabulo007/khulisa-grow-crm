@@ -410,7 +410,9 @@ export const projectShareService = {
     try {
       return await requestJson<PublicProjectPortalData>('/api/project-shares/resolve', { token }, false);
     } catch (error) {
-      throw new Error(asErrorMessage(error));
+      throw new Error(error instanceof TypeError
+        ? 'We could not connect. Check your connection and choose Try again.'
+        : error instanceof Error ? error.message : 'We could not open your project. Please try again.');
     }
   },
 };

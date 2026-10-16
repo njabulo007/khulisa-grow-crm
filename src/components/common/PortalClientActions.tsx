@@ -81,7 +81,7 @@ export function PortalClientActions({
         {!hideMaterials && !!project.materials?.length && (
           <div>
             <p className="mb-2 text-sm text-slate-600">
-              Outstanding onboarding materials:
+              Let’s get your project ready. Please share the following so our team can get started:
             </p>
             <ul className="list-disc pl-5 space-y-2 text-sm">
               {project.materials.map((m) => (
@@ -133,7 +133,7 @@ export function PortalClientActions({
           maxLength={4000}
           rows={7}
           onChange={(e) => setNotes(e.target.value)}
-          placeholder="Describe the changes or approval clearly. Include the affected page. Please omit private credentials."
+          placeholder="Tell us what you would like changed or approved, and which page it relates to. Do not include passwords."
         />
         {project.review?.status === "open" && !closed && (
           <div className="flex flex-wrap gap-3">
@@ -152,7 +152,7 @@ export function PortalClientActions({
               disabled={busy || !name.trim() || !notes.trim() || !decision}
               onClick={() => void submit("decision")}
             >
-              Submit revision response
+              Send your decision
             </Button>
           </div>
         )}
@@ -173,7 +173,7 @@ export function PortalClientActions({
             Submit change request
           </Button>
           <p className="text-xs text-slate-600">
-            New work is reviewed by your team before scope, price or delivery
+            New work is reviewed by your team before the work, price or delivery
             dates are agreed.
           </p>
         </div>

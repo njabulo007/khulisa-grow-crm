@@ -614,6 +614,7 @@ export function ProjectDetailPage() {
           <ProjectCollaboration
             projectId={project.id}
             canEditMilestones={canEditProjectMilestones(user,project)}
+            canEditHandover={canAccessProject(user,project)}
             teamOptions={[{id:project.assignedTo,name:'Delivery coordinator'},{id:project.buildOwnerId,name:'Developer'},{id:client?.contactManagerId,name:'Client contact manager'}].filter(p=>p.id)}
             onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }}
           />

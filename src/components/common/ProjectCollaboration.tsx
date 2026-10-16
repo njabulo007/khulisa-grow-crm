@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ProjectHandover } from "./ProjectHandover";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   workspaceRequest,
@@ -44,8 +45,10 @@ type Props = {
   mode?: string;
   active?: boolean;
   canEditMilestones?: boolean;
+  canEditHandover?: boolean;
   onChange?: () => void;
   teamOptions?: Array<{ id: string; name: string }>;
+  onNavigate?: (section: string) => void;
 };
 export function ProjectCollaboration({
   projectId,
@@ -53,8 +56,10 @@ export function ProjectCollaboration({
   mode: externalMode,
   active = true,
   canEditMilestones = false,
+  canEditHandover = canEditMilestones,
   onChange,
   teamOptions = [],
+  onNavigate,
 }: Props) {
   const { user } = useAuth(),
     team = !!projectId;
@@ -312,7 +317,9 @@ export function ProjectCollaboration({
               ? "Files & deliverables"
               : currentMode === "progress"
                 ? "Project progress"
-                : "Messages & feedback"}
+                : currentMode === "handover"
+                  ? "Your project handover"
+                  : "Messages & feedback"}
         </CardTitle>
         {team && (
           <nav aria-label="Team workspace" className="flex flex-wrap gap-2">
@@ -320,6 +327,7 @@ export function ProjectCollaboration({
               ["progress", "Milestones"],
               ["files", "Files & Deliverables"],
               ["messages", "Messages & Feedback"],
+              ["handover", "Handover"],
             ].map(([key, label]) => (
               <Button
                 key={key}
@@ -334,6 +342,30 @@ export function ProjectCollaboration({
         )}
       </CardHeader>
       <CardContent className="space-y-5">
+        {data && currentMode === "handover" && (
+          <ProjectHandover
+            key={data.handover?.version || 0}
+            value={data.handover}
+            canEdit={team && canEditHandover}
+            closed={["completed", "delivered"].includes(data.projectStatus)}
+            busy={busy}
+            onSave={(handover) =>
+              void run(async () => {
+                await mutate("handover-update", {
+                  version: handover.version,
+                  handover,
+                });
+                await load();
+              }, "Handover saved.")
+            }
+            onFiles={() =>
+              onNavigate ? onNavigate("files") : setMode("files")
+            }
+            onMessages={() =>
+              onNavigate ? onNavigate("messages") : setMode("messages")
+            }
+          />
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
@@ -371,8 +403,8 @@ export function ProjectCollaboration({
               </Button>
             )}
             <p className="text-xs text-muted-foreground">
-              For changed records, refresh before making a new change. Keep
-              unsent message text before opening another conversation.
+              For changed records, refresh before making a new change. Copy
+              any unsent message before opening another conversation.
             </p>
           </div>
         )}
@@ -382,14 +414,14 @@ export function ProjectCollaboration({
           </p>
         )}
         {!data && !error && (
-          <p className="text-sm text-muted-foreground">
-            Loading the project workspace…
+          <p role="status" className="text-sm text-muted-foreground">
+            Loading your project…
           </p>
         )}
         {data && currentMode === "files" && (
           <>
             <p className="text-sm text-muted-foreground">
-              Upload materials or download authorised previews and final work.
+              Share your files or download previews and finished work shared with you.
               PNG, JPG, WebP or PDF, up to 2 MB per file. The library holds 20
               files and 3 versions per file. Use the agreed folder for larger
               media. Do not upload passwords or private customer information.
@@ -636,7 +668,7 @@ export function ProjectCollaboration({
             <p className="text-sm text-muted-foreground">
               Send questions and progress feedback here. This is a shared
               project conversation, not a price agreement or formal approval.
-              Use Approvals & Requests for delivery decisions or new scope.
+              Use Approvals & Requests to approve work or request additional work.
               Replies appear when you refresh. Never send passwords here.
             </p>
             <Button

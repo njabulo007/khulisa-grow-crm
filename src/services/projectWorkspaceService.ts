@@ -61,6 +61,7 @@ export interface TrackedMilestone {
   order: number;
 }
 export interface WorkspaceData {
+  handover?: ProjectHandoverData;
   version: number;
   files: WorkspaceFile[];
   onboardingFiles: Array<{
@@ -74,6 +75,17 @@ export interface WorkspaceData {
   milestones: TrackedMilestone[];
   milestoneVersion: number;
   projectStatus: string;
+}
+export interface ProjectHandoverData {
+  published: boolean;
+  websiteUrl: string;
+  instructions: string;
+  outstanding: string;
+  supportScope: string;
+  supportUntil: string;
+  version: number;
+  publishedAt: string | null;
+  updatedAt: string | null;
 }
 export function workspaceRequest<T = WorkspaceData>(
   { projectId, token }: { projectId?: string; token?: string },

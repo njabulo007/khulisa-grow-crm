@@ -48,7 +48,7 @@ export default async function handler(req, res) {
     const payload = parseBody(req);
     const token = typeof payload.token === 'string' ? payload.token.trim() : '';
     if (!token) {
-      throw createHttpError(400, 'token is required.');
+      throw createHttpError(400, 'This link is incomplete. Ask your project contact for a new link.');
     }
 
     const shareSnapshot = await adminDb
@@ -57,7 +57,7 @@ export default async function handler(req, res) {
       .limit(1)
       .get();
     if (shareSnapshot.empty) {
-      throw createHttpError(404, 'Share link is invalid.');
+      throw createHttpError(404, 'This project link is not recognised. Ask your project contact for a new link.');
     }
 
     const shareDoc = shareSnapshot.docs[0];
@@ -70,17 +70,17 @@ export default async function handler(req, res) {
           updatedAt: nowIso(),
         });
       }
-      throw createHttpError(403, shareStatus === 'revoked' ? 'Share link is no longer active.' : 'Share link has expired.');
+      throw createHttpError(403, shareStatus === 'revoked' ? 'This project link has been turned off. Ask your project contact for a new link.' : 'This project link has expired. Ask your project contact for a new link.');
     }
 
     const projectId = typeof share.projectId === 'string' ? share.projectId.trim() : '';
     if (!projectId) {
-      throw createHttpError(409, 'Share link is missing project reference.');
+      throw createHttpError(409, 'This link cannot open a project. Ask your project contact for a new link.');
     }
 
     const projectSnapshot = await adminDb.collection(PROJECTS_COLLECTION).doc(projectId).get();
     if (!projectSnapshot.exists) {
-      throw createHttpError(404, 'Linked project no longer exists.');
+      throw createHttpError(404, 'This project is no longer available. Please contact your team.');
     }
 
     const project = projectSnapshot.data() || {};
@@ -90,13 +90,13 @@ export default async function handler(req, res) {
 
     const clientId = typeof project.clientId === 'string' ? project.clientId.trim() : '';
     if (!clientId) {
-      throw createHttpError(409, 'Project is missing linked client.');
+      throw createHttpError(409, 'This project cannot be opened right now. Please contact your team.');
     }
 
     if (share.clientId && share.clientId !== clientId) throw createHttpError(403, 'This link no longer matches its client. Contact your team.');
     const clientSnapshot = await adminDb.collection(CLIENTS_COLLECTION).doc(clientId).get();
     if (!clientSnapshot.exists) {
-      throw createHttpError(404, 'Linked client no longer exists.');
+      throw createHttpError(404, 'This project cannot be opened right now. Please contact your team.');
     }
 
     const client = clientSnapshot.data() || {};

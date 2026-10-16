@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { handoverFields, handoverView } from "../../shared/projectHandover.js";
 import { FieldPath } from "firebase-admin/firestore";
 import { createPortalProjectAccess } from "./portalProjectAccess.js";
 import { preparePortalUpload } from "./portalUpload.js";
@@ -134,6 +135,7 @@ export function createProjectWorkspaceHandlers({
             "thread-update",
             "thread-read",
             "milestone-update",
+            "handover-update",
           ]
         : [
             "get",
@@ -177,6 +179,7 @@ export function createProjectWorkspaceHandlers({
             milestones: sanitizeMilestones(ctx.project.milestones),
             milestoneVersion: ctx.project.milestoneVersion || 0,
             projectStatus: ctx.project.status,
+            handover: handoverView(ctx.project.portalHandover, !!actor),
           });
         }
         if (action === "thread-get") {
@@ -418,6 +421,48 @@ export function createProjectWorkspaceHandlers({
           projectUpdates.workspaceFileAttention = ws.files.filter(
             (f) => publicFile(f) && f.attention && f.versions.length,
           ).length;
+        } else if (action === "handover-update") {
+          if (
+            !actor ||
+            (actor.role !== "owner" &&
+              ![actor.uid, actor.appUserId].includes(ctx.project.assignedTo))
+          )
+            throw createHttpError(
+              403,
+              "Only the delivery coordinator or developer can update handover details.",
+            );
+          const previous = handoverView(ctx.project.portalHandover, true);
+          if (p.version !== previous.version)
+            throw createHttpError(
+              409,
+              "Handover details changed. Refresh before saving.",
+            );
+          let next;
+          try {
+            next = handoverFields(p.handover);
+          } catch (e) {
+            throw createHttpError(400, e.message);
+          }
+          changed = [
+            "published",
+            "websiteUrl",
+            "instructions",
+            "outstanding",
+            "supportScope",
+            "supportUntil",
+          ].some((key) => next[key] !== previous[key]);
+          if (changed)
+            projectUpdates.portalHandover = {
+              ...next,
+              version: previous.version + 1,
+              updatedAt: timestamp,
+              publishedAt: next.published
+                ? previous.publishedAt || timestamp
+                : null,
+            };
+          event = next.published
+            ? "Project handover shared with client"
+            : "Project handover draft saved";
         } else if (action === "milestone-update") {
           if (
             !actor ||

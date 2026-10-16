@@ -116,8 +116,20 @@ export function ProjectPortalPage() {
     setSection("overview");
     setFileSearch("");
     void loadPortal(true);
+    let lastAutomaticCheck = Date.now();
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") void loadPortal();
+      const connection = (
+        navigator as Navigator & { connection?: { saveData?: boolean } }
+      ).connection;
+      if (
+        document.visibilityState === "visible" &&
+        navigator.onLine &&
+        !connection?.saveData &&
+        Date.now() - lastAutomaticCheck >= AUTO_REFRESH_MS
+      ) {
+        lastAutomaticCheck = Date.now();
+        void loadPortal();
+      }
     };
     const interval = setInterval(refreshWhenVisible, AUTO_REFRESH_MS);
     document.addEventListener("visibilitychange", refreshWhenVisible);
@@ -140,7 +152,7 @@ export function ProjectPortalPage() {
 
   if (isLoading || !data)
     return (
-      <main className="theme-light flex min-h-screen items-center justify-center bg-slate-50 px-5 text-slate-900">
+      <main className="theme-light client-portal flex min-h-screen items-center justify-center bg-slate-50 px-5 text-slate-900">
         <Card className="w-full max-w-md">
           <CardHeader>
             <img
@@ -190,7 +202,7 @@ export function ProjectPortalPage() {
   const reviewOpen = data.project.review?.status === "open" && !closed;
   const action = needsMore
     ? {
-        title: "Please clarify your onboarding information",
+        title: "Please help us with a few details",
         detail:
           onboarding.feedback || "Your team has a question about your answers.",
         target: "onboarding",
@@ -224,11 +236,11 @@ export function ProjectPortalPage() {
                 title:
                   onboarding.status === "not-started"
                     ? "Let’s get your project ready"
-                    : "Continue your onboarding",
+                    : "Continue getting your project ready",
                 detail:
                   "Confirm your business information, tell us what you need, and share your materials.",
                 target: "onboarding",
-                button: "Open onboarding",
+                button: "Share your project details",
               }
             : {
                 title: "No action needed from you right now",
@@ -238,30 +250,32 @@ export function ProjectPortalPage() {
                     ? "Your team is reviewing your information. We will ask here if anything needs clarification."
                     : data.project.clientUpdate ||
                       (closed
-                        ? "Your completed files remain available while this private link is valid."
+                        ? "Your project is marked as delivered. Open your handover for shared files, instructions and any remaining items."
                         : "Your team is working through the project plan. We will publish the next review here."),
                 target: closed
-                  ? "files"
+                  ? "handover"
                   : milestones.length
                     ? "progress"
                     : "overview",
                 button: closed
-                  ? "View final files"
+                  ? "View your handover"
                   : milestones.length
                     ? "View project progress"
                     : "View project overview",
               };
   const sections = [
     ["overview", "Overview"],
-    ...(onboarding ? [["onboarding", "Onboarding"]] : []),
+    ...(onboarding ? [["onboarding", "Getting Started"]] : []),
     ["progress", "Project Progress"],
     ["files", "Files & Deliverables"],
     ["messages", "Messages & Feedback"],
     ["approvals", "Approvals & Requests"],
+    ["handover", "Handover & Support"],
   ];
 
-  const statusMessage =
-    data.project.status === "on-hold"
+  const statusMessage = closed
+    ? "Your project is marked as delivered. See Handover & Support for the next steps."
+    : data.project.status === "on-hold"
       ? "Your project is currently on hold."
       : data.project.status === "waiting-client"
         ? "Your team is waiting for your input."
@@ -272,7 +286,10 @@ export function ProjectPortalPage() {
             : `${summary.remaining} milestone${summary.remaining === 1 ? "" : "s"} still to complete.`;
 
   return (
-    <div className="theme-light min-h-screen bg-slate-50 text-slate-900">
+    <div className="theme-light client-portal min-h-screen bg-slate-50 text-slate-900">
+      <a href="#portal-main" className="portal-skip-link">
+        Skip to project content
+      </a>
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-5 py-4 sm:px-8">
           <div className="flex items-center gap-3">
@@ -313,15 +330,20 @@ export function ProjectPortalPage() {
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8 sm:py-10">
+      <main
+        id="portal-main"
+        tabIndex={-1}
+        className="mx-auto max-w-6xl space-y-6 px-4 py-6 sm:px-8 sm:py-10"
+      >
+        <h1 className="sr-only">{data.project.name} — client workspace</h1>
         <nav
           aria-label="Workspace sections"
-          className="flex gap-2 overflow-x-auto pb-2"
+          className="grid grid-cols-2 gap-2 pb-2 sm:flex sm:flex-wrap"
         >
           {sections.map(([key, label]) => (
             <Button
               key={key}
-              className="min-h-11 shrink-0"
+              className="min-h-11 whitespace-normal px-3 py-2 text-center sm:shrink-0"
               size="sm"
               variant={section === key ? "default" : "outline"}
               onClick={() => setSection(key)}
@@ -341,9 +363,9 @@ export function ProjectPortalPage() {
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-amber-300">
                 {data.client.businessName}
               </p>
-              <h1 className="mt-3 break-words text-3xl font-semibold tracking-tight sm:text-4xl">
+              <h2 className="mt-3 break-words text-3xl font-semibold tracking-tight sm:text-4xl">
                 {data.project.name}
-              </h1>
+              </h2>
               {data.project.packageName && (
                 <p className="mt-3 text-sm text-slate-300">
                   {data.project.packageName}
@@ -357,7 +379,7 @@ export function ProjectPortalPage() {
                 <span>
                   {summary.total
                     ? `${summary.completed} of ${summary.total} milestones complete`
-                    : "Delivery plan pending"}
+                    : "Your team is preparing the project plan"}
                 </span>
                 <span className="font-semibold text-amber-300">
                   {summary.total ? `${summary.progress}%` : "—"}
@@ -366,13 +388,18 @@ export function ProjectPortalPage() {
               <div
                 role="progressbar"
                 aria-label="Milestone completion"
-                aria-valuenow={summary.progress}
+                aria-valuenow={summary.total ? summary.progress : undefined}
+                aria-valuetext={
+                  summary.total
+                    ? `${summary.progress}% complete`
+                    : "Your team is preparing the project plan"
+                }
                 aria-valuemin={0}
                 aria-valuemax={100}
                 className="h-2 overflow-hidden rounded-full bg-white/10"
               >
                 <div
-                  className="h-full rounded-full bg-amber-400 transition-all"
+                  className="h-full rounded-full bg-amber-400 motion-safe:transition-all"
                   style={{ width: `${summary.progress}%` }}
                 />
               </div>
@@ -428,12 +455,19 @@ export function ProjectPortalPage() {
             />
           </div>
         )}
-        <div hidden={!["files", "messages", "progress"].includes(section)}>
+        <div
+          hidden={
+            !["files", "messages", "progress", "handover"].includes(section)
+          }
+        >
           <ProjectCollaboration
             key={token}
             token={token}
-            active={["files", "messages", "progress"].includes(section)}
+            active={["files", "messages", "progress", "handover"].includes(
+              section,
+            )}
             mode={section}
+            onNavigate={setSection}
             onChange={() => void loadPortal()}
           />
         </div>
@@ -462,14 +496,16 @@ export function ProjectPortalPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <p className="text-sm">
-                    <strong>Onboarding:</strong>{" "}
+                    <strong>Getting started:</strong>{" "}
                     {onboarding
                       ? ONBOARDING_STATES[onboarding.status]
                       : "Managed by your team"}
                   </p>
                   <p className="text-sm">
-                    <strong>Delivery:</strong> {summary.completed} of{" "}
-                    {summary.total} milestones complete.{" "}
+                    <strong>Delivery:</strong>{" "}
+                    {summary.total
+                      ? `${summary.completed} of ${summary.total} milestones complete. `
+                      : "Your team is preparing the project plan. "}
                     {nextMilestone
                       ? `Next: ${nextMilestone.title}`
                       : "Your team will confirm the next delivery step."}
@@ -487,9 +523,9 @@ export function ProjectPortalPage() {
                     </details>
                   )}
                   <p className="text-xs text-muted-foreground">
-                    Onboarding approval and completed milestones are separate
-                    from final project delivery. Additional services require
-                    agreement.
+                    Approving your project details does not mean the finished
+                    work has been delivered. Any additional services need to be
+                    agreed with the team.
                   </p>
                 </CardContent>
               </Card>
@@ -580,6 +616,7 @@ export function ProjectPortalPage() {
                               src={safePortalUrl(file.url)!}
                               alt={file.name}
                               loading="lazy"
+                              decoding="async"
                               className="aspect-video w-full bg-slate-100 object-contain"
                             />
                           ) : (
@@ -680,8 +717,9 @@ export function ProjectPortalPage() {
             <div className="space-y-3 px-1 text-xs leading-5 text-slate-600">
               <p>Project updated {formatDate(data.project.updatedAt, true)}</p>
               <p>
-                Last checked {formatDate(lastSyncedAt, true)}. Refreshes every
-                10 minutes while open.
+                Last checked {formatDate(lastSyncedAt, true)}. Checks for
+                updates about every 10 minutes while open, except when
+                data-saving mode is on. You can also use Refresh.
               </p>
               {data.share.expiresAt && (
                 <p>
