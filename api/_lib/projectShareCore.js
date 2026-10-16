@@ -1,3 +1,4 @@
+import {milestoneStatus} from '../../shared/projectTracking.js';
 import crypto from 'crypto';
 
 export const PROJECT_SHARES_COLLECTION = 'project_shares';
@@ -55,11 +56,17 @@ export const sanitizeMilestones = (milestones) => {
         ? entry.name.trim()
         : `Milestone ${index + 1}`;
     const description = typeof entry.description === 'string' ? entry.description.trim() : '';
-    const isCompleted = entry.isCompleted === true || entry.completed === true;
+    const isCompleted = milestoneStatus(entry) === 'completed';
     return {
       id: typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : `m-${index + 1}`,
       title,
       description: description || null,
+      status: milestoneStatus(entry),
+      order: Number.isFinite(entry.order) ? entry.order : index,
+      responsibleParty: ['team','client','both'].includes(entry.responsibleParty) ? entry.responsibleParty : 'team',
+      expectedDate: typeof entry.expectedDate === 'string' ? entry.expectedDate : '',
+      dependsOn: Array.isArray(entry.dependsOn) ? entry.dependsOn.filter(id=>typeof id==='string') : [],
+      clientAction: typeof entry.clientAction === 'string' ? entry.clientAction : '',
       isCompleted,
       completedAt: parseOptionalIsoDate(entry.completedAt),
     };

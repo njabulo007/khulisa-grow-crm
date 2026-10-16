@@ -28,7 +28,7 @@ export interface OnboardingRevision {
   templateIds: string[];
   submittedAt: string;
 }
-export async function publicOnboarding<T = OnboardingData>(
+export async function publicProjectRequest<T = OnboardingData>(
   token: string,
   action: string,
   payload: object = {},
@@ -49,7 +49,10 @@ export async function publicOnboarding<T = OnboardingData>(
       try {
         const result = JSON.parse(xhr.responseText);
         if (xhr.status < 200 || xhr.status >= 300)
-          throw new Error(result.error || "Your change could not be saved.");
+          throw Object.assign(
+            new Error(result.error || "Your change could not be saved."),
+            { status: xhr.status },
+          );
         onProgress?.(100);
         resolve(result);
       } catch (e) {
@@ -64,11 +67,16 @@ export async function publicOnboarding<T = OnboardingData>(
           "This is taking longer than expected. Retry with the same details.",
         ),
       );
-    xhr.send(
-      JSON.stringify({ token, action: `onboarding-${action}`, ...payload }),
-    );
+    xhr.send(JSON.stringify({ token, action, ...payload }));
   });
 }
+export const publicOnboarding = <T = OnboardingData>(
+  token: string,
+  action: string,
+  payload: object = {},
+  onProgress?: (percent: number) => void,
+) =>
+  publicProjectRequest<T>(token, `onboarding-${action}`, payload, onProgress);
 export const staffOnboarding = <T = OnboardingData>(
   projectId: string,
   action: string,

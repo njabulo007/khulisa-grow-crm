@@ -66,6 +66,12 @@ export interface Client {
 export type ProjectStatus = 'not-started' | 'in-progress' | 'completed' | 'on-hold' | 'waiting-client' | 'delivered';
 
 export interface ProjectMilestone {
+  status?: 'not-started'|'in-progress'|'awaiting-client'|'under-review'|'completed'|'blocked';
+  responsibleParty?: 'team'|'client'|'both';
+  expectedDate?: string;
+  dependsOn?: string[];
+  clientAction?: string;
+  order?: number;
   id: string;
   title?: string;
   description?: string;

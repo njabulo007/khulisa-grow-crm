@@ -1,0 +1,8 @@
+# Files, milestones and conversations
+
+1. Reuse live-share and current staff assignment checks, encrypted Blob storage, existing notification delivery, and existing Vercel routes. Add a bounded project file library and asynchronous conversation records. Preserve onboarding materials and historical public share files without copying or invalidating them.
+2. Validate files on the server; use generated encrypted paths, private metadata/keys, bounded versions, transactional upload reservation/finalisation and retryable deletion. Staff files start team-only; publishing is an explicit action. Client uploads are encrypted and visible only through their project's live workspace.
+3. Add statuses and dependencies to existing milestone objects while retaining IDs, legacy booleans and completion rules. Use one status/progress/next-step definition in the CRM and portal. New updates are authenticated transactions, log activity, and notify only when data changes. Client messages never change milestone completion, project scope, pricing or approval records.
+4. Provide file/category/history controls, conversation replies and responsibility/resolution controls, and rich milestone editing. Keep reads paginated and user-triggered, without realtime listeners. Test isolation, revocation, role restrictions, retries, dependencies, counts, legacy compatibility, storage failures and desktop/mobile journeys before pushing.
+
+No production migration, existing-link invalidation or destructive live-data action is planned. Older already-public share URLs remain historically shared; encrypted library uploads are the default for new work.

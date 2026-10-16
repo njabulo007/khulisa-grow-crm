@@ -10,6 +10,7 @@ export async function sweepWorkflowHistory(db, now = Date.now()) {
     ["notifications", 100, 30],
     ["_portal_limits", 50, 2],
     ["_portal_onboarding_operations", 50, 7],
+    ["_workspace_operations", 50, 7],
   ]) {
     let query = db
       .collection(collection)

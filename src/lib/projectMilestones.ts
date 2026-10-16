@@ -1,4 +1,5 @@
-﻿import { type PackageId } from '@/config/packages';
+import {milestoneStatus} from '../../shared/projectTracking.js';
+import { type PackageId } from '@/config/packages';
 import { ProjectMilestone, ProjectStatus } from '@/types/models';
 import { generateId } from '@/services/storage';
 
@@ -122,9 +123,10 @@ export const normalizeProjectMilestone = (
   milestone: Partial<ProjectMilestone> | null | undefined
 ): ProjectMilestone => {
   const title = String(milestone?.title || milestone?.name || 'Milestone').trim() || 'Milestone';
-  const isCompleted = Boolean(milestone?.isCompleted ?? milestone?.completed);
+  const isCompleted = milestoneStatus(milestone) === 'completed';
 
   return {
+    ...milestone,
     id: String(milestone?.id || generateId()),
     title,
     description: milestone?.description,

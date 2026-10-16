@@ -1,3 +1,4 @@
+import {createProjectWorkspaceHandlers} from '../_lib/projectWorkspaceHandlers.js';
 import { createPortalOnboardingHandlers } from '../_lib/portalOnboardingHandlers.js';
 import { createPortalNotifier } from '../_lib/portalNotifications.js';
 import { sweepWorkflowHistory } from '../_lib/workflowMaintenance.js';
@@ -31,6 +32,7 @@ const followUps = createPaymentFollowUpHandler({ db: adminDb, auth: adminAuth,
 
 export default (req, res) => {
   const kind = parseBody(req).kind;
+  if (kind === 'project-workspace' && req.method !== 'GET') return createProjectWorkspaceHandlers({db:adminDb,authenticate:migration.authenticate,requireOwner:migration.requireOwner,files:requestAttachmentStorage,notify:createPortalNotifier({db:adminDb,auth:adminAuth,sendPush})}).staff(req,res);
   if (kind === 'portal-onboarding' && req.method !== 'GET') return createPortalOnboardingHandlers({db:adminDb,authenticate:migration.authenticate,requireOwner:migration.requireOwner,files:requestAttachmentStorage,notify:createPortalNotifier({db:adminDb,auth:adminAuth,sendPush})}).staff(req,res);
   if (kind === 'portal-workflow' && req.method !== 'GET') return createPortalStaffHandler({ db: adminDb, requireOwner: migration.requireOwner, notify: createPortalNotifier({db:adminDb,auth:adminAuth,sendPush}) })(req, res);
   if (kind === 'workflow' && req.method !== 'GET') return workflow(req, res);

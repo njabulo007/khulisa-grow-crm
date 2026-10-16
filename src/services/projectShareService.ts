@@ -52,6 +52,8 @@ export interface PublicProjectPortalData {
     name: string;
     status: string;
     services?: string[];
+    workspacePendingQuestions?: number;
+    workspaceFileAttention?: number;
     packageName: string | null;
     packageId: string | null;
     startDate: string | null;
@@ -64,6 +66,12 @@ export interface PublicProjectPortalData {
     driveLink: string | null;
     milestones: Array<{
       id: string;
+      status?: string;
+      responsibleParty?: string;
+      expectedDate?: string;
+      dependsOn?: string[];
+      clientAction?: string;
+      order?: number;
       title: string;
       description: string | null;
       isCompleted: boolean;

@@ -1,6 +1,7 @@
+import {ProjectCollaboration} from '@/components/common/ProjectCollaboration';
 import { PortalOnboardingReview } from '@/components/common/PortalOnboardingReview';
 import { PortalReviewPanel } from '@/components/common/PortalReviewPanel';
-import { AGENT_DELIVERY_STATUSES, canChangeProjectDeliveryStatus, canEditProjectMilestones, resolveDeliveryStatus } from '@/lib/projectDeliveryPermissions';
+import { AGENT_DELIVERY_STATUSES, canChangeProjectDeliveryStatus, canEditProjectMilestones } from '@/lib/projectDeliveryPermissions';
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useRef } from 'react';
@@ -106,18 +107,6 @@ const buildScopedMilestones = (
   sourceMilestoneId: milestone.id,
 }));
 
-const getAutoProjectStatusFromScopedMilestones = (
-  milestones: OwnerScopedMilestone[],
-  fallbackStatus: ProjectStatus,
-): ProjectStatus => {
-  if (fallbackStatus === 'on-hold') return 'on-hold';
-  if (milestones.length === 0) return fallbackStatus;
-
-  const completedCount = milestones.filter((milestone) => milestone.isCompleted).length;
-  if (completedCount === 0) return 'not-started';
-  if (completedCount === milestones.length) return 'completed';
-  return 'in-progress';
-};
 
 type UploadState = 'uploading' | 'done' | 'error';
 
@@ -138,7 +127,6 @@ export function ProjectDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [isSavingMilestones, setIsSavingMilestones] = useState(false);
   const [clientUpdateDraft, setClientUpdateDraft] = useState('');
   const [isSavingClientUpdate, setIsSavingClientUpdate] = useState(false);
   const [isSavingStatus, setIsSavingStatus] = useState(false);
@@ -297,59 +285,6 @@ export function ProjectDetailPage() {
     }
   };
 
-  const handleMilestoneToggle = async (milestone: OwnerScopedMilestone, isCompleted: boolean) => {
-    if (!canEditProjectMilestones(user, project)) {
-      toast.error('You cannot update this project checklist.');
-      return;
-    }
-
-    const nowIso = new Date().toISOString();
-    const nextMilestones = milestones.map((entry) => {
-      if (milestone.sourceMilestoneId && entry.id !== milestone.sourceMilestoneId) return entry;
-      if (!milestone.sourceMilestoneId) return entry;
-      return {
-        ...entry,
-        title: milestone.title,
-        name: milestone.title,
-        description: milestone.description ?? entry.description,
-        isCompleted,
-        completed: isCompleted,
-        completedAt: isCompleted ? nowIso : undefined,
-      };
-    });
-
-    if (!milestone.sourceMilestoneId) {
-      nextMilestones.push({
-        id: `ms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        title: milestone.title,
-        name: milestone.title,
-        description: milestone.description,
-        isCompleted,
-        completed: isCompleted,
-        completedAt: isCompleted ? nowIso : undefined,
-      });
-    }
-
-    const nextScopedMilestones = buildScopedMilestones(nextMilestones, scopeFeatures);
-    const calculatedStatus = getAutoProjectStatusFromScopedMilestones(nextScopedMilestones, project.status);
-    const nextStatus = resolveDeliveryStatus(calculatedStatus, project.status, isOwner ? 'owner' : 'agent');
-
-    setIsSavingMilestones(true);
-    try {
-      const updated = await projectService.update(project.id, {
-        milestones: nextMilestones,
-        status: nextStatus,
-      });
-      if (!updated) {
-        toast.error('Milestone update failed.');
-        return;
-      }
-      syncProjectState(updated);
-      toast.success('Milestone updated.');
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Could not update the milestone.'); } finally {
-      setIsSavingMilestones(false);
-    }
-  };
 
   const handleDeleteProject = async () => {
     if (!isOwner) {
@@ -676,53 +611,12 @@ export function ProjectDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Milestones</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {!isOwner && (
-                <p className="text-xs text-muted-foreground">Update your delivery checklist. The owner confirms final project completion.</p>
-              )}
-              {ownerScopedMilestones.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No milestones added yet.</p>
-              ) : (
-                ownerScopedMilestones.map((milestone) => (
-                  <div key={milestone.id} className="flex items-start gap-3 rounded-lg border p-3">
-                    <div className="pt-0.5">
-                      {canEditProjectMilestones(user, project) ? (
-                        <Checkbox
-                          aria-label={`Complete ${milestone.title}`}
-                          checked={milestone.isCompleted}
-                          disabled={isSavingMilestones}
-                          onCheckedChange={(checked) => {
-                            void handleMilestoneToggle(milestone, checked === true);
-                          }}
-                        />
-                      ) : milestone.isCompleted ? (
-                        <CheckCircle2 className="h-4 w-4 text-success-text" />
-                      ) : (
-                        <Circle className="h-4 w-4 text-muted-foreground" />
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className={`text-sm font-medium ${milestone.isCompleted ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {milestone.title}
-                      </p>
-                      {milestone.description && (
-                        <p className="text-xs text-muted-foreground">{milestone.description}</p>
-                      )}
-                      {milestone.completedAt && (
-                        <p className="text-xs text-muted-foreground">
-                          Completed {new Date(milestone.completedAt).toLocaleDateString('en-ZA')}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </CardContent>
-          </Card>
+          <ProjectCollaboration
+            projectId={project.id}
+            canEditMilestones={canEditProjectMilestones(user,project)}
+            teamOptions={[{id:project.assignedTo,name:'Delivery coordinator'},{id:project.buildOwnerId,name:'Developer'},{id:client?.contactManagerId,name:'Client contact manager'}].filter(p=>p.id)}
+            onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }}
+          />
 
           <PortalOnboardingReview projectId={project.id} onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }} />
           {isOwner && <PortalReviewPanel projectId={project.id} clientId={project.clientId} onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }} />}
@@ -786,7 +680,7 @@ export function ProjectDetailPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Completion</p>
-                <p className="text-lg font-semibold">{progress}%</p>
+                <p className="text-lg font-semibold">{ownerScopedMilestones.length ? `${progress}%` : "Not configured"}</p>
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Start Date</p>
@@ -890,6 +784,9 @@ export function ProjectDetailPage() {
                       <p className="text-sm font-medium">Portal Media</p>
                       {activePortalShare ? (
                         <>
+                          <details className="space-y-3">
+                            <summary className="cursor-pointer text-sm font-medium">Legacy public media upload (explicit sharing)</summary>
+                            <p className="text-xs text-warning-text">These older links expose files through public storage URLs. Use Project collaboration → Files & Deliverables for private encrypted uploads. Keep this option only for deliberately public media.</p>
                           <input
                             ref={portalMediaInputRef}
                             type="file"
@@ -932,6 +829,7 @@ export function ProjectDetailPage() {
                             <p className="text-muted-foreground">Select files above.</p>
                             <p className="text-muted-foreground">Max size: 4MB per file.</p>
                           </div>
+                          </details>
                           {uploadItems.length > 0 && (
                             <div className="space-y-2">
                               {uploadItems.map((item) => (

@@ -1,3 +1,4 @@
+import {createProjectWorkspaceHandlers} from '../_lib/projectWorkspaceHandlers.js';
 import { createPortalOnboardingHandlers, onboardingView } from '../_lib/portalOnboardingHandlers.js';
 import { requestAttachmentStorage } from '../_lib/requestAttachmentStorage.js';
 import { PACKAGE_CATALOG } from '../_lib/packages.js';
@@ -31,6 +32,7 @@ const notify = createPortalNotifier({
   },
 });
 const onboarding = createPortalOnboardingHandlers({ db:adminDb, files:requestAttachmentStorage, notify });
+const workspace = createProjectWorkspaceHandlers({db:adminDb,files:requestAttachmentStorage,notify});
 const responses = createPortalResponseHandler({ db:adminDb, notify });
 
 export default async function handler(req, res) {
@@ -38,6 +40,7 @@ export default async function handler(req, res) {
     return methodNotAllowed(res, ['POST']);
   }
 
+  if (String(parseBody(req).action || '').startsWith('workspace-')) return workspace.public(req,res);
   if (String(parseBody(req).action || '').startsWith('onboarding-')) return onboarding.public(req,res);
   if (parseBody(req).action) return responses(req,res);
   res.setHeader('Cache-Control', 'no-store');
@@ -137,6 +140,8 @@ export default async function handler(req, res) {
         packageName: typeof project.packageName === 'string' ? project.packageName : PACKAGE_CATALOG[project.packageId]?.name || null,
         packageId: typeof project.packageId === 'string' ? project.packageId : null,
         services: PACKAGE_CATALOG[project.packageId]?.features || [],
+        workspacePendingQuestions: Number(project.workspacePendingQuestions || 0),
+        workspaceFileAttention: Number(project.workspaceFileAttention || 0),
         startDate: parseOptionalIsoDate(project.startDate),
         dueDate: parseOptionalIsoDate(project.dueDate),
         notes: '',

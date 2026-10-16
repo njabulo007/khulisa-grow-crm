@@ -1,3 +1,4 @@
+import {milestoneSummary} from '../../shared/projectTracking.js';
 export function safePortalUrl(value: string | null | undefined): string | null {
   if (!value) return null;
   try {
@@ -11,14 +12,7 @@ export function safePortalUrl(value: string | null | undefined): string | null {
 export function summarizePortalMilestones<T extends { isCompleted: boolean }>(
   milestones: T[],
 ) {
-  const total = milestones.length;
-  const completed = milestones.filter((item) => item.isCompleted).length;
-  return {
-    total,
-    completed,
-    remaining: total - completed,
-    progress: total ? Math.round((completed / total) * 100) : 0,
-  };
+  return milestoneSummary(milestones);
 }
 
 export function portalDeadline(

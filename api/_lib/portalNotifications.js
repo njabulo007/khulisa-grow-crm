@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 export function createPortalNotifier({ db, auth, sendPush }) {
-  return async (response, { verified = false, onboarding = false } = {}) => {
+  return async (response, { verified = false, onboarding = false, workspace = false } = {}) => {
     const project = await db
       .collection("projects")
       .doc(response.projectId)
@@ -29,7 +29,7 @@ export function createPortalNotifier({ db, auth, sendPush }) {
       recipients = (
         await db.collection("users").where("role", "==", "owner").get()
       ).docs;
-    if (onboarding) {
+    if (onboarding || workspace) {
       const key = client.data().contactManagerId || project.data().assignedTo;
       if (typeof key === "string" && key && !key.includes("/")) {
         const direct = await db.collection("users").doc(key).get();
@@ -69,12 +69,12 @@ export function createPortalNotifier({ db, auth, sendPush }) {
               type: "client_request",
               projectId: response.projectId,
               clientId: project.data().clientId,
-              title: onboarding
+              title: workspace ? response.title || "Project workspace updated" : onboarding
                 ? "Client onboarding updated"
                 : verified
                   ? "Client response verified"
                   : "Client portal response received",
-              message: onboarding
+              message: workspace ? "A project file, milestone or conversation has changed. Open the project collaboration panels." : onboarding
                 ? "Client onboarding has changed. Open the project onboarding panel to review details."
                 : verified
                   ? "The verified response is now in client history. Open the project for details."

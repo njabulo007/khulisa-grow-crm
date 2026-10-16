@@ -358,12 +358,12 @@ export function AgentDashboard() {
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
-                          <span>{milestoneCounts.completed}/{milestoneCounts.total} deliverables</span>
+                          <span>{milestoneCounts.total ? `${milestoneCounts.completed}/${milestoneCounts.total} deliverables` : 'Delivery plan pending'}</span>
                           <span className={isOverdue ? 'text-destructive-text' : ''}>
                             Due: {new Date(project.dueDate).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' })}
                           </span>
                         </div>
-                        <Progress value={milestoneCounts.progress} className="h-1.5" />
+                        {milestoneCounts.total > 0 && <Progress value={milestoneCounts.progress} className="h-1.5" />}
                       </div>
                     </div>
                   );

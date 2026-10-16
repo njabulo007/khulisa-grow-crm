@@ -1,3 +1,5 @@
+import { ProjectCollaboration } from "@/components/common/ProjectCollaboration";
+import { nextProjectMilestone } from "../../../shared/projectTracking.js";
 import { PortalOnboarding } from "@/components/common/PortalOnboarding";
 import { ONBOARDING_STATES } from "../../../shared/onboarding.js";
 import { PortalClientActions } from "@/components/common/PortalClientActions";
@@ -59,16 +61,15 @@ export function ProjectPortalPage() {
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [fileSearch, setFileSearch] = useState("");
-  const [milestoneFilter, setMilestoneFilter] = useState<
-    "all" | "open" | "complete"
-  >("all");
   const [section, setSection] = useState("overview");
+  const activeToken = useRef(token);
+  activeToken.current = token;
   const generation = useRef(0);
   const pending = useRef(false);
 
   const loadPortal = useCallback(
     async (initial = false) => {
-      if (pending.current) return;
+      if (pending.current || activeToken.current !== token) return;
       const requestGeneration = generation.current;
       pending.current = true;
       if (initial) setIsLoading(true);
@@ -114,7 +115,6 @@ export function ProjectPortalPage() {
     setData(null);
     setSection("overview");
     setFileSearch("");
-    setMilestoneFilter("all");
     void loadPortal(true);
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void loadPortal();
@@ -136,11 +136,6 @@ export function ProjectPortalPage() {
   );
   const filteredFiles = files.filter((file) =>
     file.name.toLowerCase().includes(fileSearch.trim().toLowerCase()),
-  );
-  const filteredMilestones = milestones.filter(
-    (item) =>
-      milestoneFilter === "all" ||
-      (milestoneFilter === "complete" ? item.isCompleted : !item.isCompleted),
   );
 
   if (isLoading || !data)
@@ -186,7 +181,7 @@ export function ProjectPortalPage() {
     );
 
   const folderUrl = safePortalUrl(data.project.driveLink);
-  const nextMilestone = milestones.find((item) => !item.isCompleted);
+  const nextMilestone = nextProjectMilestone(milestones, data.project.status);
   const contact = data.project.contact;
   const onboarding = data.onboarding;
   const closed = ["completed", "delivered"].includes(data.project.status);
@@ -208,48 +203,60 @@ export function ProjectPortalPage() {
           target: "approvals",
           button: "Review this revision",
         }
-      : onboarding?.editable
+      : data.project.workspacePendingQuestions > 0
         ? {
-            title:
-              onboarding.status === "not-started"
-                ? "Let’s get your project ready"
-                : "Continue your onboarding",
+            title: "Your team has a question for you",
             detail:
-              "Confirm your business information, tell us what you need, and share your materials.",
-            target: "onboarding",
-            button: "Open onboarding",
+              "Open your project conversations and reply to the outstanding question.",
+            target: "messages",
+            button: "View conversations",
           }
-        : {
-            title: "No action needed from you right now",
-            detail:
-              onboarding &&
-              ["submitted", "under-review"].includes(onboarding.status)
-                ? "Your team is reviewing your information. We will ask here if anything needs clarification."
-                : data.project.clientUpdate ||
-                  (closed
-                    ? "Your completed files remain available while this private link is valid."
-                    : "Your team is working through the project plan. We will publish the next review here."),
-            target:
-              closed && (files.length || folderUrl)
-                ? "files"
-                : milestones.length
-                  ? "progress"
-                  : "overview",
-            button:
-              closed && (files.length || folderUrl)
-                ? "View final files"
-                : milestones.length
-                  ? "View project progress"
-                  : "View project overview",
-          };
+        : data.project.workspaceFileAttention > 0
+          ? {
+              title: "A project file needs your attention",
+              detail:
+                "Check the files marked for your attention. Use Approvals & Requests for a formal revision decision.",
+              target: "files",
+              button: "View project files",
+            }
+          : onboarding?.editable
+            ? {
+                title:
+                  onboarding.status === "not-started"
+                    ? "Let’s get your project ready"
+                    : "Continue your onboarding",
+                detail:
+                  "Confirm your business information, tell us what you need, and share your materials.",
+                target: "onboarding",
+                button: "Open onboarding",
+              }
+            : {
+                title: "No action needed from you right now",
+                detail:
+                  onboarding &&
+                  ["submitted", "under-review"].includes(onboarding.status)
+                    ? "Your team is reviewing your information. We will ask here if anything needs clarification."
+                    : data.project.clientUpdate ||
+                      (closed
+                        ? "Your completed files remain available while this private link is valid."
+                        : "Your team is working through the project plan. We will publish the next review here."),
+                target: closed
+                  ? "files"
+                  : milestones.length
+                    ? "progress"
+                    : "overview",
+                button: closed
+                  ? "View final files"
+                  : milestones.length
+                    ? "View project progress"
+                    : "View project overview",
+              };
   const sections = [
     ["overview", "Overview"],
     ...(onboarding ? [["onboarding", "Onboarding"]] : []),
-    ...(milestones.length ? [["progress", "Project Progress"]] : []),
-    ...(files.length || folderUrl ? [["files", "Files & Deliverables"]] : []),
-    ...(contact?.email || data.project.clientUpdate
-      ? [["messages", "Messages & Feedback"]]
-      : []),
+    ["progress", "Project Progress"],
+    ["files", "Files & Deliverables"],
+    ["messages", "Messages & Feedback"],
     ["approvals", "Approvals & Requests"],
   ];
 
@@ -288,13 +295,7 @@ export function ProjectPortalPage() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() =>
-                setSection(
-                  contact?.email || data.project.clientUpdate
-                    ? "messages"
-                    : "approvals",
-                )
-              }
+              onClick={() => setSection("messages")}
             >
               Contact / help
             </Button>
@@ -427,6 +428,15 @@ export function ProjectPortalPage() {
             />
           </div>
         )}
+        <div hidden={!["files", "messages", "progress"].includes(section)}>
+          <ProjectCollaboration
+            key={token}
+            token={token}
+            active={["files", "messages", "progress"].includes(section)}
+            mode={section}
+            onChange={() => void loadPortal()}
+          />
+        </div>
         <div
           className={
             section === "overview"
@@ -487,7 +497,9 @@ export function ProjectPortalPage() {
             {(contact?.email || data.project.clientUpdate) && (
               <Card hidden={section !== "messages"} id="workspace-messages">
                 <CardHeader>
-                  <CardTitle className="text-lg">Messages & feedback</CardTitle>
+                  <CardTitle className="text-lg">
+                    Latest project update
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
@@ -510,164 +522,94 @@ export function ProjectPortalPage() {
                 </CardContent>
               </Card>
             )}
-            <Card hidden={section !== "progress"} id="workspace-progress">
-              <CardHeader className="gap-4 border-b border-slate-100">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <CardTitle className="text-lg">Delivery milestones</CardTitle>
-                  <div
-                    className="flex gap-1 rounded-lg bg-slate-100 p-1"
-                    aria-label="Filter milestones"
-                  >
-                    {(["all", "open", "complete"] as const).map((filter) => (
-                      <Button
-                        key={filter}
-                        size="sm"
-                        variant={
-                          milestoneFilter === filter ? "secondary" : "ghost"
-                        }
-                        aria-pressed={milestoneFilter === filter}
-                        onClick={() => setMilestoneFilter(filter)}
-                        className="h-8 px-3 text-xs"
-                      >
-                        {filter === "all"
-                          ? "All"
-                          : filter === "open"
-                            ? "Remaining"
-                            : "Complete"}
-                      </Button>
-                    ))}
+            {(files.length > 0 || folderUrl) && (
+              <Card hidden={section !== "files"} id="portal-media">
+                <CardHeader className="gap-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <CardTitle className="text-lg">
+                      Previously shared files
+                    </CardTitle>
+                    <span className="text-xs text-slate-600">
+                      {files.length} file{files.length === 1 ? "" : "s"}
+                    </span>
                   </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                {!filteredMilestones.length ? (
-                  <p className="py-5 text-sm text-slate-600">
-                    {!milestones.length
-                      ? "Your delivery milestones will appear here when the team adds them."
-                      : "No milestones in this view."}
-                  </p>
-                ) : (
-                  <ol className="divide-y divide-slate-100">
-                    {filteredMilestones.map((milestone) => (
-                      <li key={milestone.id} className="flex gap-4 py-4">
-                        {milestone.isCompleted ? (
-                          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-                        ) : (
-                          <Circle className="mt-0.5 h-5 w-5 shrink-0 text-slate-300" />
-                        )}
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="break-words text-sm font-medium">
-                              {milestone.title}
-                            </p>
-                            <span
-                              className={`text-xs ${milestone.isCompleted ? "text-emerald-700" : "text-slate-600"}`}
-                            >
-                              {milestone.isCompleted ? "Complete" : "Pending"}
-                            </span>
-                          </div>
-                          {milestone.description && (
-                            <p className="mt-2 break-words text-sm leading-6 text-slate-600">
-                              {milestone.description}
-                            </p>
-                          )}
-                          {milestone.isCompleted && milestone.completedAt && (
-                            <p className="mt-2 text-xs text-slate-600">
-                              Completed {formatDate(milestone.completedAt)}
-                            </p>
-                          )}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card hidden={section !== "files"} id="portal-media">
-              <CardHeader className="gap-4">
-                <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-lg">Shared files</CardTitle>
-                  <span className="text-xs text-slate-600">
-                    {files.length} file{files.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                {files.length > 0 && (
-                  <div className="relative">
-                    <Search className="absolute left-3 top-3 h-4 w-4 text-slate-600" />
-                    <Input
-                      aria-label="Search shared files"
-                      placeholder="Find a file…"
-                      value={fileSearch}
-                      onChange={(event) => setFileSearch(event.target.value)}
-                      className="pl-9"
-                    />
-                  </div>
-                )}
-              </CardHeader>
-              <CardContent>
-                {folderUrl && (
-                  <Button asChild variant="outline" className="mb-4">
-                    <a
-                      href={folderUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      Open project folder{" "}
-                      <ArrowUpRight className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
-                )}
-                {!filteredFiles.length ? (
-                  <p className="py-5 text-sm text-slate-600">
-                    {fileSearch
-                      ? "No files match your search."
-                      : "Your team will share previews and final deliverables here."}
-                  </p>
-                ) : (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {filteredFiles.map((file) => (
+                  {files.length > 0 && (
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-slate-600" />
+                      <Input
+                        aria-label="Search shared files"
+                        placeholder="Find a file…"
+                        value={fileSearch}
+                        onChange={(event) => setFileSearch(event.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  {folderUrl && (
+                    <Button asChild variant="outline" className="mb-4">
                       <a
-                        key={file.id}
-                        href={safePortalUrl(file.url)!}
+                        href={folderUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="group overflow-hidden rounded-xl border border-slate-200 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
                       >
-                        {file.mimeType?.startsWith("image/") ? (
-                          <img
-                            src={safePortalUrl(file.url)!}
-                            alt={file.name}
-                            loading="lazy"
-                            className="aspect-video w-full bg-slate-100 object-contain"
-                          />
-                        ) : (
-                          <div className="flex h-24 items-center justify-center bg-slate-50">
-                            <FileText className="h-8 w-8 text-slate-600" />
-                          </div>
-                        )}
-                        <div className="p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <p className="break-all text-sm font-medium">
-                              {file.name}
-                            </p>
-                            <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-600" />
-                          </div>
-                          <p className="mt-2 text-xs text-slate-600">
-                            {formatSize(file.sizeBytes)}
-                            {file.sizeBytes ? " · " : ""}Added{" "}
-                            {formatDate(file.createdAt)}
-                          </p>
-                          <p className="mt-3 text-xs font-medium text-primary-text">
-                            Open file
-                          </p>
-                        </div>
+                        Open project folder{" "}
+                        <ArrowUpRight className="ml-2 h-4 w-4" />
                       </a>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    </Button>
+                  )}
+                  {!filteredFiles.length ? (
+                    <p className="py-5 text-sm text-slate-600">
+                      {fileSearch
+                        ? "No files match your search."
+                        : "Your team will share previews and final deliverables here."}
+                    </p>
+                  ) : (
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {filteredFiles.map((file) => (
+                        <a
+                          key={file.id}
+                          href={safePortalUrl(file.url)!}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="group overflow-hidden rounded-xl border border-slate-200 transition hover:border-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400"
+                        >
+                          {file.mimeType?.startsWith("image/") ? (
+                            <img
+                              src={safePortalUrl(file.url)!}
+                              alt={file.name}
+                              loading="lazy"
+                              className="aspect-video w-full bg-slate-100 object-contain"
+                            />
+                          ) : (
+                            <div className="flex h-24 items-center justify-center bg-slate-50">
+                              <FileText className="h-8 w-8 text-slate-600" />
+                            </div>
+                          )}
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <p className="break-all text-sm font-medium">
+                                {file.name}
+                              </p>
+                              <ArrowUpRight className="h-4 w-4 shrink-0 text-slate-600" />
+                            </div>
+                            <p className="mt-2 text-xs text-slate-600">
+                              {formatSize(file.sizeBytes)}
+                              {file.sizeBytes ? " · " : ""}Added{" "}
+                              {formatDate(file.createdAt)}
+                            </p>
+                            <p className="mt-3 text-xs font-medium text-primary-text">
+                              Open file
+                            </p>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           <aside hidden={section !== "overview"} className="space-y-6">

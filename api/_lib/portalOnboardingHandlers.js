@@ -1,3 +1,5 @@
+import {preparePortalUpload} from './portalUpload.js';
+import { createPortalProjectAccess } from './portalProjectAccess.js';
 import crypto from "node:crypto";
 import { createHttpError, json, parseBody, methodNotAllowed } from "./http.js";
 import {
@@ -65,70 +67,7 @@ export function createPortalOnboardingHandlers({
   now = () => Date.now(),
 }) {
   const ref = (projectId) => db.collection("project_onboarding").doc(projectId);
-  async function publicContext(p, read) {
-    if (typeof p.token !== "string" || !p.token.trim() || p.token.length > 200)
-      throw createHttpError(400, "Use a valid workspace link.");
-    const shares = await read(
-      db
-        .collection("project_shares")
-        .where("tokenHash", "==", tokenHash(p.token.trim()))
-        .limit(1),
-    );
-    const shareDoc = shares.docs[0],
-      share = shareDoc?.data();
-    if (!share || computeShareStatus(share, now()) !== "active")
-      throw createHttpError(
-        403,
-        "Your link has expired or is unavailable. Contact your team.",
-      );
-    const ctx = await parents(share.projectId, read);
-    if (share.clientId && share.clientId !== ctx.client.id)
-      throw createHttpError(
-        403,
-        "This link no longer matches its client. Contact your team.",
-      );
-    return { ...ctx, shareId: shareDoc.id };
-  }
-  async function parents(projectId, read) {
-    if (!id(projectId)) throw createHttpError(400, "Choose a project.");
-    const projectDoc = await read(db.collection("projects").doc(projectId)),
-      project = projectDoc.data();
-    if (!project || project._deleting || !id(project.clientId))
-      throw createHttpError(404, "Project unavailable.");
-    const clientDoc = await read(
-        db.collection("clients").doc(project.clientId),
-      ),
-      client = clientDoc.data();
-    if (!client || client._deleting)
-      throw createHttpError(404, "Client unavailable.");
-    return {
-      project: { ...project, id: projectDoc.id },
-      client: { ...client, id: clientDoc.id },
-    };
-  }
-  async function staffContext(p, actor, read) {
-    const ctx = await parents(p.projectId, read);
-    if (actor.role === "owner") return ctx;
-    const keys = [actor.uid, actor.appUserId].filter(Boolean);
-    if (
-      keys.includes(ctx.project.assignedTo) ||
-      keys.includes(ctx.client.contactManagerId)
-    )
-      return ctx;
-    if (id(ctx.client.leadId)) {
-      const lead = await read(db.collection("leads").doc(ctx.client.leadId));
-      if (
-        lead.exists &&
-        !lead.data()._deleting &&
-        keys.includes(lead.data().assignedTo)
-      )
-        return ctx;
-    }
-    throw createHttpError(
-      403,
-      "You are not assigned to this client or project.",
-    );
-  }
+  const {publicContext,staffContext}=createPortalProjectAccess({db,now});
   const output = (ctx, r) => onboardingView(r, ctx.project, ctx.client);
   async function notice(ctx, event) {
     try {
@@ -206,60 +145,7 @@ export function createPortalOnboardingHandlers({
       }
       if (!id(p.requestId))
         throw createHttpError(400, "Refresh and retry this change.");
-      let upload;
-      if (action === "upload") {
-        if (
-          typeof p.name !== "string" ||
-          !p.name.trim() ||
-          p.name.length > 160 ||
-          /[\x00-\x1f/\\]/.test(p.name)
-        )
-          throw createHttpError(400, "Use a short file name without folders.");
-        const extensions = {
-          "image/png": /\.png$/i,
-          "image/jpeg": /\.jpe?g$/i,
-          "image/webp": /\.webp$/i,
-          "application/pdf": /\.pdf$/i,
-        };
-        if (!extensions[p.mimeType]?.test(p.name))
-          throw createHttpError(
-            400,
-            "Use a PNG, JPG, WebP or PDF with a matching file extension.",
-          );
-        if (
-          typeof p.base64 !== "string" ||
-          p.base64.length > 2800000 ||
-          !/^[A-Za-z0-9+/]*={0,2}$/.test(p.base64)
-        )
-          throw createHttpError(413, "Choose a file up to 2 MB.");
-        const bytes = Buffer.from(p.base64, "base64");
-        const valid = {
-          "image/png": bytes
-            .subarray(0, 8)
-            .equals(Buffer.from("89504e470d0a1a0a", "hex")),
-          "image/jpeg":
-            bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255,
-          "image/webp":
-            bytes.subarray(0, 4).toString() === "RIFF" &&
-            bytes.subarray(8, 12).toString() === "WEBP",
-          "application/pdf": bytes.subarray(0, 5).toString() === "%PDF-",
-        };
-        if (
-          !bytes.length ||
-          bytes.length > 2 * 1024 * 1024 ||
-          !valid[p.mimeType]
-        )
-          throw createHttpError(
-            400,
-            "Use a valid PNG, JPG, WebP or PDF file, up to 2 MB.",
-          );
-        upload = {
-          bytes,
-          sha: digest(bytes),
-          id: crypto.randomUUID(),
-          key: crypto.randomBytes(32).toString("hex"),
-        };
-      }
+      const upload=action==='upload'?preparePortalUpload(p):undefined;
       const result = await db.runTransaction(async (tx) => {
         const ctx = await context((q) => tx.get(q)),
           doc = await tx.get(ref(ctx.project.id)),

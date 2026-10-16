@@ -1,3 +1,4 @@
+import {milestoneSummary} from '../../shared/projectTracking.js';
 import type { PackageId } from '@/config/packages';
 import type { ProjectMilestone } from '@/types/models';
 
@@ -12,7 +13,6 @@ export const getScopedProjectMilestoneCounts = (
   _packageId: PackageId,
 ): ProjectMilestoneCounts => {
   const recorded = Array.isArray(milestones) ? milestones : [];
-  const completed = recorded.filter((milestone) => Boolean(milestone.isCompleted ?? milestone.completed)).length;
-  const total = recorded.length;
-  return { completed, total, progress: total ? Math.round(completed / total * 100) : 0 };
+  const {completed,total,progress}=milestoneSummary(recorded);
+  return {completed,total,progress};
 };

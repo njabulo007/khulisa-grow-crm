@@ -117,6 +117,12 @@ export function createDeletionHandler({ db, authenticate, requireOwner, deleteMe
         add(requests);
       }
       if (type === 'client' || type === 'project') {
+        const libraries=await query('project_workspace',field,id);
+        for (const doc of libraries) for (const file of doc.data().files || []) {
+          if(file.pending?.leaseUntil>Date.now())throw createHttpError(409,'Project files are still uploading. Retry deletion shortly.');
+          for(const version of [...file.versions,...(file.pending?[file.pending]:[])])try{await deleteRequestFile(version);}catch{throw createHttpError(502,'Project file cleanup failed. Records and references were kept; retry deletion.');}
+        }
+        add(libraries);add(await query('project_conversations',field,id));add(await query('_workspace_operations',field,id));
         const onboarding=await query('project_onboarding',field,id);
         for (const doc of onboarding) for (const file of doc.data().files || []) {
           if (file.status==='uploading' && file.leaseUntil>Date.now()) throw createHttpError(409,'Onboarding materials are uploading. Retry deletion shortly.');
