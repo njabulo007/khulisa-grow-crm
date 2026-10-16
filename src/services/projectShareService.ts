@@ -1,3 +1,4 @@
+import type { OnboardingData } from './portalOnboardingService';
 import { auth } from '@/lib/firebase';
 
 export type ProjectShareStatus = 'active' | 'revoked' | 'expired';
@@ -35,6 +36,7 @@ export interface ProjectShareCreateResult {
 }
 
 export interface PublicProjectPortalData {
+  onboarding?: OnboardingData;
   share: {
     id: string;
     expiresAt: string | null;
@@ -49,6 +51,7 @@ export interface PublicProjectPortalData {
     id: string;
     name: string;
     status: string;
+    services?: string[];
     packageName: string | null;
     packageId: string | null;
     startDate: string | null;

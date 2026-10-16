@@ -1,3 +1,6 @@
+import { createPortalOnboardingHandlers, onboardingView } from '../_lib/portalOnboardingHandlers.js';
+import { requestAttachmentStorage } from '../_lib/requestAttachmentStorage.js';
+import { PACKAGE_CATALOG } from '../_lib/packages.js';
 import { createPortalNotifier } from '../_lib/portalNotifications.js';
 import { createPushHandler } from '../_lib/pushHandlers.js';
 import { createPortalResponseHandler, materialLabels } from '../_lib/portalWorkflowHandlers.js';
@@ -16,12 +19,27 @@ import {
 } from '../_lib/projectShareCore.js';
 import { normalizePortalMedia } from '../_lib/projectShareMedia.js';
 
+// Both public workflows reuse the same trusted internal notification delivery.
+const notify = createPortalNotifier({
+  db: adminDb, auth: adminAuth,
+  sendPush: async (notificationId, userId) => {
+    const response = { setHeader() {}, status(code) { this.code=code; return this; }, json(data) { this.data=data; } };
+    await createPushHandler({ db:adminDb, messaging:adminMessaging,
+      authenticate:async()=>({uid:userId,role:'agent'}), requireOwner:async()=>{} })(
+      {method:'POST',body:{notificationId}}, response);
+    if(response.code>=400 || response.data?.status==='failed') throw new Error('Push delivery failed.');
+  },
+});
+const onboarding = createPortalOnboardingHandlers({ db:adminDb, files:requestAttachmentStorage, notify });
+const responses = createPortalResponseHandler({ db:adminDb, notify });
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return methodNotAllowed(res, ['POST']);
   }
 
-  if (parseBody(req).action) return createPortalResponseHandler({ db: adminDb, notify: createPortalNotifier({db:adminDb,auth:adminAuth,sendPush:async (notificationId,userId)=>{const response={setHeader(){},status(code){this.code=code;return this;},json(data){this.data=data;}};await createPushHandler({db:adminDb,messaging:adminMessaging,authenticate:async()=>({uid:userId,role:'agent'}),requireOwner:async()=>{}})({method:'POST',body:{notificationId}},response);if(response.code>=400)throw new Error('Push failed.');}}) })(req, res);
+  if (String(parseBody(req).action || '').startsWith('onboarding-')) return onboarding.public(req,res);
+  if (parseBody(req).action) return responses(req,res);
   res.setHeader('Cache-Control', 'no-store');
   try {
     const payload = parseBody(req);
@@ -72,6 +90,7 @@ export default async function handler(req, res) {
       throw createHttpError(409, 'Project is missing linked client.');
     }
 
+    if (share.clientId && share.clientId !== clientId) throw createHttpError(403, 'This link no longer matches its client. Contact your team.');
     const clientSnapshot = await adminDb.collection(CLIENTS_COLLECTION).doc(clientId).get();
     if (!clientSnapshot.exists) {
       throw createHttpError(404, 'Linked client no longer exists.');
@@ -106,6 +125,7 @@ export default async function handler(req, res) {
         status: 'active',
         media: normalizePortalMedia(share.media),
       },
+      onboarding: onboardingView((await adminDb.collection('project_onboarding').doc(projectSnapshot.id).get()).data(), {...project,id:projectSnapshot.id},client),
       client: {
         id: clientSnapshot.id,
         businessName: typeof client.businessName === 'string' ? client.businessName : 'Client',
@@ -114,8 +134,9 @@ export default async function handler(req, res) {
         id: projectSnapshot.id,
         name: typeof project.name === 'string' ? project.name : 'Project',
         status: projectStatus,
-        packageName: typeof project.packageName === 'string' ? project.packageName : null,
+        packageName: typeof project.packageName === 'string' ? project.packageName : PACKAGE_CATALOG[project.packageId]?.name || null,
         packageId: typeof project.packageId === 'string' ? project.packageId : null,
+        services: PACKAGE_CATALOG[project.packageId]?.features || [],
         startDate: parseOptionalIsoDate(project.startDate),
         dueDate: parseOptionalIsoDate(project.dueDate),
         notes: '',

@@ -8,7 +8,9 @@ import type { PublicProjectPortalData } from "@/services/projectShareService";
 export function PortalClientActions({
   token,
   project,
+  hideMaterials = false,
 }: {
+  hideMaterials?: boolean;
   token: string;
   project: PublicProjectPortalData["project"];
 }) {
@@ -73,10 +75,10 @@ export function PortalClientActions({
   return (
     <Card id="portal-actions">
       <CardHeader>
-        <CardTitle className="text-lg">What we need from you</CardTitle>
+        <CardTitle className="text-lg">Approvals & requests</CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        {!!project.materials?.length && (
+        {!hideMaterials && !!project.materials?.length && (
           <div>
             <p className="mb-2 text-sm text-slate-600">
               Outstanding onboarding materials:

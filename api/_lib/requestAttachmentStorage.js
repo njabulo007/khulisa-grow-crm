@@ -11,7 +11,7 @@ export function createRequestAttachmentStorage({
 } = {}) {
   const check = (file) => {
     if (
-      !/^client-requests\/[a-zA-Z0-9_-]+\/[a-f0-9-]{36}\.enc$/.test(
+      !/^(?:client-requests|portal-onboarding)\/[a-zA-Z0-9_-]+\/[a-f0-9-]{36}\.enc$/.test(
         file.path,
       ) ||
       !/^[a-f0-9]{64}$/.test(file.key)

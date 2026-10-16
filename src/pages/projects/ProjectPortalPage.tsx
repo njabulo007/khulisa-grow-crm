@@ -1,4 +1,6 @@
-import { PortalClientActions } from '@/components/common/PortalClientActions';
+import { PortalOnboarding } from "@/components/common/PortalOnboarding";
+import { ONBOARDING_STATES } from "../../../shared/onboarding.js";
+import { PortalClientActions } from "@/components/common/PortalClientActions";
 import React, {
   useCallback,
   useEffect,
@@ -38,6 +40,7 @@ const formatDate = (value: string | null | undefined, withTime = false) => {
     return "To be confirmed";
   return new Intl.DateTimeFormat("en-ZA", {
     dateStyle: "medium",
+    timeZone: "Africa/Johannesburg",
     ...(withTime ? { timeStyle: "short" as const } : {}),
   }).format(new Date(value));
 };
@@ -59,6 +62,7 @@ export function ProjectPortalPage() {
   const [milestoneFilter, setMilestoneFilter] = useState<
     "all" | "open" | "complete"
   >("all");
+  const [section, setSection] = useState("overview");
   const generation = useRef(0);
   const pending = useRef(false);
 
@@ -108,6 +112,7 @@ export function ProjectPortalPage() {
     generation.current++;
     pending.current = false;
     setData(null);
+    setSection("overview");
     setFileSearch("");
     setMilestoneFilter("all");
     void loadPortal(true);
@@ -183,6 +188,71 @@ export function ProjectPortalPage() {
   const folderUrl = safePortalUrl(data.project.driveLink);
   const nextMilestone = milestones.find((item) => !item.isCompleted);
   const contact = data.project.contact;
+  const onboarding = data.onboarding;
+  const closed = ["completed", "delivered"].includes(data.project.status);
+  const needsMore =
+    onboarding?.editable && onboarding.status === "more-information-needed";
+  const reviewOpen = data.project.review?.status === "open" && !closed;
+  const action = needsMore
+    ? {
+        title: "Please clarify your onboarding information",
+        detail:
+          onboarding.feedback || "Your team has a question about your answers.",
+        target: "onboarding",
+        button: "Update your answers",
+      }
+    : reviewOpen
+      ? {
+          title: "Your review is needed",
+          detail: `Please review ${data.project.review.title} (${data.project.review.version}) and tell us your decision.`,
+          target: "approvals",
+          button: "Review this revision",
+        }
+      : onboarding?.editable
+        ? {
+            title:
+              onboarding.status === "not-started"
+                ? "Let’s get your project ready"
+                : "Continue your onboarding",
+            detail:
+              "Confirm your business information, tell us what you need, and share your materials.",
+            target: "onboarding",
+            button: "Open onboarding",
+          }
+        : {
+            title: "No action needed from you right now",
+            detail:
+              onboarding &&
+              ["submitted", "under-review"].includes(onboarding.status)
+                ? "Your team is reviewing your information. We will ask here if anything needs clarification."
+                : data.project.clientUpdate ||
+                  (closed
+                    ? "Your completed files remain available while this private link is valid."
+                    : "Your team is working through the project plan. We will publish the next review here."),
+            target:
+              closed && (files.length || folderUrl)
+                ? "files"
+                : milestones.length
+                  ? "progress"
+                  : "overview",
+            button:
+              closed && (files.length || folderUrl)
+                ? "View final files"
+                : milestones.length
+                  ? "View project progress"
+                  : "View project overview",
+          };
+  const sections = [
+    ["overview", "Overview"],
+    ...(onboarding ? [["onboarding", "Onboarding"]] : []),
+    ...(milestones.length ? [["progress", "Project Progress"]] : []),
+    ...(files.length || folderUrl ? [["files", "Files & Deliverables"]] : []),
+    ...(contact?.email || data.project.clientUpdate
+      ? [["messages", "Messages & Feedback"]]
+      : []),
+    ["approvals", "Approvals & Requests"],
+  ];
+
   const statusMessage =
     data.project.status === "on-hold"
       ? "Your project is currently on hold."
@@ -207,23 +277,64 @@ export function ProjectPortalPage() {
             <div>
               <p className="text-sm font-semibold">Khulisa Media</p>
               <p className="text-xs text-slate-600">Client workspace</p>
+              <StatusBadge
+                status={data.project.status}
+                type="project"
+                className="mt-1"
+              />
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isRefreshing}
-            onClick={() => void loadPortal()}
-          >
-            <RefreshCw
-              className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
-            />
-            {isRefreshing ? "Refreshing…" : "Refresh"}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                setSection(
+                  contact?.email || data.project.clientUpdate
+                    ? "messages"
+                    : "approvals",
+                )
+              }
+            >
+              Contact / help
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={isRefreshing}
+              onClick={() => void loadPortal()}
+            >
+              <RefreshCw
+                className={`mr-2 h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`}
+              />
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+          </div>
         </div>
       </header>
       <main className="mx-auto max-w-6xl space-y-6 px-5 py-8 sm:px-8 sm:py-10">
-        <section className="overflow-hidden rounded-2xl bg-slate-900 p-6 text-white sm:p-8">
+        <nav
+          aria-label="Workspace sections"
+          className="flex gap-2 overflow-x-auto pb-2"
+        >
+          {sections.map(([key, label]) => (
+            <Button
+              key={key}
+              className="min-h-11 shrink-0"
+              size="sm"
+              variant={section === key ? "default" : "outline"}
+              onClick={() => setSection(key)}
+              aria-current={section === key ? "page" : undefined}
+            >
+              {label}
+            </Button>
+          ))}
+        </nav>
+        <section
+          hidden={section !== "overview"}
+          id="workspace-overview"
+          className="overflow-hidden rounded-2xl bg-slate-900 p-6 text-white sm:p-8"
+        >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-[0.18em] text-amber-300">
@@ -238,7 +349,6 @@ export function ProjectPortalPage() {
                 </p>
               )}
             </div>
-            <StatusBadge status={data.project.status} type="project" className="bg-card" />
           </div>
           <div className="mt-7 grid gap-6 sm:grid-cols-[1fr_auto] sm:items-end">
             <div>
@@ -282,24 +392,125 @@ export function ProjectPortalPage() {
           </div>
         </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <section
+          aria-label="Your next action"
+          className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-5"
+        >
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-600">
+            {action.title.startsWith("No action")
+              ? "What happens next"
+              : "Action required"}
+          </p>
+          <h2 className="text-xl font-semibold">{action.title}</h2>
+          <p className="whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+            {action.detail}
+          </p>
+          <Button onClick={() => setSection(action.target)}>
+            {action.button}
+          </Button>
+        </section>
+        {onboarding && (
+          <div hidden={section !== "onboarding"}>
+            <PortalOnboarding
+              key={token}
+              token={token!}
+              initial={onboarding}
+              businessName={data.client.businessName}
+              projectName={data.project.name}
+              onSaved={(result) =>
+                setData((current) =>
+                  current?.project.id === result.projectId
+                    ? { ...current, onboarding: result }
+                    : current,
+                )
+              }
+            />
+          </div>
+        )}
+        <div
+          className={
+            section === "overview"
+              ? "grid gap-6 lg:grid-cols-[minmax(0,1fr)_280px]"
+              : "space-y-6"
+          }
+        >
           <div className="min-w-0 space-y-6">
-            <PortalClientActions key={`${token}:${data.project.review?.id || ''}`} token={token!} project={data.project} />
-            {data.project.clientUpdate && (
+            <div hidden={section !== "approvals"}>
+              <PortalClientActions
+                key={`${token}:${data.project.review?.id || ""}`}
+                token={token!}
+                project={data.project}
+                hideMaterials={!!onboarding}
+              />
+            </div>
+            {section === "overview" && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">
-                    Update from your team
+                    Your project at a glance
                   </CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
-                    {data.project.clientUpdate}
+                <CardContent className="space-y-4">
+                  <p className="text-sm">
+                    <strong>Onboarding:</strong>{" "}
+                    {onboarding
+                      ? ONBOARDING_STATES[onboarding.status]
+                      : "Managed by your team"}
+                  </p>
+                  <p className="text-sm">
+                    <strong>Delivery:</strong> {summary.completed} of{" "}
+                    {summary.total} milestones complete.{" "}
+                    {nextMilestone
+                      ? `Next: ${nextMilestone.title}`
+                      : "Your team will confirm the next delivery step."}
+                  </p>
+                  {!!data.project.services?.length && (
+                    <details>
+                      <summary className="cursor-pointer text-sm font-semibold">
+                        Included in your package
+                      </summary>
+                      <ul className="mt-3 list-disc pl-5 text-sm space-y-2">
+                        {data.project.services.map((service) => (
+                          <li key={service}>{service}</li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Onboarding approval and completed milestones are separate
+                    from final project delivery. Additional services require
+                    agreement.
                   </p>
                 </CardContent>
               </Card>
             )}
-            <Card>
+            {(contact?.email || data.project.clientUpdate) && (
+              <Card hidden={section !== "messages"} id="workspace-messages">
+                <CardHeader>
+                  <CardTitle className="text-lg">Messages & feedback</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-7 text-slate-600">
+                    {data.project.clientUpdate ||
+                      "Your project contact can help with questions, missing materials, and progress updates."}
+                  </p>
+                  {contact?.email && (
+                    <Button asChild variant="outline" className="mt-4">
+                      <a
+                        href={`mailto:${encodeURIComponent(contact.email)}?subject=${encodeURIComponent(`Project: ${data.project.name}`)}`}
+                      >
+                        Email {contact.name || "your team"}
+                      </a>
+                    </Button>
+                  )}
+                  <p className="mt-4 text-xs text-slate-600">
+                    For a revision decision or change request, use Approvals &
+                    Requests so your response reaches the project review queue.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            <Card hidden={section !== "progress"} id="workspace-progress">
               <CardHeader className="gap-4 border-b border-slate-100">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <CardTitle className="text-lg">Delivery milestones</CardTitle>
@@ -373,7 +584,7 @@ export function ProjectPortalPage() {
               </CardContent>
             </Card>
 
-            <Card id="portal-media">
+            <Card hidden={section !== "files"} id="portal-media">
               <CardHeader className="gap-4">
                 <div className="flex items-center justify-between gap-3">
                   <CardTitle className="text-lg">Shared files</CardTitle>
@@ -395,6 +606,18 @@ export function ProjectPortalPage() {
                 )}
               </CardHeader>
               <CardContent>
+                {folderUrl && (
+                  <Button asChild variant="outline" className="mb-4">
+                    <a
+                      href={folderUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      Open project folder{" "}
+                      <ArrowUpRight className="ml-2 h-4 w-4" />
+                    </a>
+                  </Button>
+                )}
                 {!filteredFiles.length ? (
                   <p className="py-5 text-sm text-slate-600">
                     {fileSearch
@@ -447,7 +670,7 @@ export function ProjectPortalPage() {
             </Card>
           </div>
 
-          <aside className="space-y-6">
+          <aside hidden={section !== "overview"} className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Project timeline</CardTitle>

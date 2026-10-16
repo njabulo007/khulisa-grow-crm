@@ -1,3 +1,4 @@
+import { PortalOnboardingReview } from '@/components/common/PortalOnboardingReview';
 import { PortalReviewPanel } from '@/components/common/PortalReviewPanel';
 import { AGENT_DELIVERY_STATUSES, canChangeProjectDeliveryStatus, canEditProjectMilestones, resolveDeliveryStatus } from '@/lib/projectDeliveryPermissions';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -723,6 +724,7 @@ export function ProjectDetailPage() {
             </CardContent>
           </Card>
 
+          <PortalOnboardingReview projectId={project.id} onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }} />
           {isOwner && <PortalReviewPanel projectId={project.id} clientId={project.clientId} onChange={() => { void projectService.getById(project.id).then(updated=>{if(updated)syncProjectState(updated);}); }} />}
           {canAccessProject(user, project) && <Card>
             <CardHeader><CardTitle className="text-lg">Client update</CardTitle><p className="text-sm text-muted-foreground">Publish a short update to the client portal. CRM notes remain private.</p></CardHeader>

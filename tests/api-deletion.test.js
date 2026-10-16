@@ -200,3 +200,10 @@ test('client deletion removes feedback, opportunities and every owned revision',
   assert.equal((await f.invoke('client', 'c')).code, 200);
   assert.deepEqual([...f.records.keys()], ['client_feedback/other']);
 });
+
+test('project deletion cleans onboarding files, revisions and operations; storage failure preserves references',async()=>{
+ const file={path:'portal-onboarding/p/file.enc',key:'private',status:'ready'};
+ const f=fixture({'projects/p':{clientId:'c'},'clients/c':{},'project_onboarding/p':{projectId:'p',clientId:'c',files:[file]},'project_onboarding_revisions/p_1':{projectId:'p',clientId:'c'},'_portal_onboarding_operations/op':{projectId:'p',clientId:'c'}});
+ f.failRequestFile=true;assert.equal((await f.invoke('project','p')).code,502);assert.equal(f.records.get('project_onboarding/p').files.length,1);assert(f.records.has('projects/p'));
+ f.failRequestFile=false;assert.equal((await f.invoke('project','p')).code,200);assert.deepEqual([...f.records.keys()],['clients/c']);assert.equal(f.fileCalls.length,2);
+});
