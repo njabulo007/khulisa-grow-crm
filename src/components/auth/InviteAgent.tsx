@@ -22,11 +22,11 @@ export function InviteAgent() {
     finally { setBusy(false); }
   };
   return <div className="space-y-4 rounded-lg border p-4">
-    <div><h3 className="font-medium">Invite an agent</h3><p className="text-sm text-muted-foreground">Create access for someone you trust. They choose their own password using a private setup link.</p></div>
+    <div><h3 className="font-medium">Invite an agent</h3><p className="text-sm text-muted-foreground">Create access or renew an unused invitation for someone you trust. They choose their own password using a private setup link. Existing members should log in or use Forgot password.</p></div>
     <form onSubmit={invite} className="grid gap-3 sm:grid-cols-2">
       <div className="space-y-1"><Label htmlFor="invite-name">Full name</Label><Input id="invite-name" value={name} maxLength={120} autoComplete="off" required disabled={busy} onChange={e => setName(e.target.value)} /></div>
       <div className="space-y-1"><Label htmlFor="invite-email">Email</Label><Input id="invite-email" type="email" value={email} maxLength={254} autoComplete="off" required disabled={busy} onChange={e => setEmail(e.target.value)} /></div>
-      <Button type="submit" disabled={busy || !name.trim() || !email.trim()} className="sm:col-span-2 sm:justify-self-start">{busy ? 'Creating invitation...' : 'Create invitation'}</Button>
+      <Button type="submit" disabled={busy || !name.trim() || !email.trim()} className="sm:col-span-2 sm:justify-self-start">{busy ? 'Preparing invitation...' : 'Create or renew invitation'}</Button>
     </form>
     {invitation && <div className="space-y-2 rounded-md bg-muted p-3">
       <p className="text-sm font-medium">Setup link for {invitation.email}</p>
@@ -35,7 +35,7 @@ export function InviteAgent() {
         <Button variant="outline" onClick={() => { void navigator.clipboard.writeText(invitation.setupLink).then(() => toast.success('Setup link copied')).catch(() => toast.error('Select and copy the link manually.')); }}>Copy setup link</Button>
         <Button variant="ghost" onClick={() => setInvitation(null)}>Hide link</Button>
       </div>
-      <p className="text-xs text-muted-foreground">Share it privately with this person. No email is sent automatically. After choosing a password, they log in at the CRM. If the link expires before their first login, create an invitation for the same email again.</p>
+      <p className="text-xs text-muted-foreground">Share it privately with this person. No email is sent automatically. After choosing a password, they log in at the CRM. If the link expires before their first login, enter the same email here again to renew it. You do not need to delete their Firebase records.</p>
     </div>}
   </div>;
 }

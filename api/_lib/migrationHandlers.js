@@ -95,6 +95,28 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
     const email = text(payload.email, 254).toLowerCase();
     const displayName = text(payload.displayName, 120);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !displayName) throw createHttpError(400, 'Enter a valid email and full name.');
+    const config = getIdentityConfig();
+    const canRenewInvitation = (user, profile) => {
+      if (user.disabled || config.owners.has(user.uid) || user.customClaims?.role === 'owner'
+        || profile.data()?.accessDisabled === true || profile.data()?.isActive === false) return false;
+      if (profile.exists) return profile.data()?.invitationPending === true && profile.data()?.role === 'agent';
+      // A deleted Firestore profile does not delete the Auth account. Recover
+      // only an already server-authorised agent who has never signed in. Claims
+      // alone must not let this form reset an active member's password.
+      return user.customClaims?.role === 'agent'
+        && typeof user.metadata?.creationTime === 'string'
+        && Boolean(user.metadata.creationTime)
+        && !user.metadata.lastSignInTime;
+    };
+    const existingAccountError = (user, profile) => {
+      if (user.disabled || profile.data()?.accessDisabled === true || profile.data()?.isActive === false) {
+        return createHttpError(409, 'This account has been disabled. Review its access in Settings before inviting it again.');
+      }
+      if (profile.exists || user.metadata?.lastSignInTime || config.owners.has(user.uid) || user.customClaims?.role === 'owner') {
+        return createHttpError(409, 'This email already has an account. They should log in or use Forgot password on the login page. Do not delete their user record to renew access.');
+      }
+      return createHttpError(409, 'This email still exists in Firebase Authentication, but no recoverable invitation was found. Deleting Firestore Database → users does not delete the sign-in account. Check Authentication → Users in the Firebase project configured for this CRM.');
+    };
     let target;
     let created = false;
     try { target = await auth.getUserByEmail(email); } catch (error) {
@@ -102,11 +124,8 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
     }
     if (target) {
       const existing = await db.collection('users').doc(target.uid).get();
-      // Never turn an arbitrary pre-registered account into a member: someone
-      // else may know its password. Only retry a server-created pending invite.
-      if (target.disabled || existing.data()?.invitationPending !== true || existing.data()?.role !== 'agent') {
-        throw createHttpError(409, 'This email already has an account. Existing members should log in; ask the owner to review any unapproved Firebase account.');
-      }
+      // Never admit an arbitrary pre-registered account: its password may be known.
+      if (!canRenewInvitation(target, existing)) throw existingAccountError(target, existing);
     } else {
       try {
         target = await auth.createUser({ email, displayName, password: crypto.randomBytes(48).toString('base64url'), emailVerified: false });
@@ -116,7 +135,6 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
         throw error;
       }
     }
-    const config = getIdentityConfig();
     const ref = db.collection('users').doc(target.uid);
     try {
       await db.runTransaction(async transaction => {
@@ -124,7 +142,7 @@ export const createMigrationHandlers = ({ auth, db, getIdentityConfig = readIden
         const existing = await transaction.get(ref);
         await transaction.get(db.collection('_role_control').doc('changes'));
         if (!ownerAuthorized(actor.uid, owner.data(), config)) throw createHttpError(403, 'Your owner access has changed.');
-        if (existing.exists && (existing.data()?.invitationPending !== true || existing.data()?.role !== 'agent')) throw createHttpError(409, 'This account already has access.');
+        if ((!created || existing.exists) && !canRenewInvitation(target, existing)) throw existingAccountError(target, existing);
         const now = new Date().toISOString();
         transaction.set(ref, { uid: target.uid, appUserId: appIdFor(target.uid, target, config), email, displayName: target.displayName || displayName,
           role: 'agent', isActive: true, invitationPending: true, invitedBy: actor.uid,

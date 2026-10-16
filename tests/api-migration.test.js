@@ -59,7 +59,7 @@ function fixture(initial = {}, configuration = { owners: new Set(), legacyIds: {
     async createUser(payload) {
       if (failures.create) throw failures.create;
       calls.created.push(clone(payload));
-      const user = { ...payload, uid: 'invited-user', customClaims: {} }; users.set(user.uid, user); return clone(user);
+      const user = { ...payload, uid: 'invited-user', customClaims: {}, metadata: { creationTime: 'Fri, 16 Oct 2026 08:00:00 GMT' } }; users.set(user.uid, user); return clone(user);
     },
     async generatePasswordResetLink(email) {
       if (failures.link) throw new Error('Internal link service failure');
@@ -312,6 +312,63 @@ test('pending invitation can regenerate a setup link without creating duplicate 
   const f = fixture(); const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
   await f.invoke('ensureRole', 'owner', body); await f.invoke('ensureRole', 'owner', body);
   assert.equal(f.calls.created.length, 1); assert.equal(f.calls.links.length, 2);
+});
+
+test('renewing an unused invitation repairs a deleted Firestore profile and preserves the Auth identity', async () => {
+  const f = fixture(); const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
+  await f.invoke('ensureRole', 'owner', body);
+  f.users.get('invited-user').customClaims.appUserId = 'original-assignment-id';
+  f.records.delete('users/invited-user');
+  const result = await f.invoke('ensureRole', 'owner', body);
+  assert.equal(result.statusCode, 200); assert.equal(result.body.uid, 'invited-user');
+  assert.equal(f.calls.created.length, 1); assert.equal(f.calls.links.length, 2);
+  assert.equal(f.records.get('users/invited-user').invitationPending, true);
+  assert.equal(f.records.get('users/invited-user').appUserId, 'original-assignment-id');
+  assert.equal(f.records.get('users/invited-user').invitedBy, 'owner');
+  assert.deepEqual(f.calls.deleted, []); assert.deepEqual(f.calls.revoked, []);
+});
+
+test('missing profiles do not permit resetting signed-in, unapproved, disabled or recovery-owner accounts', async () => {
+  for (const scenario of ['signed-in', 'unapproved', 'disabled', 'owner-claim', 'recovery-owner', 'missing-metadata']) {
+    const f = fixture({}, { owners: new Set(scenario === 'recovery-owner' ? ['invited-user'] : []), legacyIds: {} });
+    const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
+    await f.invoke('ensureRole', 'owner', body);
+    f.records.delete('users/invited-user');
+    const target = f.users.get('invited-user');
+    if (scenario === 'signed-in') target.metadata.lastSignInTime = 'Fri, 16 Oct 2026 08:05:00 GMT';
+    if (scenario === 'unapproved') target.customClaims = {};
+    if (scenario === 'disabled') target.disabled = true;
+    if (scenario === 'owner-claim') target.customClaims.role = 'owner';
+    if (scenario === 'missing-metadata') delete target.metadata;
+    const before = f.calls.links.length;
+    const result = await f.invoke('ensureRole', 'owner', body);
+    assert.equal(result.statusCode, 409, scenario);
+    assert.equal(f.calls.links.length, before, scenario);
+    assert.equal(f.records.has('users/invited-user'), false, scenario);
+    assert.deepEqual(f.calls.deleted, [], scenario);
+    if (scenario === 'unapproved') assert.match(result.body.error, /Authentication.*Firestore Database/s);
+    if (scenario === 'signed-in') assert.match(result.body.error, /Forgot password/);
+  }
+});
+
+test('a disabled or concurrently activated invitation cannot be renewed', async () => {
+  for (const scenario of ['access-disabled', 'inactive', 'activated-during-renewal']) {
+    const f = fixture(); const body = { action: 'invite', email: 'new@example.com', displayName: 'New' };
+    await f.invoke('ensureRole', 'owner', body);
+    if (scenario === 'access-disabled') f.records.get('users/invited-user').accessDisabled = true;
+    if (scenario === 'inactive') f.records.get('users/invited-user').isActive = false;
+    if (scenario === 'activated-during-renewal') {
+      f.records.delete('users/invited-user');
+      const original = f.db.runTransaction;
+      f.db.runTransaction = operation => {
+        f.records.set('users/invited-user', { role: 'agent', invitationPending: false });
+        return original(operation);
+      };
+    }
+    const before = f.calls.links.length;
+    assert.equal((await f.invoke('ensureRole', 'owner', body)).statusCode, 409, scenario);
+    assert.equal(f.calls.links.length, before, scenario);
+  }
 });
 
 test('existing members and attacker pre-registered email accounts cannot be silently reset or admitted', async () => {
